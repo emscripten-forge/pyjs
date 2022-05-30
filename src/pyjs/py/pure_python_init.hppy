@@ -1,0 +1,365 @@
+#include "pyjs/macro_magic.hpp"
+BEGIN_PYTHON_INIT(pyjs) R"pycode(#"
+
+
+import json
+import time
+import sys
+import types
+
+
+
+# make this a submodule?
+class _js(object):
+    def __getattr__(self, name):
+        ret = internal.global_property(name)
+        if internal.is_undefined_or_null(ret):
+            raise AttributeError(f"has no attribute {name}")
+        return _build_in_to_python(ret)
+js = _js()
+
+
+
+
+
+
+
+
+
+
+def extend_val():
+
+    def __val_call(self, *args):
+
+        if hasattr(self, '_pyjs_parent'):
+            bound = internal.val_bind(self, self._pyjs_parent)
+            return apply(bound, args=args)
+            #return member_apply(self._pyjs_parent,js_function=self, args=args)
+        else:
+            return apply(self, args=args)
+    JsValue.__call__ = __val_call
+
+    def val_getattr(self, key):
+        if key == "_ipython_canary_method_should_not_exist_":
+            return AttributeError()
+
+        ts = type_str(self)
+        if internal.is_undefined_or_null(self):
+            raise AttributeError()
+
+        if(key == "_pyjs_parent"):
+            raise AttributeError()
+
+        ret = _error_checked(internal.getattr_try_catch(self, key))
+
+        if internal.is_undefined_or_null(ret):
+            raise AttributeError(f"has no attribute {key}")
+        ret._pyjs_parent = self
+        return _build_in_to_python(ret)
+
+
+    def val_setattr(self, key, val):
+        if key == "_pyjs_parent":
+            return super(JsValue, self).__setattr__(key,val)
+        else:
+            _error_checked(internal.setattr_try_catch(self, key, val))
+
+    def val_setitem(self, key, val):
+        if key == "_pyjs_parent":
+            return super(JsValue, self).__setattr__(key,val)
+        else:
+            _error_checked(internal.setattr_try_catch(self, key, val))
+
+
+
+    JsValue.__getitem__ = val_getattr
+    JsValue.__getattr__ = val_getattr
+    JsValue.__setattr__ = val_setattr
+    JsValue.__setitem__ = val_setitem
+
+extend_val()
+del extend_val
+
+
+
+def _build_in_to_python(val):
+    ts = type_str(val)
+    if ts in ['string', 'boolean','number','undefined']:
+        return to_py(val)
+    return val
+
+def new(cls, *args):
+    return internal.val_new(cls, *args)
+
+def type_str(x):
+    return internal.type_str(x)
+
+
+def js_callback(py_function):
+    _js_py_object = js_py_object(py_function)
+    return _js_py_object['__call__'].bind(_js_py_object)
+
+
+def ensure_js_val(arg):
+    if isinstance(arg, JsValue):
+        return arg
+    else:
+        return JsValue(arg)
+
+
+def _error_checked(ret):
+
+    is_error = internal.is_error(ret)
+    if is_error:
+        internal.console_log("ERROR",ret)
+        raise RuntimeError(to_py(internal.get_error(ret)))
+
+    return ret
+
+
+def apply(js_function, args):
+    #print("apply",js_function,args)
+    js_array_args = js_array()
+    for arg in args:
+        js_arg = ensure_js_val(arg)
+        internal.val_call(js_array_args, "push", js_arg)
+
+    #print("apply try catch!")
+    applyTryCatch = internal.module_property('_apply_try_catch')
+    ret  = internal.val_function_call(applyTryCatch, js_function, js_null(), js_array_args)
+    return _build_in_to_python(_error_checked(ret))
+
+
+def array_converter(js_val, depth=0, max_depth=None):
+    size = internal.length(js_val)
+    py_list = []
+    for i in range(size):
+        js_item = internal.__getitem__(js_val, i)
+        py_item = to_py(js_item, depth=depth+1, max_depth=max_depth)
+        py_list.append(py_item)
+    return py_list
+
+def object_converter(js_val, depth=0, max_depth=None):
+    keys = internal.object_keys(js_val)
+    values = internal.object_values(js_val)
+
+    ret_dict = {}
+    size = internal.length(keys)
+
+    for  i in range(size):
+
+        js_key = internal.__getitem__(keys,   i)
+        js_val = internal.__getitem__(values, i)
+
+        py_key = to_py(js_key, depth=depth+1, max_depth=max_depth)
+        py_val = to_py(js_val, depth=depth+1, max_depth=max_depth) 
+        
+        ret_dict[py_key] = py_val
+
+    return ret_dict
+
+def dont_convert(js_val, depth, max_depth):
+    return js_val
+
+
+# register converters
+converters = dict(
+    null=lambda x:None,
+    undefined=lambda x,d,md:None,
+    string=lambda x,d,md: internal.as_string(x),
+    boolean=lambda x,d,md: internal.as_boolean(x),
+    integer=lambda x,d,md: internal.as_int(x),
+    float=lambda x,d,md: internal.as_float(x),
+    object=object_converter,
+    Object=object_converter,
+    Array=array_converter,
+    function=dont_convert,
+    # this is a bit ugly at since `as_numpy_array`
+    # has to do the dispatching again
+    ArrayBuffer=lambda x,d,md:   to_py(new(js.Uint8Array, x), d,md),
+    Uint8Array=lambda x,d,md:    internal.as_numpy_array(x),
+    Int8Array =lambda x,d,md:    internal.as_numpy_array(x),
+    Uint16Array=lambda x,d,md:   internal.as_numpy_array(x),
+    Int16Array =lambda x,d,md:   internal.as_numpy_array(x),
+    Uint32Array=lambda x,d,md:   internal.as_numpy_array(x),
+    Int32Array =lambda x,d,md:   internal.as_numpy_array(x),
+    Float32Array=lambda x,d,md:  internal.as_numpy_array(x),
+    Float64Array =lambda x,d,md: internal.as_numpy_array(x),
+    BigInt64Array=lambda x,d,md:  internal.as_numpy_array(x),
+    BigUint64Array =lambda x,d,md: internal.as_numpy_array(x),
+    Uint8ClampedArray=lambda x,d,md: internal.as_numpy_array(x)
+)
+
+
+
+def to_py(js_val,  depth=0, max_depth=None):
+    ts = internal.get_type_string(js_val)
+    return converters.get(ts, converters['object'])(js_val, depth, max_depth)
+
+
+
+
+# class RequestData(object):
+#     def __init__(self, url, method):
+#         self.url = url
+#         self.method = method
+#         self.auth = None
+#         self.headers = dict()      
+
+
+
+
+
+
+
+
+
+
+def _install_requests():
+
+
+        
+    def request_impl(method, url, headers=None, auth=None, data=None, params=None):
+        
+        # setup xml request
+        xmlr = new(js.XMLHttpRequest)
+
+        # url object
+        url = new(js.URL, url)
+
+        # params
+        if params is not None:
+            for k,v in params.items():
+                url.searchParams.set(k,v)
+
+        # basic auth
+        if auth is not None:
+            xmlr.open(method, url, False, auth[0], auth[1])
+            xmlr.setRequestHeader("Authorization", "Basic " + js.btoa(f"{auth[0]}:{auth[1]}"))
+            xmlr.withCredentials = True
+        else:
+            xmlr.open(method, url, False)
+
+
+        # headers
+        if headers is None:
+            headers = dict()
+        for k,v in headers.items():
+            xmlr.setRequestHeader(k,v)
+
+
+        # this allows for easy js-to-py
+        xmlr.responseType= "arraybuffer"
+
+        # send xml request and time it
+        t0 = time.time()
+        if data is None:
+            xmlr.send(js_null())
+        else:
+            request.send("")
+        elapsed = time.time() - t0
+            
+        # build and return response object
+        return Response(xmlr, elapsed)
+
+    request = request_impl
+
+
+    class Response(object):
+        def __init__(self, request, elapsed):
+            self._request = request
+            self._request_response = to_py(request.response)
+            self.content = self._request_response.tobytes()
+            self.encoding='UTF-8'
+            self.elapsed = elapsed
+            self.status_code = self._request.status
+            self.url = self._request.responseURL
+
+        def __bool__(self):
+            return status_code <= 400
+
+        def close(self):
+            pass
+
+        @property
+        def headers(self):
+            parse = internal.module_property("_parseGetAllResponseHeaders")
+            return to_py(parse(self._request))
+        
+        @property
+        def text(self):
+            return self.content.decode(self.encoding)
+        
+        def json(self):
+            return json.loads(self.content.decode(self.encoding))
+        
+        def raise_for_status(self):
+            if self.status_code > 400:
+                raise RuntimeError(f"status code = {self.status_code}. thats bad")
+
+    class Session(object):
+        def __init__(self):
+            self.auth = None
+            self.headers = dict()    
+
+        def request(self, method, url,  headers=None, auth=None, data=None, params=None):
+            
+            # handle headers
+            if headers is None:
+                headers = dict()
+            headers = {**self.headers, **headers}
+
+            # handle auth
+            if auth is None:
+                auth = self.auth
+
+            return request_impl(method=method, url=url, auth=auth, data=data, params=params, headers=headers)
+
+
+        def get(self, url, **kwargs):
+            return self.request(method='GET', url=url, **kwargs)
+
+        def put(self, url, **kwargs):
+            return self.request(method='PUT', url=url, **kwargs)
+
+        def post(self, url, **kwargs):
+            return self.request(method='POST', url=url, **kwargs)
+
+        def update(self, url, **kwargs):
+            return self.request(method='UPDATE', url=url, **kwargs)
+
+        def delete(self, url, **kwargs):
+            return self.request(method='DELETE', url=url, **kwargs)
+
+
+
+    # def get(url, **kwargs):
+    #     return request(method="GET", url=url, **kwargs)
+    # def put(url, **kwargs):
+    #     return request(method="PUT", url=url, **kwargs)
+    # def post(url, **kwargs):
+    #     return request(method="POST", url=url, **kwargs)
+    # def update(url, **kwargs):
+    #     return request(method="UPDATE", url=url, **kwargs)
+    # def delete(url, **kwargs):
+    #     return request(method="DELETE", url=url, **kwargs)
+
+    import sys
+    requests = sys.modules["requests"] = types.ModuleType("requests")
+    requests.Session = Session
+    requests.Response = Response
+    requests.request = request
+    requests.get = lambda url,**kwargs : request_impl(method="GET", url=url, **kwargs)
+    requests.put =  lambda url,**kwargs : request_impl(method="PUT", url=url, **kwargs)
+    requests.post =  lambda url,**kwargs : request_impl(method="POST", url=url, **kwargs)
+    requests.update =  lambda url,**kwargs : request_impl(method="UPDATE", url=url, **kwargs)
+    requests.delete =  lambda url,**kwargs : request_impl(method="DELETE", url=url, **kwargs)
+
+_install_requests()
+del _install_requests
+
+
+        
+
+#)pycode"
+END_PYTHON_INIT

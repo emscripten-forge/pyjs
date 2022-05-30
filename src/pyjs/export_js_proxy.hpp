@@ -13,8 +13,8 @@
 namespace py = pybind11;
 namespace em = emscripten;
 
-
-
+namespace pyjs
+{
 
 void export_js_proxy(py::module_ & m)
 {   
@@ -102,7 +102,7 @@ void export_js_proxy(py::module_ & m)
     });
 
     m_internal.def("as_numpy_array",[](em::val * v) -> py::object {
-        return  pyjs::typed_array_to_numpy_array(*v);
+        return  typed_array_to_numpy_array(*v);
     });
 
 
@@ -310,5 +310,6 @@ void export_js_proxy(py::module_ & m)
     py::implicitly_convertible<double, em::val>();
     py::implicitly_convertible<int, em::val>();
     py::implicitly_convertible<bool, em::val>();
+}
 
 }

@@ -6,7 +6,8 @@
 namespace py = pybind11;
 namespace em = emscripten;
 
-
+namespace pyjs
+{
 
 void export_py_object()
 {
@@ -75,5 +76,7 @@ void export_py_object()
             })
         )
     ;
+
+}
 
 }

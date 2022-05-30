@@ -1,1 +1,4 @@
-void export_js_module();
+namespace pyjs
+{
+    void export_js_module();
+}

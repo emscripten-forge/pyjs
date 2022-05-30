@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.9)
 project(pyjs VERSION 0.1.1 DESCRIPTION "pyjs description")
 
 
-
-
 set(PYJS_HEADERS
     include/pyjs/export_js_module.hpp
     include/pyjs/export_pyjs_module.hpp

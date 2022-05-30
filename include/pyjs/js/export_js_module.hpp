@@ -1,1 +1,0 @@
-void export_js_module();

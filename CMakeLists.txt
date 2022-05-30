@@ -5,8 +5,8 @@ project(pyjs VERSION 0.1.0 DESCRIPTION "pyjs description")
 
 
 set(PYJS_HEADERS
-    include/pyjs/js/export_js_module.hpp
-    include/pyjs/py/export_pyjs_module.hpp
+    include/pyjs/export_js_module.hpp
+    include/pyjs/export_pyjs_module.hpp
 )
 
 
@@ -29,8 +29,8 @@ configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js COPYONLY)
 set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind")
 
 add_library(pyjs STATIC
-    src/pyjs/js/export_js_module.cpp
-    src/pyjs/py/export_pyjs_module.cpp
+    src/pyjs/export_js_module.cpp
+    src/pyjs/export_pyjs_module.cpp
 )
 
 
@@ -38,25 +38,23 @@ add_library(pyjs STATIC
 set_target_properties(pyjs PROPERTIES 
     LINK_FLAGS " ${EM_FLAGS} --pre-js pre.js"
     COMPILE_FLAGS "${EM_FLAGS}"
-    PUBLIC_HEADER "${PYJS_HEADERS}"
+    # PUBLIC_HEADER "${PYJS_HEADERS}"
     PREFIX ""
     VERSION ${${PROJECT_NAME}_VERSION}
     SOVERSION ${${PROJECT_NAME}_VERSION}
+    INSTALL_RPATH_USE_LINK_PATH TRUE
 
 )
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-SET(PUBLIC_INCLUDES 
-    ${PYTHON_INCLUDE_DIRS} 
-    ${pybind11_INCLUDE_DIR})
 
-SET(BUILD_INCLUDES 
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(pyjs PUBLIC pybind11::pybind11)
+target_compile_options(pyjs PRIVATE -fPIC)
+
 
 target_include_directories(pyjs
                            PUBLIC
-                           ${PUBLIC_INCLUDES}
+                           ${PYTHON_INCLUDE_DIRS} 
                            $<BUILD_INTERFACE:${BUILD_INCLUDES}>
                            $<INSTALL_INTERFACE:include>)
 
@@ -69,10 +67,34 @@ set(PYJS_CMAKECONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 
 
 # Configure 'pyjsConfig.cmake' for an install tree
-set(XEUS_PYTHON_CONFIG_CODE "")
+set(PYJS_CONFIG_CODE "")
+
+
+# Configure 'xeus-pythonConfig.cmake' for a build tree
+set(PYJS_CONFIG_CODE "####### Expanded from \@PYJS_CONFIG_CODE\@ #######\n")
+set(PYJS_CONFIG_CODE "${PYJS_CONFIG_CODE}set(CMAKE_MODULE_PATH \"${CMAKE_CURRENT_SOURCE_DIR}/cmake;\${CMAKE_MODULE_PATH}\")\n")
+set(PYJS_CONFIG_CODE "${PYJS_CONFIG_CODE}##################################################")
+configure_package_config_file(${PROJECT_NAME}Config.cmake.in
+                              "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+                              INSTALL_DESTINATION ${PROJECT_BINARY_DIR})
+
+# Configure 'xeus-pythonConfig.cmake' for an install tree
+set(PYJS_CONFIG_CODE "")
+
+
 configure_package_config_file(${PROJECT_NAME}Config.cmake.in
                               "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${PROJECT_NAME}Config.cmake"
                               INSTALL_DESTINATION ${PYJS_CMAKECONFIG_INSTALL_DIR})
+
+
+
+# set_target_properties(pyjs PROPERTIES
+#         "INTERFACE_INCLUDE_DIRECTORIES" "include"
+# )
+
+
+
+
 
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
                                  VERSION ${${PROJECT_NAME}_VERSION}
@@ -84,12 +106,16 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${PROJECT_NAME}Config.cmake
 # export(EXPORT ${PROJECT_NAME}-targets
 #        FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
 
-install(TARGETS pyjs
+set(PYJS_PYTHON_TARGETS "")
+list(APPEND PYJS_PYTHON_TARGETS pyjs)
+
+install(TARGETS ${PYJS_PYTHON_TARGETS}
         EXPORT pyjs-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pyjs)
+
 export(EXPORT ${PROJECT_NAME}-targets
            FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
 

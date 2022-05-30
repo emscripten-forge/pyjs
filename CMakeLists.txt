@@ -7,6 +7,7 @@ project(pyjs VERSION 0.1.0 DESCRIPTION "pyjs description")
 set(PYJS_HEADERS
     include/pyjs/export_js_module.hpp
     include/pyjs/export_pyjs_module.hpp
+    pre.js
 )
 
 
@@ -26,7 +27,7 @@ endif ()
 configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js COPYONLY)
 
 
-set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind")
+set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
 
 add_library(pyjs STATIC
     src/pyjs/export_js_module.cpp
@@ -38,12 +39,12 @@ add_library(pyjs STATIC
 set_target_properties(pyjs PROPERTIES 
     LINK_FLAGS " ${EM_FLAGS} --pre-js pre.js"
     COMPILE_FLAGS "${EM_FLAGS}"
-    # PUBLIC_HEADER "${PYJS_HEADERS}"
+    PUBLIC_HEADER "${PYJS_HEADERS}"
     PREFIX ""
     VERSION ${${PROJECT_NAME}_VERSION}
     SOVERSION ${${PROJECT_NAME}_VERSION}
     INSTALL_RPATH_USE_LINK_PATH TRUE
-
+    INTERFACE_PRE_JS_PATH ${CMAKE_INSTALL_INCLUDEDIR}/pyjs/pre.js
 )
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -54,8 +55,7 @@ target_compile_options(pyjs PRIVATE -fPIC)
 
 target_include_directories(pyjs
                            PUBLIC
-                           ${PYTHON_INCLUDE_DIRS} 
-                           $<BUILD_INTERFACE:${BUILD_INCLUDES}>
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                            $<INSTALL_INTERFACE:include>)
 
 

@@ -12,7 +12,7 @@
 #   pyjs_FOUND - true if pyjs found on the system
 #   pyjs_INCLUDE_DIRS - the directory containing pyjs headers
 #   pyjs_LIBRARY - the library for linking
-
+#   pyjs_PRE_JS_PATH - the pre -js path
 @PACKAGE_INIT@
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR};${CMAKE_MODULE_PATH}")
@@ -25,7 +25,12 @@ find_dependency(pybind11 @pybind11_REQUIRED_VERSION@)
 if (NOT TARGET pyjs)
     include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
     get_target_property(@PROJECT_NAME@_INCLUDE_DIR pyjs INTERFACE_INCLUDE_DIRECTORIES)   
+    SET(@PROJECT_NAME@_PRE_JS_PATH ${@PROJECT_NAME@_INCLUDE_DIR}/pyjs/pre.js)
     message(STATUS "IN CONFIG of project:" @PROJECT_NAME@_INCLUDE_DIR " is " ${@PROJECT_NAME@_INCLUDE_DIR})
     get_target_property(@PROJECT_NAME@_LIBRARY pyjs LOCATION)
+
+
+
+
 
 endif ()

@@ -2,5 +2,5 @@
 
 namespace pyjs
 {
-    void export_pyjs_module(py::module_ & pyjs_module);
+    void export_pyjs_module(pybind11::module_ & pyjs_module);
 }

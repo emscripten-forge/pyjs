@@ -1,10 +1,17 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.1.1 DESCRIPTION "pyjs description")
+project(pyjs VERSION 0.2.0 DESCRIPTION "pyjs description")
 
 
 set(PYJS_HEADERS
+
+    include/pyjs/convert.hpp
     include/pyjs/export_js_module.hpp
+    include/pyjs/export_js_proxy.hpp
+    include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
+    include/pyjs/macro_magic.hpp
+    include/pyjs/pure_python_init.hppy
+    include/pyjs/convert.hpp
     pre.js
 )
 
@@ -27,32 +34,25 @@ configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js COPYONLY)
 
 set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
 
-add_library(pyjs STATIC
-    src/pyjs/export_js_module.cpp
-    src/pyjs/export_pyjs_module.cpp
-)
+
+
+add_library(pyjs INTERFACE)
+
 
 
 
 set_target_properties(pyjs PROPERTIES 
-    LINK_FLAGS " ${EM_FLAGS} --pre-js pre.js"
-    COMPILE_FLAGS "${EM_FLAGS}"
     PUBLIC_HEADER "${PYJS_HEADERS}"
-    PREFIX ""
-    VERSION ${${PROJECT_NAME}_VERSION}
-    SOVERSION ${${PROJECT_NAME}_VERSION}
-    INSTALL_RPATH_USE_LINK_PATH TRUE
-    INTERFACE_PRE_JS_PATH ${CMAKE_INSTALL_INCLUDEDIR}/pyjs/pre.js
 )
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 
-target_link_libraries(pyjs PUBLIC pybind11::pybind11)
-target_compile_options(pyjs PRIVATE -fPIC)
+target_link_libraries(pyjs INTERFACE pybind11::pybind11)
+target_compile_options(pyjs INTERFACE -fPIC)
 
 
 target_include_directories(pyjs
-                           PUBLIC
+                           INTERFACE
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                            $<INSTALL_INTERFACE:include>)
 

@@ -6,7 +6,7 @@ import json
 import time
 import sys
 import types
-
+import numpy
 
 
 # make this a submodule?

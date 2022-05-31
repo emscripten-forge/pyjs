@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.2.0 DESCRIPTION "pyjs description")
+project(pyjs VERSION 0.2.1 DESCRIPTION "pyjs description")
 
 
 set(PYJS_HEADERS

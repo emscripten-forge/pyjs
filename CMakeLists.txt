@@ -16,6 +16,7 @@ set(PYJS_HEADERS
 )
 
 
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -28,9 +29,8 @@ endif ()
 
 
 
-
-configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js COPYONLY)
-
+configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js  COPYONLY)
+configure_file(post.js               ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
 
 set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
 
@@ -55,6 +55,87 @@ target_include_directories(pyjs
                            INTERFACE
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                            $<INSTALL_INTERFACE:include>)
+
+
+
+SET(PYTHON_UTIL_LIBS 
+    $ENV{PREFIX}/lib/libbz2.a
+    $ENV{PREFIX}/lib/libz.a
+    $ENV{PREFIX}/lib/libsqlite3.a
+    $ENV{PREFIX}/lib/libffi.a
+)
+
+add_executable(pyjs_main      src/main.cpp)
+target_compile_definitions(pyjs_main PUBLIC -DPYJS_WEB) 
+target_compile_options(pyjs_main PRIVATE -fPIC)
+target_link_libraries(pyjs_main PUBLIC pyjs)
+target_link_libraries(pyjs_main PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
+
+
+
+target_compile_options(pyjs_main
+    PUBLIC --std=c++17
+    PUBLIC -Wno-deprecated
+    PUBLIC "SHELL: --bind"
+    PUBLIC "SHELL: -s ENVIRONMENT=worker"
+    PUBLIC "SHELL: -fwasm-exceptions"
+    PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+    PUBLIC "SHELL: -s LZ4=1"
+)
+
+target_link_options(pyjs_main
+    PUBLIC --bind
+    PUBLIC -Wno-unused-command-line-argument
+    PUBLIC "SHELL: --bind"
+    PUBLIC "SHELL: -s MODULARIZE=1"
+    PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
+    PUBLIC "SHELL: -s EXPORT_ES6=0"
+    PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
+    PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
+    PUBLIC "SHELL: -s ASSERTIONS=0"
+    PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
+    PUBLIC "SHELL: -s EXIT_RUNTIME=1"
+    PUBLIC "SHELL: -s WASM=1"
+    PUBLIC "SHELL: -s USE_PTHREADS=0"
+    PUBLIC "SHELL: -fwasm-exceptions"
+    PUBLIC "SHELL: -s MAIN_MODULE=1"
+    PUBLIC "SHELL: -s ENVIRONMENT=worker"
+    PUBLIC "SHELL: -s TOTAL_STACK=512mb"
+    PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
+    PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+    PUBLIC "SHELL: -s LZ4=1"
+    PUBLIC "SHELL: --post-js post.js"
+    PUBLIC "SHELL: --pre-js pre.js"
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -85,15 +166,6 @@ configure_package_config_file(${PROJECT_NAME}Config.cmake.in
                               INSTALL_DESTINATION ${PYJS_CMAKECONFIG_INSTALL_DIR})
 
 
-
-# set_target_properties(pyjs PROPERTIES
-#         "INTERFACE_INCLUDE_DIRECTORIES" "include"
-# )
-
-
-
-
-
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
                                  VERSION ${${PROJECT_NAME}_VERSION}
                                  COMPATIBILITY AnyNewerVersion)
@@ -120,3 +192,8 @@ export(EXPORT ${PROJECT_NAME}-targets
 install(EXPORT ${PROJECT_NAME}-targets
             FILE ${PROJECT_NAME}Targets.cmake
             DESTINATION ${PYJS_CMAKECONFIG_INSTALL_DIR})
+
+
+
+
+

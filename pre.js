@@ -146,3 +146,24 @@ Module['_get_type_string'] = function(instance){
         }
     }
 }
+
+
+Module['_create_once_callable'] = function(py_object){
+
+    let already_called = false;
+
+    var once_callable = function(... args){
+        if (already_called) {
+            throw new Error("once_callable can only be called once");
+        }
+        already_called = true;
+        // make the call
+        let ret = py_object.__call__(... args);
+        
+        // delete
+        py_object.delete()
+
+        return ret;
+    }
+    return once_callable
+}

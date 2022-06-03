@@ -105,9 +105,16 @@ void export_js_proxy(py::module_ & m)
         return  typed_array_to_numpy_array(*v);
     });
 
-
+    m_internal.def("as_py_object",[](em::val * v) -> py::object {
+        return  v->as<py::object>();
+    });
 
     // type queries
+
+
+    // m_internal.def("cout",[](const std::string & val1) {
+    //     std::cout<<val1;
+    // });
 
     m_internal.def("console_log",[](em::val  val1) {
         em::val::global("console").call<void>("log",val1);

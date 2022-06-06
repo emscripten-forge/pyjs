@@ -22,7 +22,7 @@ app.add_typer(run_app, name="run")
 
 
 @run_app.command()
-def script(script_file):
+def script(script_file) :
 
     if not os.path.isabs(script_file):
         script_file = os.path.abspath(script_file)
@@ -42,6 +42,7 @@ def script(script_file):
         with contextlib.redirect_stdout(None):
             os.chdir(BLD_DIR)
             pack_script(script_file)
+
 
     with server_context(work_dir=BLD_DIR, port=port) as (server, url):
         page_url = f"{url}/runner.html"

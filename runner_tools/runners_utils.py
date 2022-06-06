@@ -87,26 +87,55 @@ async def playwright_main(page_url, workdir, script_basename):
                    globalThis.Module.removeRunDependency("dummy");
                    return promise;
                  }}
+
+                console.log("create module ...")
                 var myModule = await createModule({{print:print,error:print}})
                 var Module = myModule
 
-
                 globalThis.Module = Module
+                //console.log("import python_data ...")
                 await import('./python_data.js')
+                //console.log("import script_data ...")
                 await import('./script_data.js')
+                console.log("wait for dependencies ...")
                 var deps = await waitRunDependency()
+                console.log("initialize ...")
                 myModule.initialize_interpreter()
+                console.log("run scripts ...")
                 var r = myModule.run_script("{workdir}","{os.path.join(workdir, script_basename)}")
-                console.log("r",r)
+
+                while(true)
+                {{
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    const n_unfinished = myModule.n_unfinished();
+                    if(n_unfinished <= 0)
+                    {{
+                        break;
+                    }}
+                }}
                 msg = {{
                     return_code : 0,
-                    pytest_output: outputString
+                    collected_prints : outputString
                 }}
                 self.postMessage(msg)
             }}"""
             )
 
         page.on("worker", handle_worker)
+
+
+        async def handle_console(msg):
+            txt = str(msg)
+            if  txt.startswith("warning: Browser does not support creating object URLs") or \
+                txt.startswith("Failed to load resource:") or \
+                txt.startswith("Could not find platform dependent libraries") or \
+                txt.startswith("Consider setting $PYTHONHOME"):
+                pass
+            else:
+                print(txt)
+
+        page.on('console', handle_console)
+
         await page.goto(page_url)
         await page.wait_for_function("() => globalThis.done")
 
@@ -119,9 +148,8 @@ async def playwright_main(page_url, workdir, script_basename):
         """
         )
         return_code = int(str(await test_output.get_property("return_code")))
-        pytest_output = await test_output.get_property("pytest_output")
+
         await browser.close()
-        print(pytest_output)
         if return_code != 0:
             sys.exit(return_code)
 
@@ -139,7 +167,6 @@ def pack_script(script_file):
 
 
 def patch_emscripten_generated_js(filename):
-
     with open(filename, "r") as f:
         content = f.read()
     query = 'Module["preloadPlugins"].push(audioPlugin);'

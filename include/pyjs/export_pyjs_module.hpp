@@ -1,6 +1,5 @@
 #include <pybind11/pybind11.h>
 
-
 #include <emscripten.h>
 #include <emscripten/val.h>
 #include <emscripten/bind.h>
@@ -9,9 +8,13 @@
 #include <filesystem>
 
 #include <pyjs/export_js_proxy.hpp>
-#include <pyjs/pure_python_init.hppy>
 #include <pyjs/macro_magic.hpp>
 
+// python
+#include <pyjs/py/core.py>
+#include <pyjs/py/extend_js_val.py>
+#include <pyjs/py/convert.py>
+#include <pyjs/py/webloop.py>
 
 
 namespace py = pybind11;
@@ -23,7 +26,17 @@ namespace pyjs
 void export_pyjs_module(py::module_ & pyjs_module)
 {  
     export_js_proxy(pyjs_module);
-    PYTHON_INIT(pyjs)(pyjs_module);
+    try{
+        PYTHON_INIT(pyjs_core)(pyjs_module);
+        PYTHON_INIT(pyjs_extend_js_val)(pyjs_module);
+        PYTHON_INIT(pyjs_convert)(pyjs_module);
+        PYTHON_INIT(pyjs_webloop)(pyjs_module);
+    } 
+    catch (py::error_already_set& e)
+    {
+        std::cout<<"error: "<<e.what()<<"\n";
+        throw e;
+    }
 }
 
 }

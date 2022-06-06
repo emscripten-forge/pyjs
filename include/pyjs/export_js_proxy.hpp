@@ -18,11 +18,7 @@ namespace pyjs
 
 void export_js_proxy(py::module_ & m)
 {   
-
-
-    py::module_ m_internal = m.def_submodule("internal", "A submodule of 'embind11'");
-
-
+    py::module_ m_internal = m.def_submodule("internal", "implementation details of of pyjs");
 
     m_internal.def("global_property", [](const std::string & arg){
         return em::val::global(arg.c_str());
@@ -72,18 +68,15 @@ void export_js_proxy(py::module_ & m)
     });
 
     m_internal.def("val_bind", [](em::val * v, em::val  arg1){
-            return v->call<em::val>("bind", arg1);
+        return v->call<em::val>("bind", arg1);
     });
 
-
-    m_internal.def("val_new",[](em::val  v){
-            return  v.new_();
-        });
-    m_internal.def("val_new",[](em::val  v, em::val arg1){
-            return  v.new_(arg1);
-        });
-
-
+    // m_internal.def("val_new",[](em::val  v){
+    //     return  v.new_();
+    // });
+    // m_internal.def("val_new",[](em::val  v, em::val arg1){
+    //     return  v.new_(arg1);
+    // });
 
     m_internal.def("as_int",[](em::val * v) -> int {
         return  v->as<int>();
@@ -148,50 +141,51 @@ void export_js_proxy(py::module_ & m)
         return em::val::module_property("_is_undefined_or_null")(*val).as<bool>();
     });
 
-    m_internal.def("is_array",[](em::val * val) -> bool {
-        return em::val::module_property("_is_array")(*val).as<bool>();
-    });
+    // m_internal.def("is_array",[](em::val * val) -> bool {
+    //     return em::val::module_property("_is_array")(*val).as<bool>();
+    // });
 
-    m_internal.def("is_object",[](em::val * val) -> bool {
-        return em::val::module_property("_is_object")(*val).as<bool>();
-    });
+    // m_internal.def("is_object",[](em::val * val) -> bool {
+    //     return em::val::module_property("_is_object")(*val).as<bool>();
+    // });
 
-    m_internal.def("is_number",[](em::val * val) -> bool {
-        return em::val::module_property("_is_number")(*val).as<bool>();
-    });
+    // m_internal.def("is_number",[](em::val * val) -> bool {
+    //     return em::val::module_property("_is_number")(*val).as<bool>();
+    // });
 
-    m_internal.def("is_integer",[](em::val * val) -> bool {
-        return em::val::module_property("_is_integer")(*val).as<bool>();
-    });
+    // m_internal.def("is_integer",[](em::val * val) -> bool {
+    //     return em::val::module_property("_is_integer")(*val).as<bool>();
+    // });
 
-    m_internal.def("is_boolean",[](em::val * val) -> bool {
-        return em::val::module_property("_is_boolean")(*val).as<bool>();
-    });
-    m_internal.def("is_string",[](em::val * val) -> bool {
-        return em::val::module_property("_is_string")(*val).as<bool>();
-    });
+    // m_internal.def("is_boolean",[](em::val * val) -> bool {
+    //     return em::val::module_property("_is_boolean")(*val).as<bool>();
+    // });
+    // m_internal.def("is_string",[](em::val * val) -> bool {
+    //     return em::val::module_property("_is_string")(*val).as<bool>();
+    // });
 
-    m_internal.def("is_typed_array",[](em::val * val) -> bool {
-        return em::val::module_property("_is_typed_array")(*val).as<bool>();
-    });
-
-
-    m_internal.def("getattr_try_catch",[](em::val * val, const std::string & attr_name){
-        return em::val::module_property("_getattr_try_catch")(*val, attr_name);
-    });
-
-    m_internal.def("getattr_try_catch",[](em::val * val, int index){
-        return em::val::module_property("_getattr_try_catch")(*val, index);
-    });
+    // m_internal.def("is_typed_array",[](em::val * val) -> bool {
+    //     return em::val::module_property("_is_typed_array")(*val).as<bool>();
+    // });
 
 
-    m_internal.def("setattr_try_catch",[](em::val * val, const std::string & attr_name, em::val * attr_val){
-        return em::val::module_property("_setattr_try_catch")(*val, attr_name,*attr_val);
+
+    // m_internal.def("getattr_try_catch",[](em::val * val, const std::string & attr_name){
+    //     return em::val::module_property("_getattr_try_catch")(*val, attr_name);
+    // });
+
+    m_internal.def("getattr_try_catch",[](em::val * val, em::val key){
+        return em::val::module_property("_getattr_try_catch")(*val, key);
     });
 
-    m_internal.def("setattr_try_catch",[](em::val * val, int index, em::val * attr_val){
-        return em::val::module_property("_setattr_try_catch")(*val, index,*attr_val);
+
+    m_internal.def("setattr_try_catch",[](em::val * val, em::val key, em::val * attr_val){
+        return em::val::module_property("_setattr_try_catch")(*val, key,*attr_val);
     });
+
+    // m_internal.def("setattr_try_catch",[](em::val * val, int index, em::val * attr_val){
+    //     return em::val::module_property("_setattr_try_catch")(*val, index,*attr_val);
+    // });
 
     m_internal.def("is_error",[](em::val * val){
         const std::string ts = val->typeOf().as<std::string>();
@@ -208,8 +202,6 @@ void export_js_proxy(py::module_ & m)
         return val->operator[]("__pyjs__error__");
     });
     
-
-
 
     m_internal.def("__getitem__",[](em::val * v, const std::string & key){
         return  v->operator[](key);
@@ -237,7 +229,7 @@ void export_js_proxy(py::module_ & m)
     });
     
 
-
+    // this class is heavy extended on the python side
     py::class_<em::val>(m, "JsValue",  py::dynamic_attr())
 
         .def(py::init([](std::string arg) {
@@ -256,33 +248,25 @@ void export_js_proxy(py::module_ & m)
             return std::unique_ptr<em::val>(new em::val(arg));
         }))
     
-        // .def("new",[](em::val  v){
-        //     return  v.new_();
+        
+        // .def_static("has_own_property",[](em::val * v, const std::string & key){
+        //     return  v->hasOwnProperty(key.c_str( ));
         // })
-        // .def("new",[](em::val  v, em::val arg1){
-        //     return  v.new_(arg1);
+
+
+
+        // .def("set_pyobject",[](em::val * v, const std::string & key, py::object pyobject){
+        //     return  v->set(key, pyobject);
         // })
-        // .def("__bool__",[](em::val * v){
-        //     return  v->as<bool>();
+        // .def("__setitem__",[](em::val * v, const std::string & key, em::val & val){
+        //     return  v->set(key, val);
         // })
-        .def_static("has_own_property",[](em::val * v, const std::string & key){
-            return  v->hasOwnProperty(key.c_str( ));
-        })
 
 
 
-        .def("set_pyobject",[](em::val * v, const std::string & key, py::object pyobject){
-            return  v->set(key, pyobject);
-        })
-        .def("__setitem__",[](em::val * v, const std::string & key, em::val & val){
-            return  v->set(key, val);
-        })
-
-
-
-        .def_static("type_string", [](em::val * v){
-            return v->typeOf().as<std::string>();
-        })
+        // .def_static("type_string", [](em::val * v){
+        //     return v->typeOf().as<std::string>();
+        // })
 
         // .def("keys", [](em::val * v){
         //     auto keys =  em::val::global("Object").call<em::val>("keys", *v);
@@ -292,22 +276,22 @@ void export_js_proxy(py::module_ & m)
         //     // }
         //     return keys;
         // })
-        .def("try_length",[](em::val * v){
-            if(v->hasOwnProperty("length"))
-            {
-                return v->operator[]("length").as<int>();
-            }
-            else
-            {
-                return -1;
-            }
-        })
-        .def("type_of", [](em::val * v){
-            return v->typeOf();
-        })
-        .def("as_string", [](em::val * v){
-            return v->as<std::string>();
-        })
+        // .def("try_length",[](em::val * v){
+        //     if(v->hasOwnProperty("length"))
+        //     {
+        //         return v->operator[]("length").as<int>();
+        //     }
+        //     else
+        //     {
+        //         return -1;
+        //     }
+        // })
+        // .def("type_of", [](em::val * v){
+        //     return v->typeOf();
+        // })
+        // .def("as_string", [](em::val * v){
+        //     return v->as<std::string>();
+        // })
         
 
     ;

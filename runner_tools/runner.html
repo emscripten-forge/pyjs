@@ -27,9 +27,8 @@
         
 
           globalThis.worker.onmessage = e => {
-              console.log("RESOLVE")
               resolve(e.data)
-              console.log("RESOLVE DONE")
+              // console.log("RESOLVE DONE")
               // worker.terminate();
           }
           // worker.onerror = e => (reject(e.message), worker.terminate());
@@ -38,9 +37,9 @@
         });
 
 
-        console.log("waiting for promise")
+        // console.log("waiting for promise")
         globalThis.test_output = await promise
-        console.log("DONE AWAITING DONE")
+        // console.log("DONE AWAITING DONE")
         globalThis.done = true
      })()
 

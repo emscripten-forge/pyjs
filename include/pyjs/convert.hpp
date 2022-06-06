@@ -34,31 +34,25 @@ py::object typed_array_to_numpy_array_impl(em::val js_array){
         length * bytes_per_element
     );
 
-    // a byte-offset of 0 or 1 means continuous / dense data
-    if(byte_offset <= 1)
-    {
 
-        py::array_t<T> np_array( {py::ssize_t(length)});
 
-        // copy values from js side to vectors mem
-        // - create a javascript "UInt8(!) (not Int8) array"
-        //   which is using the vector ptr as buffer
-        em::val heap = em::val::module_property("HEAPU8");
-        em::val memory = heap["buffer"];
-        em::val memory_view = js_uint8array["constructor"].new_(memory, 
-            reinterpret_cast<uintptr_t>(np_array.data()), 
-            length_uint8);
+    py::array_t<T> np_array( {py::ssize_t(length)});
 
-        // - copy the js arrays content into the c++ arrays content
-        memory_view.call<void>("set", js_uint8array);
+    // copy values from js side to vectors mem
+    // - create a javascript "UInt8(!) (not Int8) array"
+    //   which is using the vector ptr as buffer
+    em::val heap = em::val::module_property("HEAPU8");
+    em::val memory = heap["buffer"];
+    em::val memory_view = js_uint8array["constructor"].new_(memory, 
+        reinterpret_cast<uintptr_t>(np_array.data()), 
+        length_uint8);
 
-        return np_array;
-        
-    }
-    else
-    {
+    // - copy the js arrays content into the c++ arrays content
+    memory_view.call<void>("set", js_uint8array);
 
-    }
+    return np_array;
+    
+    
 }
 
 

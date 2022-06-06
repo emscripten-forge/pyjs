@@ -11,6 +11,10 @@ from typing import Any
 
 
 
+class JsToPyConverterOptions(object):
+    def __init__(self):
+        pass
+
 
 def _build_in_to_python(val):
     ts = type_str(val)
@@ -19,16 +23,16 @@ def _build_in_to_python(val):
     return val
 
 
-def array_converter(js_val, depth=0, max_depth=None):
+def array_converter(js_val, depth=0, converter_options=None):
     size = internal.length(js_val)
     py_list = []
     for i in range(size):
         js_item = internal.__getitem__(js_val, i)
-        py_item = to_py(js_item, depth=depth+1, max_depth=max_depth)
+        py_item = to_py(js_item, depth=depth+1, converter_options=converter_options)
         py_list.append(py_item)
     return py_list
 
-def object_converter(js_val, depth=0, max_depth=None):
+def object_converter(js_val, depth=0, converter_options=None):
     keys = internal.object_keys(js_val)
     values = internal.object_values(js_val)
 
@@ -40,18 +44,24 @@ def object_converter(js_val, depth=0, max_depth=None):
         js_key = internal.__getitem__(keys,   i)
         js_val = internal.__getitem__(values, i)
 
-        py_key = to_py(js_key, depth=depth+1, max_depth=max_depth)
-        py_val = to_py(js_val, depth=depth+1, max_depth=max_depth) 
+        py_key = to_py(js_key, depth=depth+1, converter_options=converter_options)
+        py_val = to_py(js_val, depth=depth+1, converter_options=converter_options) 
         
         ret_dict[py_key] = py_val
 
     return ret_dict
 
-def dont_convert(js_val, depth, max_depth):
+def set_converter(js_val, depth=0, converter_options=None):
+    pyset = set()
+    for v in js_val:
+        pyset.add( to_py(v, depth=depth+1, converter_options=converter_options))
+    return pyset
+
+def dont_convert(js_val, depth, converter_options):
     return js_val
 
 
-def as_py_convert(js_val, depth, max_depth):
+def as_py_convert(js_val, depth, converter_options):
     pyval = internal.as_py_object(js_val)
     return pyval
 
@@ -67,6 +77,7 @@ _converters = dict(
     object=object_converter,
     Object=object_converter,
     Array=array_converter,
+    Set=set_converter,
     function=dont_convert,
     # this is a bit ugly at since `as_numpy_array`
     # has to do the dispatching again
@@ -85,11 +96,11 @@ _converters = dict(
 )
 
 
-def to_py(js_val,  depth=0, max_depth=None):
+def to_py(js_val,  depth=0, converter_options=None):
     if not isinstance(js_val, JsValue):
         return js_val
     ts = internal.get_type_string(js_val)
-    return _converters.get(ts, _converters['object'])(js_val, depth, max_depth)
+    return _converters.get(ts, _converters['object'])(js_val, depth, converter_options)
 
 
 def register_converter(cls_name, converter):

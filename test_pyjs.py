@@ -116,6 +116,8 @@ def test_callable():
     ('"undefined"', str,      "undefined",  operator.eq),
     ('"null"',      str,      "null",       operator.eq),
 
+    # set
+    ("new Set([1,2,5])",set,set([1,2,5]), operator.eq),
     # arrays
     ("new Uint8Array([1,2,3])",  numpy.ndarray, numpy.array([1,2,3],        dtype='uint8'),  array_eq),
     ("new Int8Array([-1,2,-3])", numpy.ndarray, numpy.array([-1,2,-3],      dtype='int8'),   array_eq),
@@ -223,7 +225,7 @@ def test_custom_converter():
             self.height = height
             self.width = width
 
-    def rectangle_converter(js_val,  depth=0, max_depth=None):
+    def rectangle_converter(js_val,  depth=0, converter_options=None):
         return Rectangle(js_val.height, js_val.width)
 
     pyjs.register_converter('Rectangle',rectangle_converter)
@@ -232,6 +234,51 @@ def test_custom_converter():
     assert isinstance(r, Rectangle)
     assert r.height == 10
     assert r.width == 20
+
+
+
+
+def test_del_attr():
+    obj = eval("""{
+        foo : 1,
+        bar : "bar",
+        foobar : ["foo","bar"]
+    }""")
+
+    assert hasattr(obj,"foobar")
+    del obj.foobar
+    assert not hasattr(obj,"foobar")
+
+
+def test_del_item():
+    js_set = eval("""new Set([1,2,3,"four"])""")
+
+    assert js_set.has(1)
+    assert len(js_set) == 4
+
+    del js_set[1]
+
+    assert not js_set.has(1)
+    assert len(js_set) == 3
+
+    del js_set["four"]
+
+    assert not js_set.has("four")
+    assert len(js_set) == 2
+
+
+
+def test_np_array():
+    view = pyjs.js.Function("""
+        var buffer = new ArrayBuffer(8);
+        var view_c   = new Uint8Array(buffer);
+        for (let i = 0; i < view_c.length; i++) {
+            view_c[i] = i;
+        }
+        return new Uint8Array(buffer, 4,2);
+    """)()
+
+    assert array_eq(pyjs.to_py(view), numpy.array([4,5], dtype='uint8'))
 
 
 if __name__ == "__main__":

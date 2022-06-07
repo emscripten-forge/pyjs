@@ -278,7 +278,7 @@ def test_np_array():
         return new Uint8Array(buffer, 4,2);
     """)()
 
-    assert array_eq(pyjs.to_py(view), numpy.array([4,6], dtype='uint8'))
+    assert array_eq(pyjs.to_py(view), numpy.array([4,5], dtype='uint8'))
 
 
 if __name__ == "__main__":

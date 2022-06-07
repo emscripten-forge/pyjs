@@ -160,7 +160,7 @@ def pack_script(script_file):
         mount_path="/script",
         outname="script_data",
         export_name="globalThis.Module",
-        silent=True,
+        # silent=True,
     )
     # cmd = [f"empack pack file  {script_file}  '/script'  script"]
     # ret = subprocess.run(cmd, shell=True)

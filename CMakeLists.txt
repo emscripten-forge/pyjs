@@ -1,21 +1,20 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.4.0 DESCRIPTION "pyjs description")
+project(pyjs VERSION 0.4.1 DESCRIPTION "pyjs description")
 
 
 set(PYJS_HEADERS
-
     include/pyjs/convert.hpp
     include/pyjs/export_js_module.hpp
     include/pyjs/export_js_proxy.hpp
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
     include/pyjs/macro_magic.hpp
-    include/pyjs/pure_python_init.hppy
-    include/pyjs/convert.hpp
+    include/pyjs/convert.py
+    include/pyjs/core.py
+    include/pyjs/extend_js_val.py
+    include/pyjs/webloop.py
     pre.js
 )
-
-
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

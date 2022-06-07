@@ -11,10 +11,10 @@
 #include <pyjs/macro_magic.hpp>
 
 // python
-#include <pyjs/py/core.py>
-#include <pyjs/py/extend_js_val.py>
-#include <pyjs/py/convert.py>
-#include <pyjs/py/webloop.py>
+#include <pyjs/core.py>
+#include <pyjs/extend_js_val.py>
+#include <pyjs/convert.py>
+#include <pyjs/webloop.py>
 
 
 namespace py = pybind11;

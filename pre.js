@@ -1,3 +1,7 @@
+// public functions
+
+
+//  private functions
 function _make_error(e){
     const err_obj = {
         __pyjs__error__: e
@@ -16,6 +20,7 @@ Module['_apply_try_catch'] =  function(val, self, args){
         return _make_error(e)
     }
 }
+
 
 Module['_getattr_try_catch'] =  function(obj, property_name){
     try {
@@ -40,21 +45,26 @@ Module['_setattr_try_catch'] =  function(obj, property_name, value){
     }
 }
 
+
 Module['_new'] = function(cls, ...args){
     return new cls(... args);
 } 
+
 
 Module['_call_py_object_variadic'] = function(py_val, ...args){
     return py_val['__call_variadic__'](args);
 } 
 
+
 Module['_is_null'] = function(value){
     return value === null;
 }
 
+
 Module['_is_undefined'] = function(value){
     return value === undefined;
 }
+
 
 Module['_is_undefined_or_null'] = function(value){
     return value === undefined || value === null;
@@ -69,6 +79,7 @@ Module['_instanceof'] = function(instance, cls){
 Module["__len__"] = function(instance){
     return instance.length || instance.size
 }
+
 
 Module["__contains__"] = function(instance, query){
     var _has = false;
@@ -86,6 +97,7 @@ Module["__contains__"] = function(instance, query){
     return _has  || _includes;
 }
 
+
 Module["__eq__"] = function(a, b){
     return a === b;
 }
@@ -99,9 +111,11 @@ Module['_dir'] = function dir(x) {
   return result;
 }
 
+
 Module['_iter'] = function dir(x) {
     return x[Symbol.iterator]()
 }
+
 
 Module['_get_type_string'] = function(instance){
     if(instance === null){
@@ -174,20 +188,26 @@ Module['_create_once_callable'] = function(py_object){
     return once_callable
 }
 
+
 Module["_typeof"] = function(x){
     return typeof x;
 }
 
+
 Module["_delete"] = function(x,key){
     delete x[key];
 }
+
+
 Module["_delitem"] = function(x,key){
     delete x[key];
 }
 
 
-
-
 Module['_IS_NODE'] = (typeof process === "object" && typeof require === "function") 
+
+
 Module['_IS_BROWSER_WORKER_THREAD'] = (typeof importScripts === "function")
+
+
 Module['_IS_BROWSER_MAIN_THREAD'] = (typeof window === "object")

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+
+jobs:
+
+  test-wasm:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        emsdk_ver: ["3.1.2"]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Get number of CPU cores
+        uses: SimenB/github-actions-cpu-cores@v1
+
+      - name: Install mamba
+        uses: mamba-org/provision-with-micromamba@main
+        with:
+          environment-file: environment-dev.yml
+          environment-name: pyjs-wasm
+          micromamba-version: "0.22.0"
+
+      - name: Install Playwright
+        run: |
+          playwright install
+
+      - name: Setup emsdk
+        run: |
+          micromamba activate pyjs-wasm
+          emsdk install ${{matrix.emsdk_ver}}
+
+      - name: Build pyjs
+        run: |
+          micromamba activate pyjs-wasm
+
+          emsdk activate ${{matrix.emsdk_ver}}
+          source $CONDA_EMSDK_DIR/emsdk_env.sh
+
+          micromamba create -n pyjs-build-wasm \
+            --platform=emscripten-32 \
+            -c https://repo.mamba.pm/emscripten-forge \
+            -c https://repo.mamba.pm/conda-forge \
+            --yes \
+            python pybind11 nlohmann_json pybind11_json numpy pytest
+
+          mkdir build
+          pushd build
+
+          export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
+          export CMAKE_PREFIX_PATH=$PREFIX
+          export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
+
+          emcmake cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
+            -DXPYT_EMSCRIPTEN_WASM_BUILD=ON \
+            ..
+
+          make -j5
+
+          empack pack python core $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm --version=3.10
+
+          popd
+
+      - name: Run Tests
+        run: |
+          micromamba activate pyjs-wasm
+          python runner.py run script test_pyjs.py

@@ -283,7 +283,8 @@ def test_np_array():
 
 if __name__ == "__main__":
 
-
     # start the tests
     os.environ["NO_COLOR"] = "1"
     retcode = pytest.main(["-s","/script/test_pyjs.py"])
+    if retcode != 0:
+        raise RuntimeError(f"pytest failed with return code: {retcode}")

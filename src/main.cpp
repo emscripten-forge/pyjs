@@ -22,12 +22,12 @@ int run_script(
         py::exec(code_stream.str().c_str(), scope);
 
         auto ret = py::eval_file(script_filename, scope);
-        return 1;
+        return 0;
     }
     catch (py::error_already_set& e)
     {
         std::cout<<"error: "<<e.what()<<"\n";
-        return -1;
+        return 1;
     }
 }
 

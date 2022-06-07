@@ -118,8 +118,11 @@ async def playwright_main(page_url, workdir, script_basename):
                     collected_prints : outputString
                 }}
                 self.postMessage(msg)
+                return r
             }}"""
             )
+            if int(str(test_output)) != 0:
+                raise RuntimeError(f"tests failed with return code: {test_output}")
 
         page.on("worker", handle_worker)
 

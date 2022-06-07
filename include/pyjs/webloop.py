@@ -12,7 +12,7 @@ if IN_BROWSER:
     import time
     import traceback
     from typing import Callable
-
+    import functools
     class WebLoop(asyncio.AbstractEventLoop):
         """A custom event loop for use in Pyodide.
 

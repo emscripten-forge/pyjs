@@ -33,9 +33,11 @@ void export_js_proxy(py::module_ & m)
     m.def("js_object", [](){return em::val::object();});
     m.def("js_undefined", [](){return em::val::undefined();});
     m.def("js_null", [](){return em::val::null();});
-    m.def("js_py_object",[](py::object py_object){
-        return em::val(std::move(py_object));
-    }, py::return_value_policy::copy);
+    m.def("js_py_object",[](const py::object & py_object){
+        py::object cp(py_object);
+        py_object.inc_ref();
+        return em::val(std::move(cp));
+    });
 
 
     m.def("instanceof",[](em::val * instance, em::val * cls){
@@ -235,6 +237,10 @@ void export_js_proxy(py::module_ & m)
         .def(py::init([](std::string arg) {
             return std::unique_ptr<em::val>(new em::val(arg.c_str()));
         }))
+        .def(py::init([](bool arg) {
+            return std::unique_ptr<em::val>(new em::val(arg));
+        }))
+        
         .def(py::init([](int arg) {
             return std::unique_ptr<em::val>(new em::val(arg));
         }))
@@ -244,10 +250,10 @@ void export_js_proxy(py::module_ & m)
         .def(py::init([](double arg) {
             return std::unique_ptr<em::val>(new em::val(arg));
         }))
-        .def(py::init([](bool arg) {
-            return std::unique_ptr<em::val>(new em::val(arg));
+
+        .def(py::init([](py::object obj) {
+            return std::unique_ptr<em::val>(new em::val(std::move(obj)));
         }))
-    
         
         // .def_static("has_own_property",[](em::val * v, const std::string & key){
         //     return  v->hasOwnProperty(key.c_str( ));

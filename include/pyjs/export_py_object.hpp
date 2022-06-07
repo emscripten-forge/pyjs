@@ -34,8 +34,32 @@ void export_py_object()
             em::select_overload<em::val(py::object &)>(
                 [](py::object & pyobject) ->em::val
                 {
-                   //py::object ret = pyobject();
-                   return em::val(std::move(pyobject()));
+                    try{
+                        py::gil_scoped_acquire acquire;
+                        py::object ret = pyobject();
+                        return em::val(std::move(ret));
+                    }
+                    catch(py::error_already_set& e){
+                        std::cout<<"error: "<<e.what()<<"\n";
+                        return em::val::null();
+                    }
+                }
+            )
+        )
+
+        .function("__callme__", 
+            em::select_overload<void(py::object &)>(
+                [](py::object & pyobject) 
+                {
+                    try{
+                        {
+                            py::gil_scoped_acquire acquire;
+                            pyobject();
+                        }
+                    }
+                    catch(py::error_already_set& e){
+                        std::cout<<"error: "<<e.what()<<"\n";
+                    }
                 }
             )
         )

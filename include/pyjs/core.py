@@ -63,7 +63,8 @@ def callable_context(py_function):
 
 
 def create_once_callable(py_function):
-    js_py_function = js_py_object(py_function)
+    js_py_function = JsValue(py_function)
+    # js_py_function = js_py_object(py_function)
     once_callable = _module._create_once_callable(js_py_function)
     return once_callable
 
@@ -72,7 +73,6 @@ def ensure_js_val(arg):
         return arg
     else:
         return JsValue(arg)
-
 
 def _error_checked(ret):
 
@@ -84,6 +84,7 @@ def _error_checked(ret):
         raise RuntimeError(error_str)
 
     return ret
+
 
 
 def apply(js_function, args):

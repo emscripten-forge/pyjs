@@ -64,6 +64,7 @@ SET(PYTHON_UTIL_LIBS
     $ENV{PREFIX}/lib/libffi.a
 )
 
+if(0)
 add_executable(pyjs_main      src/main.cpp)
 target_compile_definitions(pyjs_main PUBLIC -DPYJS_WEB) 
 target_compile_options(pyjs_main PRIVATE -fPIC)
@@ -108,7 +109,7 @@ target_link_options(pyjs_main
 )
 
 
-
+endif()
 
 
 

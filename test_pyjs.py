@@ -98,6 +98,13 @@ def test_callable():
     cleanup.delete()
 
 
+def test_interal_type_str():
+    assert pyjs.internal.get_type_string(pyjs.JsValue(True)) == "boolean"
+    assert pyjs.internal.get_type_string(pyjs.JsValue(1)) == "integer"
+    assert pyjs.internal.get_type_string(pyjs.JsValue(1.5)) == "float"
+    assert pyjs.internal.get_type_string(pyjs.JsValue("1")) == "string"
+    assert pyjs.internal.get_type_string(pyjs.JsValue([1,2,3])) == "pyobject"
+
 @pytest.mark.parametrize("test_input,expected_type,expected_value,comperator", [
 
     # special items

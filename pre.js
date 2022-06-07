@@ -177,11 +177,14 @@ Module['_create_once_callable'] = function(py_object){
             throw new Error("once_callable can only be called once");
         }
         already_called = true;
+
         // make the call
-        let ret = py_object.__call__(... args);
+        let ret = py_object.__callme__(... args);
         
         // delete
         py_object.delete()
+
+        console.log("return")
 
         return ret;
     }

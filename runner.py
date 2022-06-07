@@ -13,9 +13,6 @@ WORKER_FILENAME = os.path.join(THIS_DIR, "runner_tools", "worker.js")
 BLD_DIR = os.path.join(THIS_DIR, "build")
 PYJS_MAIN_JS_FILENAME = os.path.join(BLD_DIR, "pyjs_main.js")
 
-FILE_PACKAGER = "/home/derthorsten/src/emsdk/upstream/emscripten/tools/file_packager.py"
-os.environ["FILE_PACKAGER"] = FILE_PACKAGER
-
 app = typer.Typer()
 run_app = typer.Typer()
 app.add_typer(run_app, name="run")
@@ -52,7 +49,5 @@ def script(script_file) :
             )
         )
 
-
 if __name__ == "__main__":
     app()
-# script(os.path.join(THIS_DIR, "hello_world.py"))

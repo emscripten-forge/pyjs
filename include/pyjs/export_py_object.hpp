@@ -47,18 +47,13 @@ void export_py_object()
             )
         )
 
-        .function("__callme__", 
+        .function("__usafe_void_void__", 
             em::select_overload<void(py::object &)>(
                 [](py::object & pyobject) 
                 {
-                    try{
-                        {
-                            py::gil_scoped_acquire acquire;
-                            pyobject();
-                        }
-                    }
-                    catch(py::error_already_set& e){
-                        std::cout<<"error: "<<e.what()<<"\n";
+                    {
+                        py::gil_scoped_acquire acquire;
+                        pyobject();
                     }
                 }
             )

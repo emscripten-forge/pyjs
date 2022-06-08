@@ -102,6 +102,10 @@ inline py::object  typed_array_to_numpy_array(em::val js_array){
     {
         return typed_array_to_numpy_array_impl<uint64_t>(js_array);
     }
+    else
+    {
+        throw pybind11::type_error("unknown array type");
+    }
 }
 
 

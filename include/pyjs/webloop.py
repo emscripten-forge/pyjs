@@ -158,7 +158,12 @@ if IN_BROWSER:
                         return
                     h._run()
 
-            self._set_timeout(create_once_callable(run_handle), delay * 1000)
+            # instead of using `pyjs.create_once_callable` we
+            # use an internal optimized function, that does not allow for
+            # any arguments, does not return anything, and does assume
+            # that the function does not throw
+            once_callable = _module._create_once_callable_unsave_void_void()
+            self._set_timeout(once_callable, delay * 1000)
             return h
 
         def call_at(

@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.4.1 DESCRIPTION "pyjs description")
+project(pyjs VERSION 0.4.2 DESCRIPTION "pyjs description")
 
+
+
+option(BUILD_RUNNER "Build runner" OFF)
 
 set(PYJS_HEADERS
     include/pyjs/convert.hpp
@@ -64,49 +67,49 @@ SET(PYTHON_UTIL_LIBS
     $ENV{PREFIX}/lib/libffi.a
 )
 
-if(0)
-add_executable(pyjs_main      src/main.cpp)
-target_compile_definitions(pyjs_main PUBLIC -DPYJS_WEB) 
-target_compile_options(pyjs_main PRIVATE -fPIC)
-target_link_libraries(pyjs_main PUBLIC pyjs)
-target_link_libraries(pyjs_main PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
+if(BUILD_RUNNER)
+    add_executable(pyjs_main      src/main.cpp)
+    target_compile_definitions(pyjs_main PUBLIC -DPYJS_WEB) 
+    target_compile_options(pyjs_main PRIVATE -fPIC)
+    target_link_libraries(pyjs_main PUBLIC pyjs)
+    target_link_libraries(pyjs_main PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
 
 
 
-target_compile_options(pyjs_main
-    PUBLIC --std=c++17
-    PUBLIC -Wno-deprecated
-    PUBLIC "SHELL: --bind"
-    PUBLIC "SHELL: -s ENVIRONMENT=worker"
-    PUBLIC "SHELL: -fwasm-exceptions"
-    PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-    PUBLIC "SHELL: -s LZ4=1"
-)
+    target_compile_options(pyjs_main
+        PUBLIC --std=c++17
+        PUBLIC -Wno-deprecated
+        PUBLIC "SHELL: --bind"
+        PUBLIC "SHELL: -s ENVIRONMENT=worker"
+        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+        PUBLIC "SHELL: -s LZ4=1"
+    )
 
-target_link_options(pyjs_main
-    PUBLIC --bind
-    PUBLIC -Wno-unused-command-line-argument
-    PUBLIC "SHELL: --bind"
-    PUBLIC "SHELL: -s MODULARIZE=1"
-    PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
-    PUBLIC "SHELL: -s EXPORT_ES6=0"
-    PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
-    PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
-    PUBLIC "SHELL: -s ASSERTIONS=0"
-    PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
-    PUBLIC "SHELL: -s EXIT_RUNTIME=1"
-    PUBLIC "SHELL: -s WASM=1"
-    PUBLIC "SHELL: -s USE_PTHREADS=0"
-    PUBLIC "SHELL: -fwasm-exceptions"
-    PUBLIC "SHELL: -s MAIN_MODULE=1"
-    PUBLIC "SHELL: -s ENVIRONMENT=worker"
-    PUBLIC "SHELL: -s TOTAL_STACK=512mb"
-    PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
-    PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-    PUBLIC "SHELL: -s LZ4=1"
-    PUBLIC "SHELL: --post-js post.js"
-    PUBLIC "SHELL: --pre-js pre.js"
-)
+    target_link_options(pyjs_main
+        PUBLIC --bind
+        PUBLIC -Wno-unused-command-line-argument
+        PUBLIC "SHELL: --bind"
+        PUBLIC "SHELL: -s MODULARIZE=1"
+        PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
+        PUBLIC "SHELL: -s EXPORT_ES6=0"
+        PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
+        PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
+        PUBLIC "SHELL: -s ASSERTIONS=0"
+        PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
+        PUBLIC "SHELL: -s EXIT_RUNTIME=1"
+        PUBLIC "SHELL: -s WASM=1"
+        PUBLIC "SHELL: -s USE_PTHREADS=0"
+        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -s MAIN_MODULE=1"
+        PUBLIC "SHELL: -s ENVIRONMENT=worker"
+        PUBLIC "SHELL: -s TOTAL_STACK=512mb"
+        PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
+        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+        PUBLIC "SHELL: -s LZ4=1"
+        PUBLIC "SHELL: --post-js post.js"
+        PUBLIC "SHELL: --pre-js pre.js"
+    )
 
 
 endif()

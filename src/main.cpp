@@ -16,7 +16,6 @@ int run_script(
     py::object scope = py::module_::import("__main__").attr("__dict__");
     std::stringstream code_stream;
     code_stream <<"os.chdir('"<<workdir<<"');";
-
     try{
         py::exec("import os", scope);
         py::exec(code_stream.str().c_str(), scope);

@@ -162,7 +162,7 @@ if IN_BROWSER:
             # use an internal optimized function, that does not allow for
             # any arguments, does not return anything, and does assume
             # that the function does not throw
-            once_callable = _module._create_once_callable_unsave_void_void()
+            once_callable = _module._create_once_callable_unsave_void_void(JsValue(run_handle))
             self._set_timeout(once_callable, delay * 1000)
             return h
 

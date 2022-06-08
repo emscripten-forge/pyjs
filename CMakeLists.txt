@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.4.2 DESCRIPTION "pyjs description")
+project(pyjs VERSION 0.5.0 DESCRIPTION "pyjs description")
 
 
 

@@ -78,7 +78,7 @@ def extend_val():
     JsValue.__eq__ = lambda self,q: internal.module_property("__eq__")(self, q)
 
     JsValue.new = lambda self,*args : internal.module_property("_new")(self, *args)
-    JsValue.to_py = lambda self, max_depth=None: to_py(js_val=js_val, max_depth=max_depth)
+    JsValue.to_py = lambda self, max_depth=None: to_py(js_val=self, max_depth=max_depth)
     JsValue.typeof = val_typeof
     JsValue.__iter__ = lambda self : _module._iter(self)
     JsValue.__next__ = val_next

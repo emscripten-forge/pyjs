@@ -99,6 +99,9 @@ async def playwright_main(page_url, workdir, script_basename):
                 await import('./script_data.js')
                 console.log("wait for dependencies ...")
                 var deps = await waitRunDependency()
+
+
+
                 console.log("initialize ...")
                 myModule.initialize_interpreter()
                 console.log("run scripts ...")
@@ -113,6 +116,14 @@ async def playwright_main(page_url, workdir, script_basename):
                         break;
                     }}
                 }}
+
+                console.log("finalizing script ...")
+                myModule.run_code("print('collect');import gc;gc.collect();")
+                console.log("...finalizing script done!")
+
+                console.log("finalize_interpreter...")
+                myModule.finalize_interpreter()
+                console.log("...finalize_interpreter DONE")
                 msg = {{
                     return_code : 0,
                     collected_prints : outputString

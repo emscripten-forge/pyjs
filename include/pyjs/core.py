@@ -10,6 +10,7 @@ import contextlib
 from typing import Any
 
 
+
 def install_submodules():
 
     def _js_mod__getattr__(name: str) -> Any:
@@ -43,8 +44,8 @@ _module = sys.modules["pyjs._module"]
 # def new(cls, *args):
 #     return internal.val_new(cls, *args)
 
-def new(cls, *args):
-    return internal.module_property("_new")(*args)
+def new(cls_, *args):
+    return _module._new(cls_, *args)
 
 def type_str(x):
     return internal.type_str(x)
@@ -74,13 +75,16 @@ def ensure_js_val(arg):
     else:
         return JsValue(arg)
 
+def _js_error_to_str(err):
+    return js.JSON.stringify(err, js.Object.getOwnPropertyNames(err))
+
 def _error_checked(ret):
 
     is_error = internal.is_error(ret)
     if is_error:
         err = internal.get_error(ret)
         # internal.console_log("ERROR",err)
-        error_str = js.JSON.stringify(err, js.Object.getOwnPropertyNames(err))
+        error_str = _js_error_to_str(err)
         raise RuntimeError(error_str)
 
     return ret

@@ -8,7 +8,7 @@ import sys
 import types
 import contextlib
 from typing import Any
-
+import asyncio
 
 def extend_val():
 
@@ -60,10 +60,24 @@ def extend_val():
         else:
             return res.value
 
+
     @property
     def val_typeof(s):
         return _module._typeof(s)
 
+
+    def val__await__(self):
+        future = asyncio.Future()
+
+        def _then(val):
+            future.set_result(val)
+
+        def _catch(str_err):
+            str_err = to_py(str_err)
+            future.set_exception(RuntimeError(str_err))
+
+        _module._set_promise_then_catch(self, JsValue(_then), JsValue(_catch))
+        return future.__await__()
 
     JsValue.__call__ = __val_call
     JsValue.__getitem__ = val_getattr
@@ -85,6 +99,7 @@ def extend_val():
 
     JsValue.__delattr__ = lambda s,k:_module._delete(s, k)
     JsValue.__delitem__ = lambda s,k: s.delete(k)
+    JsValue.__await__ = val__await__
 
 
 extend_val()

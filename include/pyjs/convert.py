@@ -8,7 +8,7 @@ import sys
 import types
 import contextlib
 from typing import Any
-
+import asyncio
 
 
 class JsToPyConverterOptions(object):
@@ -51,6 +51,7 @@ def object_converter(js_val, depth=0, converter_options=None):
 
     return ret_dict
 
+
 def set_converter(js_val, depth=0, converter_options=None):
     pyset = set()
     for v in js_val:
@@ -64,6 +65,19 @@ def dont_convert(js_val, depth, converter_options):
 def as_py_convert(js_val, depth, converter_options):
     pyval = internal.as_py_object(js_val)
     return pyval
+
+def promise_convert(js_val, depth, converter_options):
+
+    future = asyncio.Future()
+
+    def then(val):
+        future.set_result(val)
+
+    js_then = create_once_callable(then)
+
+    js_val.then(js_then)
+    return future
+
 
 # register converters
 _converters = dict(
@@ -79,6 +93,7 @@ _converters = dict(
     Array=array_converter,
     Set=set_converter,
     function=dont_convert,
+    Promise=promise_convert,
     # this is a bit ugly at since `as_numpy_array`
     # has to do the dispatching again
     ArrayBuffer=lambda x,d,md:   to_py(new(js.Uint8Array, x), d,md),

@@ -47,6 +47,25 @@ void export_py_object()
             )
         )
 
+
+        // 1-ary
+        .function("__call__", 
+            em::select_overload<em::val(py::object &, em::val  val)>(
+                [](py::object & pyobject, em::val arg1) ->em::val
+                {
+                    try{
+                        py::gil_scoped_acquire acquire;
+                        py::object ret = pyobject(arg1);
+                        return em::val(std::move(ret));
+                    }
+                    catch(py::error_already_set& e){
+                        std::cout<<"error: "<<e.what()<<"\n";
+                        return em::val::null();
+                    }
+                }
+            )
+        )
+
         .function("__usafe_void_void__", 
             em::select_overload<void(py::object &)>(
                 [](py::object & pyobject) 
@@ -54,6 +73,18 @@ void export_py_object()
                     {
                         py::gil_scoped_acquire acquire;
                         pyobject();
+                    }
+                }
+            )
+        )
+
+        .function("__usafe_void_val__", 
+            em::select_overload<void(py::object &, em::val)>(
+                [](py::object & pyobject, em::val val) 
+                {
+                    {
+                        py::gil_scoped_acquire acquire;
+                        pyobject(val);
                     }
                 }
             )

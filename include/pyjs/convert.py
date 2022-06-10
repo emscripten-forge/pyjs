@@ -58,56 +58,36 @@ def set_converter(js_val, depth=0, converter_options=None):
         pyset.add( to_py(v, depth=depth+1, converter_options=converter_options))
     return pyset
 
-def dont_convert(js_val, depth, converter_options):
-    return js_val
-
-
-def as_py_convert(js_val, depth, converter_options):
-    pyval = internal.as_py_object(js_val)
-    return pyval
-
-def promise_convert(js_val, depth, converter_options):
-
-    future = asyncio.Future()
-
-    def then(val):
-        future.set_result(val)
-
-    js_then = create_once_callable(then)
-
-    js_val.then(js_then)
-    return future
-
 
 # register converters
 _converters = dict(
     null=lambda x:None,
-    undefined=lambda x,d,md:None,
-    string=lambda x,d,md: internal.as_string(x),
-    boolean=lambda x,d,md: internal.as_boolean(x),
-    integer=lambda x,d,md: internal.as_int(x),
-    float=lambda x,d,md: internal.as_float(x),
-    pyobject=lambda x,d,md: internal.as_py_object(x),
+    undefined=lambda x,d,opts:None,
+    string=lambda x,d,opts: internal.as_string(x),
+    boolean=lambda x,d,opts: internal.as_boolean(x),
+    integer=lambda x,d,opts: internal.as_int(x),
+    float=lambda x,d,opts: internal.as_float(x),
+    pyobject=lambda x,d,opts: internal.as_py_object(x),
     object=object_converter,
     Object=object_converter,
     Array=array_converter,
     Set=set_converter,
-    function=dont_convert,
-    Promise=promise_convert,
+    function=lambda x,d,opts:x,
+    Promise=lambda x,d,opts: x._to_future(),
     # this is a bit ugly at since `as_numpy_array`
     # has to do the dispatching again
-    ArrayBuffer=lambda x,d,md:   to_py(new(js.Uint8Array, x), d,md),
-    Uint8Array=lambda x,d,md:    internal.as_numpy_array(x),
-    Int8Array =lambda x,d,md:    internal.as_numpy_array(x),
-    Uint16Array=lambda x,d,md:   internal.as_numpy_array(x),
-    Int16Array =lambda x,d,md:   internal.as_numpy_array(x),
-    Uint32Array=lambda x,d,md:   internal.as_numpy_array(x),
-    Int32Array =lambda x,d,md:   internal.as_numpy_array(x),
-    Float32Array=lambda x,d,md:  internal.as_numpy_array(x),
-    Float64Array =lambda x,d,md: internal.as_numpy_array(x),
-    BigInt64Array=lambda x,d,md:  internal.as_numpy_array(x),
-    BigUint64Array =lambda x,d,md: internal.as_numpy_array(x),
-    Uint8ClampedArray=lambda x,d,md: internal.as_numpy_array(x)
+    ArrayBuffer=lambda x,d,opts:   to_py(new(js.Uint8Array, x), d,opts),
+    Uint8Array=lambda x,d,opts:    internal.as_numpy_array(x),
+    Int8Array =lambda x,d,opts:    internal.as_numpy_array(x),
+    Uint16Array=lambda x,d,opts:   internal.as_numpy_array(x),
+    Int16Array =lambda x,d,opts:   internal.as_numpy_array(x),
+    Uint32Array=lambda x,d,opts:   internal.as_numpy_array(x),
+    Int32Array =lambda x,d,opts:   internal.as_numpy_array(x),
+    Float32Array=lambda x,d,opts:  internal.as_numpy_array(x),
+    Float64Array =lambda x,d,opts: internal.as_numpy_array(x),
+    BigInt64Array=lambda x,d,opts:  internal.as_numpy_array(x),
+    BigUint64Array =lambda x,d,opts: internal.as_numpy_array(x),
+    Uint8ClampedArray=lambda x,d,opts: internal.as_numpy_array(x)
 )
 
 

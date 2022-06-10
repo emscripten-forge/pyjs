@@ -196,11 +196,6 @@ Module['_set_promise_then_catch'] = function(promise, py_object_then, py_object_
     let already_called = false;
 
     var callable_then = function(v){
-        if (already_called) {
-            throw new Error("once_callable can only be called once");
-        }
-        already_called = true;
-
 
         py_object_then.__usafe_void_val__(v);
         
@@ -210,19 +205,9 @@ Module['_set_promise_then_catch'] = function(promise, py_object_then, py_object_
     }
     var callable_catch = function(err){
 
-        if (already_called) {
-            throw new Error("once_callable can only be called once");
-        }
-        already_called = true;
-        console.log("CATCH",err)
         str_err = JSON.stringify(err, Object.getOwnPropertyNames(err))
-        console.log("STR",str_err)
-        try{
-            py_object_catch.__usafe_void_val__(str_err);
-        }
-        catch(e){
-            console.log("ERROR IN callable catch",e)
-        }        
+        py_object_catch.__usafe_void_val__(str_err);
+     
         // delete
         py_object_then.delete()
         py_object_catch.delete()

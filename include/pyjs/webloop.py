@@ -269,7 +269,6 @@ if IN_BROWSER:
             return self._task_factory
 
         def get_exception_handler(self):
-            internal.console_log("get_exception_handler")
             """Return an exception handler, or None if the default one is in use."""
             return self._exception_handler
 
@@ -284,7 +283,6 @@ if IN_BROWSER:
             documentation for details about context).
             """
 
-            internal.console_log("set_exception_handler")
             if handler is not None and not callable(handler):
                 raise TypeError(
                     f"A callable object or None is expected, " f"got {handler!r}"
@@ -306,12 +304,11 @@ if IN_BROWSER:
             `call_exception_handler()`.
             """
 
-            internal.console_log("default_exception_handler")
-
             message = context.get("message")
 
             # internal.console_log("context", context)
             # internal.console_log("message", message)
+            
 
             if not message:
                 message = "Unhandled exception in event loop"
@@ -429,8 +426,7 @@ if IN_BROWSER:
 
 
     asyncio.set_event_loop_policy(WebLoopPolicy())
-    _loop = WebLoop()
-    asyncio.set_event_loop(_loop)
+    asyncio.set_event_loop(WebLoop())
 
 
 

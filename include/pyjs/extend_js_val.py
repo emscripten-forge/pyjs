@@ -1,3 +1,4 @@
+
 #include "pyjs/macro_magic.hpp"
 BEGIN_PYTHON_INIT(pyjs_extend_js_val) R"pycode(#"
 
@@ -105,7 +106,7 @@ def extend_val():
     JsValue.__eq__ = lambda self,q: internal.module_property("__eq__")(self, q)
 
     JsValue.new = lambda self,*args : internal.module_property("_new")(self, *args)
-    JsValue.to_py = lambda self, max_depth=None: to_py(js_val=self, max_depth=max_depth)
+    JsValue.to_py = lambda self, converter_options=None: to_py(js_val=self, converter_options=converter_options)
     JsValue.typeof = val_typeof
     JsValue.__iter__ = lambda self : _module._iter(self)
     JsValue.__next__ = val_next

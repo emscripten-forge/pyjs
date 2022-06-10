@@ -90,42 +90,7 @@ void export_py_object()
             )
         )
 
-        // // 1-ary
-        // .function("__call__", 
-        //     em::select_overload<int(py::object &, em::val)>([](py::object & pyobject, em::val arg1){
-        //         // py::object = convert_impl(arg1);
-        //         pyobject(arg1);
-        //         return 1;
-        //     })
-        // )
 
-        // // 2-ary
-        // .function("__call__", 
-        //     em::select_overload<int(py::object &, em::val, em::val)>([](py::object & pyobject, em::val arg1, em::val arg2)
-        //     {
-        //         // py::object = convert_impl(arg1);
-        //         pyobject(arg1, arg2);
-        //         return 1;
-        //     })
-        // )
-        // // 3-ary
-        // .function("__call__", 
-        //     em::select_overload<int(py::object &, em::val, em::val, em::val)>([](py::object & pyobject, em::val arg1, em::val arg2, em::val arg3)
-        //     {
-        //         // py::object = convert_impl(arg1);
-        //         pyobject(arg1, arg2, arg3);
-        //         return 1;
-        //     })
-        // )
-        // // 4-ary
-        // .function("__call__", 
-        //     em::select_overload<int(py::object &, em::val, em::val, em::val, em::val)>([](py::object & pyobject, em::val arg1, em::val arg2, em::val arg3, em::val arg4)
-        //     {
-        //         // py::object = convert_impl(arg1);
-        //         pyobject(arg1, arg2, arg3, arg4);
-        //         return 1;
-        //     })
-        // )
     ;
 
 }

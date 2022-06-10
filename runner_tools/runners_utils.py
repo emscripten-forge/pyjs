@@ -117,13 +117,8 @@ async def playwright_main(page_url, workdir, script_basename):
                     }}
                 }}
 
-                console.log("finalizing script ...")
                 myModule.run_code("print('collect');import gc;gc.collect();")
-                console.log("...finalizing script done!")
-
-                console.log("finalize_interpreter...")
                 myModule.finalize_interpreter()
-                console.log("...finalize_interpreter DONE")
                 msg = {{
                     return_code : 0,
                     collected_prints : outputString

@@ -58,7 +58,6 @@ def set_converter(js_val, depth=0, converter_options=None):
         pyset.add( to_py(v, depth=depth+1, converter_options=converter_options))
     return pyset
 
-
 # register converters
 _converters = dict(
     null=lambda x:None,

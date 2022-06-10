@@ -13,6 +13,8 @@ if IN_BROWSER:
     import traceback
     from typing import Callable
     import functools
+
+
     class WebLoop(asyncio.AbstractEventLoop):
         """A custom event loop for use in Pyodide.
 
@@ -39,6 +41,7 @@ if IN_BROWSER:
             self._current_handle = None
             self._set_timeout = js.setTimeout
             self._n_unfinished = 0
+
         def get_debug(self):    
             return False
 
@@ -279,6 +282,7 @@ if IN_BROWSER:
             loop, 'context' will be a dict object (see `call_exception_handler()`
             documentation for details about context).
             """
+
             if handler is not None and not callable(handler):
                 raise TypeError(
                     f"A callable object or None is expected, " f"got {handler!r}"
@@ -299,7 +303,13 @@ if IN_BROWSER:
             The context parameter has the same meaning as in
             `call_exception_handler()`.
             """
+
             message = context.get("message")
+
+            # internal.console_log("context", context)
+            # internal.console_log("message", message)
+            
+
             if not message:
                 message = "Unhandled exception in event loop"
 
@@ -347,6 +357,9 @@ if IN_BROWSER:
             For custom exception handling, use the
             `set_exception_handler()` method.
             """
+            internal.console_log("call_exception_handler")
+            # internal.console_log("context", context)
+            # internal.console_log("message", context['message'])
             if self._exception_handler is None:
                 try:
                     self.default_exception_handler(context)
@@ -413,8 +426,7 @@ if IN_BROWSER:
 
 
     asyncio.set_event_loop_policy(WebLoopPolicy())
-    _loop = WebLoop()
-    asyncio.set_event_loop(_loop)
+    asyncio.set_event_loop(WebLoop())
 
 
 

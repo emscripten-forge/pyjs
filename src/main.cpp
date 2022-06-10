@@ -30,6 +30,23 @@ int run_script(
     }
 }
 
+
+int run_code(
+    const std::string & code
+)
+{
+    py::object scope = py::module_::import("__main__").attr("__dict__");
+    try{
+        py::exec(code, scope);
+        return 0;
+    }
+    catch (py::error_already_set& e)
+    {
+        std::cout<<"error: "<<e.what()<<"\n";
+        return 1;
+    }
+}
+
 int n_unfinished()
 {
     try{
@@ -45,12 +62,14 @@ int n_unfinished()
 }
 
 
+
 em::val run_async_main(
     const std::string & workdir,
     const std::string & script_filename
 )
 {
-    py::object scope = py::module_::import("__main__").attr("__dict__");
+    // py::object scope = py::module_::import("__main__").attr("__dict__");
+    py::object scope = py::dict();
     std::stringstream code_stream;
     code_stream <<"os.chdir('"<<workdir<<"');";
 
@@ -90,6 +109,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
     pyjs::export_js_module();
 
     em::function("run_script", &run_script);
+    em::function("run_code", &run_code);
     em::function("initialize_interpreter",em::select_overload<void()>([](){
         py::initialize_interpreter(true,0,nullptr,false);
     }));

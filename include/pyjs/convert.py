@@ -9,104 +9,173 @@ import types
 import contextlib
 from typing import Any
 import asyncio
+import functools
+
+class _JsToPyConverterCache(object):
+    def __init__(self):
+        self._js_obj_to_int = js.WeakMap.new()
+        self._int_to_py_obj = dict()
+        self._counter = 0
+    
+    def __setitem__(self, js_val, py_val):
+        c = self._counter
+        self._js_obj_to_int.set(js_val, c)
+        self._int_to_py_obj[c] = py_val
+        self._counter  = c + 1
+
+    def __getitem__(self, js_val):
+        if (key:=self._js_obj_to_int.get(js_val)) is not None:
+            return self._int_to_py_obj[key]
+        else:
+            return None
+
+    def get(self, js_val, default_py):
+        if (key:=self._js_obj_to_int.get(js_val)) is not None:
+            return self._int_to_py_obj[key], True
+        else:
+            self[js_val] = default_py
+            return default_py,False
 
 
-class JsToPyConverterOptions(object):
-    def __init__(self, json=False):
-        self.json = json
 
+def array_converter(js_val, depth,cache,converter_options):
 
-def _build_in_to_python(val):
-    if val is None:
-        return None
-    ts = type_str(val)
-    if ts in ['string', 'boolean','number','undefined']:
-        return to_py(val)
-    return val
+    py_list,found_in_cache = cache.get(js_val,[])
+    if found_in_cache:
+        return py_list
 
-
-def array_converter(js_val, depth=0, converter_options=None):
     size = internal.length(js_val)
-    py_list = []
     for i in range(size):
-        js_item = internal.__getitem__(js_val, i)
-        py_item = to_py(js_item, depth=depth+1, converter_options=converter_options)
+        # js_item = internal.__getitem__(js_val, i)
+        js_item = js_val[i]
+        py_item = to_py(js_item, depth=depth+1, cache=cache,converter_options=converter_options)
         py_list.append(py_item)
     return py_list
 
-def object_converter(js_val, depth=0, converter_options=None):
+def object_converter(js_val, depth,cache, converter_options):
+
+    ret_dict,found_in_cache = cache.get(js_val,{})
+    if found_in_cache:
+        return ret_dict
+
     keys = internal.object_keys(js_val)
     values = internal.object_values(js_val)
-
-    ret_dict = {}
     size = internal.length(keys)
 
     for  i in range(size):
 
-        js_key = internal.__getitem__(keys,   i)
-        js_val = internal.__getitem__(values, i)
+        # # todo, keys are always strings, this allows for optimization
+        py_key = keys[i]
+        js_val = values[i]
 
-        py_key = to_py(js_key, depth=depth+1, converter_options=converter_options)
-        py_val = to_py(js_val, depth=depth+1, converter_options=converter_options) 
+        py_val = to_py(js_val, depth=depth+1, cache=cache, converter_options=converter_options) 
         
         ret_dict[py_key] = py_val
 
     return ret_dict
 
 
-def set_converter(js_val, depth=0, converter_options=None):
-    pyset = set()
+def set_converter(js_val, depth, cache, converter_options):
+    pyset,found_in_cache = cache.get(js_val,set())
+    if found_in_cache:
+        return pyset
+
     for v in js_val:
-        pyset.add( to_py(v, depth=depth+1, converter_options=converter_options))
+        pyset.add( to_py(v, depth=depth+1, cache=cache, converter_options=converter_options))
     return pyset
 
+
+def error_converter(js_val, depth, cache, converter_options, error_cls):
+    return error_cls(err=js_val)
+
+
+error_converters = dict(
+    Error=functools.partial(error_converter,error_cls=JsError),
+    InternalError=functools.partial(error_converter,error_cls=JsInternalError),
+    RangeError=functools.partial(error_converter,error_cls=JsRangeError),
+    ReferenceError=functools.partial(error_converter,error_cls=JsReferenceError),
+    SyntaxError=functools.partial(error_converter,error_cls=JsSyntaxError),
+    TypeError=functools.partial(error_converter,error_cls=JsTypeError),
+    URIError=functools.partial(error_converter,error_cls=JsURIError)
+)
+
 # register converters
-_converters = dict(
+basic_converters = dict(
     null=lambda x:None,
-    undefined=lambda x,d,opts:None,
-    string=lambda x,d,opts: internal.as_string(x),
-    boolean=lambda x,d,opts: internal.as_boolean(x),
-    integer=lambda x,d,opts: internal.as_int(x),
-    float=lambda x,d,opts: internal.as_float(x),
-    pyobject=lambda x,d,opts: internal.as_py_object(x),
+    undefined=lambda x,d,c,opts:None,
+    string=lambda x,d,c,opts: internal.as_string(x),
+    boolean=lambda x,d,c,opts: internal.as_boolean(x),
+    integer=lambda x,d,c,opts: internal.as_int(x),
+    float=lambda x,d,c,opts: internal.as_float(x),
+    pyobject=lambda x,d,c,opts: internal.as_py_object(x),
     object=object_converter,
     Object=object_converter,
     Array=array_converter,
     Set=set_converter,
-    function=lambda x,d,opts:x,
-    Promise=lambda x,d,opts: x._to_future(),
+    function=lambda x,d,c,opts:x,
+    Promise=lambda x,d,c,opts: x._to_future(),
+    # error classes
+
     # this is a bit ugly at since `as_numpy_array`
     # has to do the dispatching again
-    ArrayBuffer=lambda x,d,opts:   to_py(new(js.Uint8Array, x), d,opts),
-    Uint8Array=lambda x,d,opts:    internal.as_numpy_array(x),
-    Int8Array =lambda x,d,opts:    internal.as_numpy_array(x),
-    Uint16Array=lambda x,d,opts:   internal.as_numpy_array(x),
-    Int16Array =lambda x,d,opts:   internal.as_numpy_array(x),
-    Uint32Array=lambda x,d,opts:   internal.as_numpy_array(x),
-    Int32Array =lambda x,d,opts:   internal.as_numpy_array(x),
-    Float32Array=lambda x,d,opts:  internal.as_numpy_array(x),
-    Float64Array =lambda x,d,opts: internal.as_numpy_array(x),
-    BigInt64Array=lambda x,d,opts:  internal.as_numpy_array(x),
-    BigUint64Array =lambda x,d,opts: internal.as_numpy_array(x),
-    Uint8ClampedArray=lambda x,d,opts: internal.as_numpy_array(x)
+    ArrayBuffer=lambda x,d,c,opts:   to_py(new(js.Uint8Array, x), d,c,opts),
+    Uint8Array=lambda x,d,c,opts:    internal.as_numpy_array(x),
+    Int8Array =lambda x,d,c,opts:    internal.as_numpy_array(x),
+    Uint16Array=lambda x,d,c,opts:   internal.as_numpy_array(x),
+    Int16Array =lambda x,d,c,opts:   internal.as_numpy_array(x),
+    Uint32Array=lambda x,d,c,opts:   internal.as_numpy_array(x),
+    Int32Array =lambda x,d,c,opts:   internal.as_numpy_array(x),
+    Float32Array=lambda x,d,c,opts:  internal.as_numpy_array(x),
+    Float64Array =lambda x,d,c,opts: internal.as_numpy_array(x),
+    BigInt64Array=lambda x,d,c,opts:  internal.as_numpy_array(x),
+    BigUint64Array =lambda x,d,c,opts: internal.as_numpy_array(x),
+    Uint8ClampedArray=lambda x,d,c,opts: internal.as_numpy_array(x)
 )
+basic_converters = {**basic_converters, **error_converters}
 
 def register_converter(cls_name, converter):
-    _converters[cls_name] = converter
+    basic_converters[cls_name] = converter
 
 
 def to_py_json(js_val):
     return json.loads(JSON.stringify(js_val))
 
 
-def to_py(js_val,  depth=0, converter_options=None):
+class JsToPyConverterOptions(object):
+    def __init__(self, json=False, converters=None, default_converter=None):
+        self.json = json
+
+        if converters is None:
+            converters = basic_converters
+        if default_converter is None:
+            default_converter = basic_converters['object']
+
+        self.converters = converters
+        self.default_converter = default_converter
+
+
+def to_py(js_val,  depth=0, cache=None, converter_options=None):
+    
     if not isinstance(js_val, JsValue):
         return js_val
+
+    if converter_options is None:
+        converter_options = JsToPyConverterOptions()
+
+    if cache is None:
+        cache = _JsToPyConverterCache()
+
+    converters = converter_options.converters
+    default_converter = converter_options.default_converter
+
     ts = internal.get_type_string(js_val)
-    return _converters.get(ts, _converters['object'])(js_val, depth, converter_options)
+    return converters.get(ts, default_converter)(js_val, depth, cache, converter_options)
 
 
-
+def error_to_py(err):
+    default_converter=functools.partial(error_converter,error_cls=JsGenericError)
+    converter_options=JsToPyConverterOptions(converters=error_converters,default_converter=default_converter)
+    return to_py(err, converter_options=converter_options)
 
 IN_BROWSER = not to_py(internal.module_property('_IS_NODE'))
 

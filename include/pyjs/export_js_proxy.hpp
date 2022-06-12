@@ -30,9 +30,9 @@ inline py::object wrap_result(em::val  wrapped_return_value)
         return ret_tuple;
     }
     else{
+        const auto type_string = wrapped_return_value["type_string"].as<std::string>();
         if (has_ret)
         {
-            const auto type_string = wrapped_return_value["type_string"].as<std::string>();
             py::tuple ret_tuple =  py::make_tuple(
                 implicit_to_py(wrapped_return_value["ret"],type_string), 
                 py::none(), 
@@ -45,7 +45,14 @@ inline py::object wrap_result(em::val  wrapped_return_value)
         }
         else
         {
-            py::tuple ret_tuple =  py::make_tuple(py::none(), py::none(), py::none());
+            py::tuple ret_tuple =  py::make_tuple(
+                py::none(), 
+                py::none(),
+                py::make_tuple(
+                    type_string,  // we need to distinguish "null" vs "undefined"
+                    false
+                )
+            );
             return ret_tuple;
         }
     }
@@ -58,7 +65,7 @@ inline py::object wrap_void(em::val  wrapped_return_value)
 
     if(has_err)
     {
-        py::cast(wrapped_return_value["err"]);
+        return py::cast(wrapped_return_value["err"]);
     }
     else{
         return py::none();
@@ -70,11 +77,14 @@ void export_js_proxy(py::module_ & m)
     py::module_ m_internal = m.def_submodule("internal", "implementation details of of pyjs");
 
     m_internal.def("global_property", [](const std::string & arg){
-        return em::val::global(arg.c_str());
+        em::val v = em::val::global(arg.c_str());
+        const std::string  type_string = em::val::module_property("_get_type_string")(v).as<std::string>();
+        return implicit_to_py(v, type_string);
     });
 
     m_internal.def( "module_property", [](const std::string & arg){
-        return em::val::module_property(arg.c_str());
+        em::val v = em::val::module_property(arg.c_str());
+        return v;
     });
 
 

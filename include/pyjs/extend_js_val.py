@@ -50,9 +50,16 @@ def extend_val():
         if internal.is_undefined_or_null(self):
             raise AttributeError()
 
-        ret = _error_checked_new(internal.getattr_try_catch(self, key))
+        ret,err,meta = internal.getattr_try_catch(self, key)
+        if err is not None:
+            raise error_to_py(err=rr)
+
         if ret is None:
+            # typestring
+            if meta[0] == "null":
+                return None
             raise AttributeError(f"{self} has no attribute {key}")
+
         if isinstance(ret, JsValue):
             setparent(ret, self)
         return ret
@@ -63,14 +70,15 @@ def extend_val():
             super(JsValue, self).__setattr__(key,val)
         else:
             if (err := internal.setattr_try_catch(self, key, val)) is not None:
-                raise RuntimeError(_js_error_to_str(err))
+                raise JsException(err)
+
 
     def val_setitem(self, key, val):
         if key == _PYJS_JS_INFO_KEY:
             super(JsValue, self).__setattr__(key,val)
         else:
             if (err := internal.setattr_try_catch(self, key, val)) is not None:
-                raise RuntimeError(_js_error_to_str(err))
+                raise error_to_py(err=rr)
 
     def val_next(self):
         res = self.next()

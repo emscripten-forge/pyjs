@@ -15,7 +15,7 @@
 #include <pyjs/extend_js_val.py>
 #include <pyjs/convert.py>
 #include <pyjs/webloop.py>
-
+#include <pyjs/error_handling.py>
 
 namespace py = pybind11;
 namespace em = emscripten;
@@ -29,6 +29,7 @@ void export_pyjs_module(py::module_ & pyjs_module)
     try{
         PYTHON_INIT(pyjs_core)(pyjs_module);
         PYTHON_INIT(pyjs_extend_js_val)(pyjs_module);
+        PYTHON_INIT(pyjs_error_handling)(pyjs_module);
         PYTHON_INIT(pyjs_convert)(pyjs_module);
         PYTHON_INIT(pyjs_webloop)(pyjs_module);
     } 

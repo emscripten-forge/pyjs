@@ -16,6 +16,55 @@ namespace em = emscripten;
 namespace pyjs
 {
 
+
+inline py::object wrap_result(em::val  wrapped_return_value)
+{
+    const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
+    const bool has_err = wrapped_return_value["has_err"].as<bool>();
+
+    if(has_err)
+    {
+
+        py::tuple ret_tuple =  py::make_tuple(
+            py::none(), wrapped_return_value["err"], py::none());
+        return ret_tuple;
+    }
+    else{
+        if (has_ret)
+        {
+            const auto type_string = wrapped_return_value["type_string"].as<std::string>();
+            py::tuple ret_tuple =  py::make_tuple(
+                implicit_to_py(wrapped_return_value["ret"],type_string), 
+                py::none(), 
+                py::make_tuple(
+                    type_string,
+                    wrapped_return_value["is_object"].as<bool>()
+                )
+            );
+            return ret_tuple;
+        }
+        else
+        {
+            py::tuple ret_tuple =  py::make_tuple(py::none(), py::none(), py::none());
+            return ret_tuple;
+        }
+    }
+}
+
+inline py::object wrap_void(em::val  wrapped_return_value)
+{
+    const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
+    const bool has_err = wrapped_return_value["has_err"].as<bool>();
+
+    if(has_err)
+    {
+        py::cast(wrapped_return_value["err"]);
+    }
+    else{
+        return py::none();
+    }
+}
+
 void export_js_proxy(py::module_ & m)
 {   
     py::module_ m_internal = m.def_submodule("internal", "implementation details of of pyjs");
@@ -27,6 +76,34 @@ void export_js_proxy(py::module_ & m)
     m_internal.def( "module_property", [](const std::string & arg){
         return em::val::module_property(arg.c_str());
     });
+
+
+    m_internal.def("apply_try_catch",[](
+        em::val * js_function,
+        em::val * self,
+        em::val * args
+    ) -> py::object {
+        return wrap_result(em::val::module_property("_apply_try_catch")(*js_function, *self, *args));
+    });
+
+
+    m_internal.def("getattr_try_catch",[](
+        em::val * obj,
+        em::val * key
+    ) -> py::object {
+       return wrap_result(em::val::module_property("_getattr_try_catch")(*obj, *key));
+    });
+
+
+    m_internal.def("setattr_try_catch",[](
+        em::val * obj,
+        em::val * key,
+        em::val * value
+    ) -> py::object {
+       return wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value));
+    });
+
+
 
 
     m.def("js_array", [](){return em::val::array();});
@@ -143,16 +220,6 @@ void export_js_proxy(py::module_ & m)
         return em::val::module_property("_is_undefined_or_null")(*val).as<bool>();
     });
 
- 
-
-    m_internal.def("getattr_try_catch",[](em::val * val, em::val key){
-        return em::val::module_property("_getattr_try_catch")(*val, key);
-    });
-
-
-    m_internal.def("setattr_try_catch",[](em::val * val, em::val key, em::val * attr_val){
-        return em::val::module_property("_setattr_try_catch")(*val, key,*attr_val);
-    });
 
 
     m_internal.def("is_error",[](em::val * val){
@@ -197,6 +264,10 @@ void export_js_proxy(py::module_ & m)
     });
     
 
+
+    m_internal.def("to_string",[](em::val * v) -> std::string{
+       return v->call<std::string>("toString");
+    });
     // this class is heavy extended on the python side
     py::class_<em::val>(m, "JsValue",  py::dynamic_attr())
 

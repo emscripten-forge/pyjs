@@ -13,7 +13,7 @@ if IN_BROWSER:
     import traceback
     from typing import Callable
     import functools
-
+    import os
 
     class WebLoop(asyncio.AbstractEventLoop):
         """A custom event loop for use in Pyodide.
@@ -424,9 +424,9 @@ if IN_BROWSER:
             """Set the current event loop"""
             self._default_loop = loop
 
-
     asyncio.set_event_loop_policy(WebLoopPolicy())
-    asyncio.set_event_loop(WebLoop())
+    if not "PYJS_DONT_AUTOSTART_EVENT_LOOP" in os.environ:
+        asyncio.set_event_loop(WebLoop())
 
 
 

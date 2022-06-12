@@ -12,11 +12,13 @@ import asyncio
 
 
 class JsToPyConverterOptions(object):
-    def __init__(self):
-        pass
+    def __init__(self, json=False):
+        self.json = json
 
 
 def _build_in_to_python(val):
+    if val is None:
+        return None
     ts = type_str(val)
     if ts in ['string', 'boolean','number','undefined']:
         return to_py(val)
@@ -89,6 +91,13 @@ _converters = dict(
     Uint8ClampedArray=lambda x,d,opts: internal.as_numpy_array(x)
 )
 
+def register_converter(cls_name, converter):
+    _converters[cls_name] = converter
+
+
+def to_py_json(js_val):
+    return json.loads(JSON.stringify(js_val))
+
 
 def to_py(js_val,  depth=0, converter_options=None):
     if not isinstance(js_val, JsValue):
@@ -97,8 +106,7 @@ def to_py(js_val,  depth=0, converter_options=None):
     return _converters.get(ts, _converters['object'])(js_val, depth, converter_options)
 
 
-def register_converter(cls_name, converter):
-    _converters[cls_name] = converter
+
 
 IN_BROWSER = not to_py(internal.module_property('_IS_NODE'))
 

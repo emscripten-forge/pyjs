@@ -110,5 +110,38 @@ inline py::object  typed_array_to_numpy_array(em::val js_array){
 
 
 
+inline py::object implicit_to_py(
+    em::val val,
+    const std::string & type_string
+)
+{
+    if(type_string == "null" || type_string == "undefined")
+    {
+        return py::none();
+    }
+    else if(type_string == "string")
+    {
+        return py::cast(val.as<std::string>());
+    }
+    else if(type_string == "boolean")
+    {
+        return py::cast(val.as<bool>());
+    }
+    else if(type_string == "float")
+    {
+        return py::cast(val.as<double>());
+    }
+    else if(type_string == "integer")
+    {
+        const auto double_number = val.as<double>();
+        const auto rounded_double_number = std::round(double_number);
+        return py::cast(int(rounded_double_number));
+    }
+    else
+    {
+        return py::cast(val);
+    }
+}
+
 
 }

@@ -90,20 +90,29 @@ def _error_checked(ret):
     return ret
 
 
+def _error_checked_new(wrapped_ret):
+    ret,err,meta = wrapped_ret
 
-def apply(js_function, args):
-    #print("apply",js_function,args)
+    if err is not None:
+        error_str = _js_error_to_str(err)
+        raise RuntimeError(error_str)
+    return ret
+
+def _make_js_args(args):
     js_array_args = js_array()
     for arg in args:
         js_arg = ensure_js_val(arg)
         internal.val_call(js_array_args, "push", js_arg)
+    return js_array_args
 
-    #print("apply try catch!")
+
+def apply(js_function, args):
+    js_array_args = _make_js_args(args)
     applyTryCatch = internal.module_property('_apply_try_catch')
-    ret  = internal.val_function_call(applyTryCatch, js_function, js_null(), js_array_args)
-    return _build_in_to_python(_error_checked(ret))
-
-
+    ret  = internal.apply_try_catch(js_function, js_null(), js_array_args)
+    actual_ret = _error_checked_new(ret)
+    return actual_ret
 
 #)pycode"
 END_PYTHON_INIT
+

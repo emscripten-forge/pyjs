@@ -11,48 +11,66 @@ import contextlib
 from typing import Any
 import asyncio
 
+
+# JsValue *can* hold this as a property
+class JsInfo(object):
+    def __init__(self, parent=None):
+        self._pyjs_parent = parent
+
+_PYJS_JS_INFO_KEY  = '_pyjs_info'
+_PYJS_IPYMAGIC_KEY =  "_ipython_canary_method_should_not_exist_"
+_PYJS_PROHIBITED_KEYS = set([_PYJS_JS_INFO_KEY, _PYJS_IPYMAGIC_KEY])
+
 def extend_val():
 
-    def __val_call(self, *args):
+    def getparent(self):
+        if (info := getattr(self, _PYJS_JS_INFO_KEY, None)) is not None:
+            return info._pyjs_parent
+        return None
 
-        if hasattr(self, '_pyjs_parent'):
-            bound = internal.val_bind(self, self._pyjs_parent)
+    def setparent(self, parent):
+        if (info := getattr(self, _PYJS_JS_INFO_KEY, None)) is not None:
+            info._pyjs_parent = parent
+        else:
+            self._pyjs_info = JsInfo(parent=parent)
+
+    def __val_call(self, *args):
+        if (parent:=getparent(self)) is not None:
+            bound = internal.val_bind(self, parent)
             return apply(bound, args=args)
-            #return member_apply(self._pyjs_parent,js_function=self, args=args)
         else:
             return apply(self, args=args)
    
 
     def val_getattr(self, key):
-        if key == "_ipython_canary_method_should_not_exist_":
-            return AttributeError()
+        if key in _PYJS_PROHIBITED_KEYS:
+            raise AttributeError()
 
         ts = type_str(self)
         if internal.is_undefined_or_null(self):
             raise AttributeError()
 
-        if(key == "_pyjs_parent"):
-            raise AttributeError()
-
-        ret = _error_checked(internal.getattr_try_catch(self, key))
-
-        if internal.is_undefined_or_null(ret):
+        ret = _error_checked_new(internal.getattr_try_catch(self, key))
+        if ret is None:
             raise AttributeError(f"{self} has no attribute {key}")
-        ret._pyjs_parent = self
-        return _build_in_to_python(ret)
+        if isinstance(ret, JsValue):
+            setparent(ret, self)
+        return ret
 
 
     def val_setattr(self, key, val):
-        if key == "_pyjs_parent":
-            return super(JsValue, self).__setattr__(key,val)
+        if key == _PYJS_JS_INFO_KEY:
+            super(JsValue, self).__setattr__(key,val)
         else:
-            _error_checked(internal.setattr_try_catch(self, key, val))
+            if (err := internal.setattr_try_catch(self, key, val)) is not None:
+                raise RuntimeError(_js_error_to_str(err))
 
     def val_setitem(self, key, val):
-        if key == "_pyjs_parent":
-            return super(JsValue, self).__setattr__(key,val)
+        if key == _PYJS_JS_INFO_KEY:
+            super(JsValue, self).__setattr__(key,val)
         else:
-            _error_checked(internal.setattr_try_catch(self, key, val))
+            if (err := internal.setattr_try_catch(self, key, val)) is not None:
+                raise RuntimeError(_js_error_to_str(err))
 
     def val_next(self):
         res = self.next()
@@ -64,7 +82,6 @@ def extend_val():
     @property
     def val_typeof(s):
         return _module._typeof(s)
-
 
     def val_to_future(self):
         future = asyncio.Future()
@@ -79,26 +96,13 @@ def extend_val():
         _module._set_promise_then_catch(self, JsValue(_then), JsValue(_catch))
         return future
 
-
-    def val__await__(self):
-        future = asyncio.Future()
-
-        def _then(val):
-            future.set_result(val)
-
-        def _catch(str_err):
-            str_err = to_py(str_err)
-            future.set_exception(RuntimeError(str_err))
-
-        _module._set_promise_then_catch(self, JsValue(_then), JsValue(_catch))
-        return self._to_future().__await__()
-
     JsValue.__call__ = __val_call
     JsValue.__getitem__ = val_getattr
     JsValue.__getattr__ = val_getattr
     JsValue.__setattr__ = val_setattr
     JsValue.__setitem__ = val_setitem
 
+    JsValue._asstr_unsafe = lambda self:internal.to_string(self)
     JsValue.__str__ = lambda self : self.toString()
     JsValue.__repr__ = lambda self : self.toString()
     JsValue.__len__ = lambda self : internal.module_property("__len__")(self)
@@ -114,7 +118,7 @@ def extend_val():
     JsValue.__delattr__ = lambda s,k:_module._delete(s, k)
     JsValue.__delitem__ = lambda s,k: s.delete(k)
     JsValue._to_future = val_to_future
-    JsValue.__await__ = val__await__
+    JsValue.__await__ = lambda s :s._to_future().__await__()
 
 
 extend_val()

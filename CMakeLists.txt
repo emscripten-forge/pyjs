@@ -16,6 +16,7 @@ set(PYJS_HEADERS
     include/pyjs/core.py
     include/pyjs/extend_js_val.py
     include/pyjs/webloop.py
+    include/pyjs/error_handling.py
     pre.js
 )
 

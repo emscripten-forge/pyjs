@@ -39,7 +39,6 @@ def nested_eq(x, should):
 
 
 
-
 def test_js_submodule():
     from pyjs.js import Function
     assert Function('return "hello_world"')() == "hello_world"
@@ -96,6 +95,7 @@ def test_callable():
     ret.delete()
 
     cleanup.delete()
+
 
 
 def test_interal_type_str():
@@ -232,7 +232,7 @@ def test_custom_converter():
             self.height = height
             self.width = width
 
-    def rectangle_converter(js_val,  depth=0, converter_options=None):
+    def rectangle_converter(js_val,  depth, cache, converter_options):
         return Rectangle(js_val.height, js_val.width)
 
     pyjs.register_converter('Rectangle',rectangle_converter)
@@ -279,7 +279,7 @@ def test_np_array():
     view = pyjs.js.Function("""
         var buffer = new ArrayBuffer(8);
         var view_c   = new Uint8Array(buffer);
-        for (let i = 0; i < view_c.length; i++) {
+    for (let i = 0; i < view_c.length; i++) {
             view_c[i] = i;
         }
         return new Uint8Array(buffer, 4,2);
@@ -288,8 +288,136 @@ def test_np_array():
     assert array_eq(pyjs.to_py(view), numpy.array([4,5], dtype='uint8'))
 
 
-if __name__ == "__main__":
+def test_cyclic_array():
+    from pyjs.js import Function
 
+    jsf = Function("""
+        let a = [0,0];
+        a[1] = a;
+        return a
+    """)
+    obj_with_cycle = jsf()
+
+    py_obj = pyjs.to_py(obj_with_cycle)
+    assert py_obj != py_obj[0]
+    assert id(py_obj) == id(py_obj[1])
+
+
+def test_cyclic_obj():
+    from pyjs.js import Function
+
+    jsf = Function("""
+
+        let cyclic_array = [0,0];
+        cyclic_array[1] = cyclic_array;
+
+        let obj = {
+            cyclic_array : cyclic_array,
+            b : [1,2, {}]
+        }
+        obj.b[2] = obj;
+        return obj
+    """)
+    obj_with_cycle = jsf()
+
+    py_obj = pyjs.to_py(obj_with_cycle)
+
+    cyclic_array = py_obj["cyclic_array"]
+    assert cyclic_array != cyclic_array[0]
+    assert id(cyclic_array) == id(cyclic_array[1])
+
+    assert py_obj['b'][0] == 1
+    assert py_obj['b'][1] == 2
+    assert id(py_obj['b'][2]) == id(py_obj)
+
+def test_implicit_to_py_conversion():
+    pass
+
+
+
+def test_js_execptions():
+
+    # basic error
+    f = pyjs.js.Function("""
+        throw Error("sorry")
+    """)
+
+    with pytest.raises(pyjs.JsException) as e_info:
+        f()
+    with pytest.raises(pyjs.JsError) as e_info:
+        f()
+
+
+    # reference error
+    f = pyjs.js.Function("""
+        let a = undefinedVariable
+    """)
+    with pytest.raises(pyjs.JsException) as e_info:
+        f()
+    with pytest.raises(pyjs.JsReferenceError) as e_info:
+        f()
+
+
+    # syntax error=
+    with pytest.raises(pyjs.JsException) as e_info:
+        pyjs.js.Function("""
+            hoo bar
+        """)
+    with pytest.raises(pyjs.JsSyntaxError) as e_info:
+        pyjs.js.Function("""
+            hoo bar
+        """)
+
+    # uri error
+    f = pyjs.js.Function("""
+        decodeURIComponent('%')
+    """)
+    with pytest.raises(pyjs.JsException) as e_info:
+        f()
+    with pytest.raises(pyjs.JsURIError) as e_info:
+        f()
+
+    # type error
+    f = pyjs.js.Function("""
+        null.f()
+    """)
+    with pytest.raises(pyjs.JsException) as e_info:
+        f()
+    with pytest.raises(pyjs.JsTypeError) as e_info:
+        f()
+
+    # internal error
+    f = pyjs.js.Function("""
+        function loop(x) {
+          if (x >= 1000000000000)
+            return;
+          // do stuff
+          loop(x + 1);
+        }
+        loop(0);
+
+    """)
+    with pytest.raises(pyjs.JsException) as e_info:
+        f()
+    with pytest.raises((pyjs.JsRangeError, pyjs.JsInternalError)) as e_info:
+        f()
+
+
+
+    # throw a string on js side
+    f = pyjs.js.Function("""
+        throw "i_am_not_a_real_exception"
+    """)
+
+    with pytest.raises(pyjs.JsGenericError) as e_info:
+        f()
+    pyjs.to_py(e_info.value.value) == "i_am_not_a_real_exception"
+
+
+
+
+if __name__ == "__main__":
+    import pyjs
     # start the tests
     os.environ["NO_COLOR"] = "1"
     retcode = pytest.main(["-s","/script/test_pyjs.py"])

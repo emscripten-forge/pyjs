@@ -15,9 +15,9 @@ def install_submodules():
 
     def _js_mod__getattr__(name: str) -> Any:
         ret = internal.global_property(name)
-        if internal.is_undefined_or_null(ret):
+        if ret is None:
             raise AttributeError(f"has no attribute {name}")
-        return _build_in_to_python(ret)  
+        return ret
 
     js = sys.modules["pyjs.js"] = types.ModuleType("js")
     js.__getattr__ = _js_mod__getattr__
@@ -26,7 +26,7 @@ def install_submodules():
         ret = internal.module_property(name)
         if internal.is_undefined_or_null(ret):
             raise AttributeError(f"has no attribute {name}")
-        return _build_in_to_python(ret)  
+        return ret
         
     _module = sys.modules["pyjs._module"] = types.ModuleType("_module")
     _module.__getattr__ = _module_mod__getattr__
@@ -75,35 +75,22 @@ def ensure_js_val(arg):
     else:
         return JsValue(arg)
 
-def _js_error_to_str(err):
-    return js.JSON.stringify(err, js.Object.getOwnPropertyNames(err))
-
-def _error_checked(ret):
-
-    is_error = internal.is_error(ret)
-    if is_error:
-        err = internal.get_error(ret)
-        # internal.console_log("ERROR",err)
-        error_str = _js_error_to_str(err)
-        raise RuntimeError(error_str)
-
-    return ret
-
-
-
-def apply(js_function, args):
-    #print("apply",js_function,args)
+def _make_js_args(args):
     js_array_args = js_array()
     for arg in args:
         js_arg = ensure_js_val(arg)
         internal.val_call(js_array_args, "push", js_arg)
+    return js_array_args
 
-    #print("apply try catch!")
+
+def apply(js_function, args):
+    js_array_args = _make_js_args(args)
     applyTryCatch = internal.module_property('_apply_try_catch')
-    ret  = internal.val_function_call(applyTryCatch, js_function, js_null(), js_array_args)
-    return _build_in_to_python(_error_checked(ret))
-
-
+    ret,err,meta  = internal.apply_try_catch(js_function, js_null(), js_array_args)
+    if err is not None:
+        raise error_to_py(err=err)
+    return ret
 
 #)pycode"
 END_PYTHON_INIT
+

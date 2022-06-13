@@ -9,41 +9,113 @@ function _make_error(e){
     return err_obj
 }
 
+function _get_type_string(instance){
+    if(instance === null){
+        return "null"
+    }
+    else if(instance === undefined){
+        return "undefined"
+    }
+    else
+    {
+        const type = typeof instance;
+        
+        if( type === "object")
+        {   
+            const constructor = instance.constructor;
+            if( constructor !== undefined)
+            {
+                return constructor.name
+            }
+            return "object"
+        }
+        else if(type === "string")
+        {
+            return "string"
+        }
+        else if(type === "number")
+        {
+            if(Number.isInteger(instance))
+            {
+                return "integer"
+            }
+            else
+            {
+                return "float"
+            }
+        }
+        else if(type === "boolean")
+        {
+            return "boolean"
+        }
+        else if(type === "function")
+        {
+            return "function"
+        }
+        else
+        {
+            console.log(instance, "is unhandled type")
+            throw Error("internal error -- this should be unreachable")
+        }
+    }
+}
+
+
+function _wrap_void_result(){
+    return {
+        has_err: false,
+        has_ret: false
+    }
+}
+
+function _wrap_return_value(raw_ret){
+    const is_none = (raw_ret === undefined || raw_ret === null);
+    let wret= {
+        ret : raw_ret,
+        has_err: false,
+        has_ret: !is_none,
+        type_string: _get_type_string(raw_ret),
+        is_object: (typeof raw_ret == "object") && !is_none
+    }
+    return wret;
+}
+function _wrap_catched_error(err){
+    return {
+        err : err,
+        has_err: true,
+        has_ret: false
+    }
+}
+
 
 Module['_apply_try_catch'] =  function(val, self, args){
     try {
-
-        return val.apply( self, args)
+        return _wrap_return_value(val.apply(self, args))
     }
-    catch(e)
-    {
-        return _make_error(e)
+    catch(e){
+        return _wrap_catched_error(e)
     }
 }
-
-
 Module['_getattr_try_catch'] =  function(obj, property_name){
     try {
-
-        return obj[property_name]
+        return _wrap_return_value(obj[property_name])
     }
-    catch(e)
-    {
-        return _make_error(e)
+    catch(e){
+        return _wrap_catched_error(e)
     }
 }
-
-
 Module['_setattr_try_catch'] =  function(obj, property_name, value){
     try {
 
-        return obj[property_name] = value
+        obj[property_name] = value
+        return _wrap_void_result()
     }
     catch(e)
     {
-        return _make_error(e)
+        return _wrap_catched_error(e)
     }
 }
+
 
 
 Module['_new'] = function(cls, ...args){
@@ -116,8 +188,16 @@ Module['_iter'] = function dir(x) {
     return x[Symbol.iterator]()
 }
 
+Module['_get_type_string'] = _get_type_string
 
-Module['_get_type_string'] = function(instance){
+
+Module['_get_type_info'] = function(instance){
+
+    // let info = {
+    //     is_object: false,
+    //     is_class: false
+    // }
+
     if(instance === null){
         return "null"
     }
@@ -162,10 +242,12 @@ Module['_get_type_string'] = function(instance){
         }
         else
         {
-            return "__error__unkown_type__" + type;
+            console.log(instance, "is unhandled type")
+            throw Error("internal error -- this should be unreachable")
         }
     }
 }
+
 
 
 Module['_create_once_callable'] = function(py_object){
@@ -234,27 +316,16 @@ Module['_create_once_callable_unsave_void_void'] = function(py_object){
     return once_callable
 }
 
-
-
 Module["_typeof"] = function(x){
     return typeof x;
 }
-
 
 Module["_delete"] = function(x,key){
     delete x[key];
 }
 
-
-Module["_delitem"] = function(x,key){
-    delete x[key];
-}
-
-
 Module['_IS_NODE'] = (typeof process === "object" && typeof require === "function") 
 
-
 Module['_IS_BROWSER_WORKER_THREAD'] = (typeof importScripts === "function")
-
 
 Module['_IS_BROWSER_MAIN_THREAD'] = (typeof window === "object")

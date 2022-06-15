@@ -89,7 +89,7 @@ def error_converter(js_val, depth, cache, converter_options, error_cls):
     return error_cls(err=js_val)
 
 
-error_converters = dict(
+error_to_py_converters = dict(
     Error=functools.partial(error_converter,error_cls=JsError),
     InternalError=functools.partial(error_converter,error_cls=JsInternalError),
     RangeError=functools.partial(error_converter,error_cls=JsRangeError),
@@ -100,7 +100,7 @@ error_converters = dict(
 )
 
 # register converters
-basic_converters = dict(
+basic_to_py_converters = dict(
     null=lambda x:None,
     undefined=lambda x,d,c,opts:None,
     string=lambda x,d,c,opts: internal.as_string(x),
@@ -131,10 +131,10 @@ basic_converters = dict(
     BigUint64Array =lambda x,d,c,opts: internal.as_numpy_array(x),
     Uint8ClampedArray=lambda x,d,c,opts: internal.as_numpy_array(x)
 )
-basic_converters = {**basic_converters, **error_converters}
+basic_to_py_converters = {**basic_to_py_converters, **error_to_py_converters}
 
 def register_converter(cls_name, converter):
-    basic_converters[cls_name] = converter
+    basic_to_py_converters[cls_name] = converter
 
 
 def to_py_json(js_val):
@@ -146,9 +146,9 @@ class JsToPyConverterOptions(object):
         self.json = json
 
         if converters is None:
-            converters = basic_converters
+            converters = basic_to_py_converters
         if default_converter is None:
-            default_converter = basic_converters['object']
+            default_converter = basic_to_py_converters['object']
 
         self.converters = converters
         self.default_converter = default_converter
@@ -174,8 +174,16 @@ def to_py(js_val,  depth=0, cache=None, converter_options=None):
 
 def error_to_py(err):
     default_converter=functools.partial(error_converter,error_cls=JsGenericError)
-    converter_options=JsToPyConverterOptions(converters=error_converters,default_converter=default_converter)
+    converter_options=JsToPyConverterOptions(converters=error_to_py_converters,default_converter=default_converter)
     return to_py(err, converter_options=converter_options)
+
+
+
+def py_to_js_array_converter(val, depth, cache, converter_options):
+    pass
+
+
+
 
 IN_BROWSER = not to_py(internal.module_property('_IS_NODE'))
 

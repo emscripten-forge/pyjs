@@ -329,3 +329,19 @@ Module['_IS_NODE'] = (typeof process === "object" && typeof require === "functio
 Module['_IS_BROWSER_WORKER_THREAD'] = (typeof importScripts === "function")
 
 Module['_IS_BROWSER_MAIN_THREAD'] = (typeof window === "object")
+
+
+function _wait_run_dependencies(){
+ const promise = new Promise((r) => {
+   Module.monitorRunDependencies = (n) => {
+     if (n === 0) {
+       r();
+     }
+   };
+ });
+ globalThis.Module.addRunDependency("dummy");
+ globalThis.Module.removeRunDependency("dummy");
+ return promise;
+}
+
+Module['_wait_run_dependencies'] = _wait_run_dependencies

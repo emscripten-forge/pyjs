@@ -91,6 +91,7 @@ def apply(js_function, args):
         raise error_to_py(err=err)
     return ret
 
+
 #)pycode"
 END_PYTHON_INIT
 

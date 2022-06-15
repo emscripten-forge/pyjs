@@ -4,8 +4,11 @@ BEGIN_PYTHON_INIT(pyjs_error_handling) R"pycode(#"
 
 # and object holding a javascript 
 class JsHolder(object):
-    def __init__(self, js_val):
-        self._js_val = js_val
+    def __init__(self, js_proxy):
+        self._js_proxy = js_proxy
+
+    def get_js_proxy(self):
+        return self._js_proxy
 
 class JsException(JsHolder, Exception):
     def __init__(self, err, message=None):            
@@ -18,7 +21,7 @@ class JsException(JsHolder, Exception):
 
         # i
         Exception.__init__(self, self.message)
-        JsHolder.__init__(self, js_val=err)
+        JsHolder.__init__(self, js_proxy=err)
 
 class JsGenericError(JsException):
     def __init__(self, err):

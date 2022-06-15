@@ -58,6 +58,7 @@ inline py::object wrap_result(em::val  wrapped_return_value)
     }
 }
 
+
 inline py::object wrap_void(em::val  wrapped_return_value)
 {
     const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
@@ -301,7 +302,6 @@ void export_js_proxy(py::module_ & m)
         .def(py::init([](py::object obj) {
             return std::unique_ptr<em::val>(new em::val(std::move(obj)));
         }))
-        
     ;
 
     py::implicitly_convertible<std::string, em::val>();

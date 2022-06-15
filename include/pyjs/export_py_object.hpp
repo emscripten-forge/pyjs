@@ -50,7 +50,7 @@ void export_py_object()
 
         // 1-ary
         .function("__call__", 
-            em::select_overload<em::val(py::object &, em::val  val)>(
+            em::select_overload<em::val(py::object &, em::val )>(
                 [](py::object & pyobject, em::val arg1) ->em::val
                 {
                     try{
@@ -89,6 +89,18 @@ void export_py_object()
                 }
             )
         )
+        .function("__usafe_void_val_val__", 
+            em::select_overload<void(py::object &, em::val, em::val)>(
+                [](py::object & pyobject, em::val val1, em::val val2) 
+                {
+                    {
+                        py::gil_scoped_acquire acquire;
+                        pyobject(val1, val2);
+                    }
+                }
+            )
+        )
+
 
 
     ;

@@ -426,8 +426,10 @@ if IN_BROWSER:
 
     asyncio.set_event_loop_policy(WebLoopPolicy())
     if not "PYJS_DONT_AUTOSTART_EVENT_LOOP" in os.environ:
-        asyncio.set_event_loop(WebLoop())
-
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(WebLoop())
 
 
 

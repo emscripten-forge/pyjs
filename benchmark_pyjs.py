@@ -19,7 +19,7 @@ def test_get_global_property(benchmark):
     benchmark(lambda : pyjs.js.Object)
 
 
-@pytest.mark.parametrize("n_args", range(20))
+@pytest.mark.parametrize("n_args", [4])
 def test_function_call(benchmark, n_args):
 
     args = [f"a{i}" for i in range(n_args)]
@@ -30,13 +30,10 @@ def test_function_call(benchmark, n_args):
 
 
 
-
-
-
 if __name__ == "__main__":
     import pyjs
     # start the tests
     os.environ["NO_COLOR"] = "1"
-    retcode = pytest.main(["-s","/script/benchmark_pyjs.py"])
+    retcode = pytest.main(["-s","/script/benchmark_pyjs.py","--benchmark-min-time=0.0005","--benchmark-warmup=on"])
     if retcode != 0:
         raise RuntimeError(f"pytest failed with return code: {retcode}")

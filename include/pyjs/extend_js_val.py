@@ -23,32 +23,14 @@ _PYJS_PROHIBITED_KEYS = set([_PYJS_JS_INFO_KEY, _PYJS_IPYMAGIC_KEY])
 
 def extend_val():
 
-    def getparent(self):
-        if (info := getattr(self, _PYJS_JS_INFO_KEY, None)) is not None:
-            return info._pyjs_parent
-        return None
-
-    def setparent(self, parent):
-        if (info := getattr(self, _PYJS_JS_INFO_KEY, None)) is not None:
-            info._pyjs_parent = parent
-        else:
-            self._pyjs_info = JsInfo(parent=parent)
-
-    def __val_call(self, *args):
-        if (parent:=getparent(self)) is not None:
-            bound = internal.val_bind(self, parent)
-            return apply(bound, args=args)
-        else:
-            return apply(self, args=args)
    
+    def __val_call(self, *args):
+        return apply(self, args=args)
 
+   
+    # move all of this impl to a single c++ call
     def val_getattr(self, key):
-        if key in _PYJS_PROHIBITED_KEYS:
-            raise AttributeError()
 
-        ts = type_str(self)
-        if internal.is_undefined_or_null(self):
-            raise AttributeError()
 
         ret,err,meta = internal.getattr_try_catch(self, key)
         if err is not None:
@@ -56,29 +38,29 @@ def extend_val():
 
         if ret is None:
             # typestring
-            if meta[0] == "null":
+            if meta == "0":
                 return None
             raise AttributeError(f"{self} has no attribute {key}")
-
-        if isinstance(ret, JsValue):
-            setparent(ret, self)
+        # if meta == "7":
+        #     if isinstance(ret, JsValue):
+        #         setparent(ret, self)
         return ret
 
 
     def val_setattr(self, key, val):
-        if key == _PYJS_JS_INFO_KEY:
-            super(JsValue, self).__setattr__(key,val)
-        else:
-            if (err := internal.setattr_try_catch(self, key, val)) is not None:
-                raise JsException(err)
+        # if key == _PYJS_JS_INFO_KEY:
+        #     super(JsValue, self).__setattr__(key,val)
+        # else:
+        if (err := internal.setattr_try_catch(self, key, val)) is not None:
+            raise error_to_py(err=rr)
 
 
     def val_setitem(self, key, val):
-        if key == _PYJS_JS_INFO_KEY:
-            super(JsValue, self).__setattr__(key,val)
-        else:
-            if (err := internal.setattr_try_catch(self, key, val)) is not None:
-                raise error_to_py(err=rr)
+        # if key == _PYJS_JS_INFO_KEY:
+        #     super(JsValue, self).__setattr__(key,val)
+        # else:
+        if (err := internal.setattr_try_catch(self, key, val)) is not None:
+            raise error_to_py(err=rr)
 
     def val_next(self):
         res = self.next()

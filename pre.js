@@ -11,10 +11,10 @@ function _make_error(e){
 
 function _get_type_string(instance){
     if(instance === null){
-        return "null"
+        return "0"
     }
     else if(instance === undefined){
-        return "undefined"
+        return "1"
     }
     else
     {
@@ -27,30 +27,30 @@ function _get_type_string(instance){
             {
                 return constructor.name
             }
-            return "object"
+            return "2"
         }
         else if(type === "string")
         {
-            return "string"
+            return "3"
         }
         else if(type === "number")
         {
             if(Number.isInteger(instance))
             {
-                return "integer"
+                return "4"
             }
             else
             {
-                return "float"
+                return "5"
             }
         }
         else if(type === "boolean")
         {
-            return "boolean"
+            return "6"
         }
         else if(type === "function")
         {
-            return "function"
+            return "7"
         }
         else
         {
@@ -74,11 +74,17 @@ function _wrap_return_value(raw_ret){
         ret : raw_ret,
         has_err: false,
         has_ret: !is_none,
-        type_string: _get_type_string(raw_ret),
-        is_object: (typeof raw_ret == "object") && !is_none
+        type_string: _get_type_string(raw_ret)
     }
     return wret;
 }
+
+
+
+
+
+
+
 function _wrap_catched_error(err){
     return {
         err : err,
@@ -88,9 +94,9 @@ function _wrap_catched_error(err){
 }
 
 
-Module['_apply_try_catch'] =  function(val, self, args){
+Module['_apply_try_catch'] =  function(obj, self, args){
     try {
-        return _wrap_return_value(val.apply(self, args))
+        return _wrap_return_value(obj.apply(self, args))
     }
     catch(e){
         return _wrap_catched_error(e)
@@ -98,7 +104,15 @@ Module['_apply_try_catch'] =  function(val, self, args){
 }
 Module['_getattr_try_catch'] =  function(obj, property_name){
     try {
-        return _wrap_return_value(obj[property_name])
+        let ret = obj[property_name]
+        if(typeof ret === "function")
+        {
+            return _wrap_return_value(ret.bind(obj))
+        }
+        else
+        {
+            return _wrap_return_value(ret)
+        }
     }
     catch(e){
         return _wrap_catched_error(e)
@@ -191,62 +205,62 @@ Module['_iter'] = function dir(x) {
 Module['_get_type_string'] = _get_type_string
 
 
-Module['_get_type_info'] = function(instance){
+// Module['_get_type_info'] = function(instance){
 
-    // let info = {
-    //     is_object: false,
-    //     is_class: false
-    // }
+//     // let info = {
+//     //     is_object: false,
+//     //     is_class: false
+//     // }
 
-    if(instance === null){
-        return "null"
-    }
-    else if(instance === undefined){
-        return "undefined"
-    }
-    else
-    {
-        const type = typeof instance;
+//     if(instance === null){
+//         return "null"
+//     }
+//     else if(instance === undefined){
+//         return "undefined"
+//     }
+//     else
+//     {
+//         const type = typeof instance;
         
-        if( type === "object")
-        {   
-            const constructor = instance.constructor;
-            if( constructor !== undefined)
-            {
-                return constructor.name
-            }
-            return "object"
-        }
-        else if(type === "string")
-        {
-            return "string"
-        }
-        else if(type === "number")
-        {
-            if(Number.isInteger(instance))
-            {
-                return "integer"
-            }
-            else
-            {
-                return "float"
-            }
-        }
-        else if(type === "boolean")
-        {
-            return "boolean"
-        }
-        else if(type === "function")
-        {
-            return "function"
-        }
-        else
-        {
-            console.log(instance, "is unhandled type")
-            throw Error("internal error -- this should be unreachable")
-        }
-    }
-}
+//         if( type === "object")
+//         {   
+//             const constructor = instance.constructor;
+//             if( constructor !== undefined)
+//             {
+//                 return constructor.name
+//             }
+//             return "object"
+//         }
+//         else if(type === "string")
+//         {
+//             return "string"
+//         }
+//         else if(type === "number")
+//         {
+//             if(Number.isInteger(instance))
+//             {
+//                 return "integer"
+//             }
+//             else
+//             {
+//                 return "float"
+//             }
+//         }
+//         else if(type === "boolean")
+//         {
+//             return "boolean"
+//         }
+//         else if(type === "function")
+//         {
+//             return "function"
+//         }
+//         else
+//         {
+//             console.log(instance, "is unhandled type")
+//             throw Error("internal error -- this should be unreachable")
+//         }
+//     }
+// }
 
 
 

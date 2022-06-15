@@ -36,10 +36,7 @@ inline py::object wrap_result(em::val  wrapped_return_value)
             py::tuple ret_tuple =  py::make_tuple(
                 implicit_to_py(wrapped_return_value["ret"],type_string), 
                 py::none(), 
-                py::make_tuple(
-                    type_string,
-                    wrapped_return_value["is_object"].as<bool>()
-                )
+                type_string
             );
             return ret_tuple;
         }
@@ -48,10 +45,7 @@ inline py::object wrap_result(em::val  wrapped_return_value)
             py::tuple ret_tuple =  py::make_tuple(
                 py::none(), 
                 py::none(),
-                py::make_tuple(
-                    type_string,  // we need to distinguish "null" vs "undefined"
-                    false
-                )
+                type_string
             );
             return ret_tuple;
         }

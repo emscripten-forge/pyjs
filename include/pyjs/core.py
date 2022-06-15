@@ -83,13 +83,17 @@ def _make_js_args(args):
     return js_array_args
 
 
-def apply(js_function, args):
+def apply(js_function, args, self=None):
     js_array_args = _make_js_args(args)
-    applyTryCatch = internal.module_property('_apply_try_catch')
-    ret,err,meta  = internal.apply_try_catch(js_function, js_null(), js_array_args)
+    if self is None:
+        self = js_null()
+    # applyTryCatch = internal.module_property('_apply_try_catch')
+    ret,err,meta  = internal.apply_try_catch(js_function, self, js_array_args)
     if err is not None:
         raise error_to_py(err=err)
     return ret
+
+
 
 
 #)pycode"

@@ -27,40 +27,6 @@ def extend_val():
     def __val_call(self, *args):
         return apply(self, args=args)
 
-   
-    # move all of this impl to a single c++ call
-    def val_getattr(self, key):
-
-
-        ret,err,meta = internal.getattr_try_catch(self, key)
-        if err is not None:
-            raise error_to_py(err=rr)
-
-        if ret is None:
-            # typestring
-            if meta == "0":
-                return None
-            raise AttributeError(f"{self} has no attribute {key}")
-        # if meta == "7":
-        #     if isinstance(ret, JsValue):
-        #         setparent(ret, self)
-        return ret
-
-
-    def val_setattr(self, key, val):
-        # if key == _PYJS_JS_INFO_KEY:
-        #     super(JsValue, self).__setattr__(key,val)
-        # else:
-        if (err := internal.setattr_try_catch(self, key, val)) is not None:
-            raise error_to_py(err=rr)
-
-
-    def val_setitem(self, key, val):
-        # if key == _PYJS_JS_INFO_KEY:
-        #     super(JsValue, self).__setattr__(key,val)
-        # else:
-        if (err := internal.setattr_try_catch(self, key, val)) is not None:
-            raise error_to_py(err=rr)
 
     def val_next(self):
         res = self.next()
@@ -73,24 +39,23 @@ def extend_val():
     def val_typeof(s):
         return _module._typeof(s)
 
-    def val_to_future(self):
+    def val_to_future(self, callback=None):
         future = asyncio.Future()
 
-        def _then(val):
+        def _then(val, cb):
+            if cb is not None:
+                val = cb(val)
             future.set_result(val)
 
         def _catch(str_err):
             str_err = to_py(str_err)
             future.set_exception(RuntimeError(str_err))
 
-        _module._set_promise_then_catch(self, JsValue(_then), JsValue(_catch))
+        binded_then = functools.partial(_then, cb=callback)
+        _module._set_promise_then_catch(self, JsValue(binded_then), JsValue(_catch))
         return future
 
     JsValue.__call__ = __val_call
-    JsValue.__getitem__ = val_getattr
-    JsValue.__getattr__ = val_getattr
-    JsValue.__setattr__ = val_setattr
-    JsValue.__setitem__ = val_setitem
 
     JsValue._asstr_unsafe = lambda self:internal.to_string(self)
     JsValue.__str__ = lambda self : self.toString()
@@ -109,6 +74,7 @@ def extend_val():
     JsValue.__delitem__ = lambda s,k: s.delete(k)
     JsValue._to_future = val_to_future
     JsValue.__await__ = lambda s :s._to_future().__await__()
+    JsValue.jcall = lambda s,*args : japply(s, args)
 
 
 extend_val()

@@ -9,12 +9,21 @@ function _make_error(e){
     return err_obj
 }
 
+const _NULL = "0"
+const _UNDEFINED = "1"
+const _OBJECT = "2"
+const _STR = "3"
+const _INT = "4"
+const _FLOAT = "5"
+const _BOOL = "6"
+const _FUNCTION = "7"
+
 function _get_type_string(instance){
     if(instance === null){
-        return "0"
+        return _NULL
     }
     else if(instance === undefined){
-        return "1"
+        return _UNDEFINED
     }
     else
     {
@@ -27,30 +36,30 @@ function _get_type_string(instance){
             {
                 return constructor.name
             }
-            return "2"
+            return _OBJECT
         }
         else if(type === "string")
         {
-            return "3"
+            return _STR
         }
         else if(type === "number")
         {
             if(Number.isInteger(instance))
             {
-                return "4"
+                return _INT
             }
             else
             {
-                return "5"
+                return _FLOAT
             }
         }
         else if(type === "boolean")
         {
-            return "6"
+            return _BOOL
         }
         else if(type === "function")
         {
-            return "7"
+            return _FUNCTION
         }
         else
         {
@@ -80,6 +89,22 @@ function _wrap_return_value(raw_ret){
 }
 
 
+function _wrap_jreturn_value(raw_ret){
+    if(raw_ret === undefined)
+    {
+        return {
+            ret : "",
+            has_err: false
+        }
+    }
+    else
+    {
+        return {
+            ret : JSON.stringify(raw_ret),
+            has_err: false
+        }
+    }
+}
 
 
 
@@ -94,14 +119,48 @@ function _wrap_catched_error(err){
 }
 
 
-Module['_apply_try_catch'] =  function(obj, self, args){
+Module['_apply_try_catch'] =  function(obj, args){
     try {
-        return _wrap_return_value(obj.apply(self, args))
+        return _wrap_return_value(obj(...args));
     }
     catch(e){
-        return _wrap_catched_error(e)
+        return _wrap_catched_error(e);
     }
 }
+
+
+
+Module['_gapply_try_catch'] =  function(obj, args, jin, jout){
+    try {
+        if(jin){
+            args = JSON.parse(args)
+        }
+        if(jout){
+            return _wrap_jreturn_value(obj(...args));
+        }
+        else{
+            return _wrap_return_value(obj(...args));
+        }
+    }
+    catch(e){
+        return _wrap_catched_error(e);
+    }
+}
+
+
+
+
+Module['_japply_try_catch'] =  function(obj, jargs){
+    try {
+        args = JSON.parse(jargs)
+        return _wrap_return_value(obj(...args));
+    }
+    catch(e){
+        return _wrap_catched_error(e);
+    }
+}
+
+
 Module['_getattr_try_catch'] =  function(obj, property_name){
     try {
         let ret = obj[property_name]

@@ -83,16 +83,31 @@ def _make_js_args(args):
     return js_array_args
 
 
-def apply(js_function, args, self=None):
+def apply(js_function, args):
     js_array_args = _make_js_args(args)
-    if self is None:
-        self = js_null()
-    # applyTryCatch = internal.module_property('_apply_try_catch')
-    ret,err,meta  = internal.apply_try_catch(js_function, self, js_array_args)
-    if err is not None:
-        raise error_to_py(err=err)
+    ret,meta  = internal.apply_try_catch(js_function, js_array_args)
     return ret
 
+
+def japply(js_function, args):
+    sargs = json.dumps(args)
+    ret,meta  = internal.japply_try_catch(js_function, sargs)
+    return ret
+
+
+def gapply(js_function, args, jin=True, jout=True):
+    if jin:
+        args = json.dumps(args)
+    else:
+        args = _make_js_args(args)
+    ret = internal.gapply_try_catch(js_function, args, jin, jout)
+    if jout:
+        if ret == "":
+            return None
+        else:
+            return json.loads(ret)
+    else:
+        return ret
 
 
 

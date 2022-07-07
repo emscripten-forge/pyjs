@@ -64,6 +64,8 @@ async def playwright_main(page_url, workdir, script_basename):
             browser = await p.chromium.launch(headless=False, slow_mo=100000)
         page = await browser.new_page()
 
+        # 1 min = 60 * 1000 ms
+        page.set_default_timeout(60 * 1000)
         async def handle_worker(worker):
             test_output = await worker.evaluate_handle(
                 f"""async () => 

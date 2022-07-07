@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <filesystem>
+#include <sstream>
 
 #include <pyjs/convert.hpp>
 
@@ -16,55 +17,85 @@ namespace em = emscripten;
 namespace pyjs
 {
 
+inline py::object wrap_result(em::val  wrapped_return_value, const bool has_err)
+{
+    
+
+    if(has_err)
+    {
+        py::module pyjs = py::module::import("pyjs");
+        pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
+
+    }
+    const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
+    const auto type_string = wrapped_return_value["type_string"].as<std::string>();
+    if (has_ret)
+    {
+        py::tuple ret_tuple =  py::make_tuple(
+            implicit_to_py(wrapped_return_value["ret"],type_string), 
+            type_string
+        );
+        return ret_tuple;
+    }
+    else
+    {
+        py::tuple ret_tuple =  py::make_tuple(
+            py::none(), 
+            type_string
+        );
+        return ret_tuple;
+    }
+    
+}
 
 inline py::object wrap_result(em::val  wrapped_return_value)
 {
-    const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
+   
+    const bool has_err = wrapped_return_value["has_err"].as<bool>();
+    return wrap_result(wrapped_return_value, has_err);
+    
+}
+
+
+
+inline void wrap_void(em::val  wrapped_return_value)
+{
     const bool has_err = wrapped_return_value["has_err"].as<bool>();
 
     if(has_err)
     {
-
-        py::tuple ret_tuple =  py::make_tuple(
-            py::none(), wrapped_return_value["err"], py::none());
-        return ret_tuple;
-    }
-    else{
-        const auto type_string = wrapped_return_value["type_string"].as<std::string>();
-        if (has_ret)
-        {
-            py::tuple ret_tuple =  py::make_tuple(
-                implicit_to_py(wrapped_return_value["ret"],type_string), 
-                py::none(), 
-                type_string
-            );
-            return ret_tuple;
-        }
-        else
-        {
-            py::tuple ret_tuple =  py::make_tuple(
-                py::none(), 
-                py::none(),
-                type_string
-            );
-            return ret_tuple;
-        }
+        py::module pyjs = py::module::import("pyjs");
+        pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
     }
 }
 
 
-inline py::object wrap_void(em::val  wrapped_return_value)
+inline py::object getattr(em::val * self, em::val * key)
 {
+    em::val wrapped_return_value = em::val::module_property("_getattr_try_catch")(*self, *key);
+
     const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
     const bool has_err = wrapped_return_value["has_err"].as<bool>();
 
     if(has_err)
     {
-        return py::cast(wrapped_return_value["err"]);
+        py::module pyjs = py::module::import("pyjs");
+        pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
     }
-    else{
+    
+    const auto type_string = wrapped_return_value["type_string"].as<std::string>();
+    if(type_string == "0")
+    {
         return py::none();
     }
+    else if(type_string == "1")
+    {
+        std::stringstream ss;
+        ss<<"has no attribute/key ";
+        throw pybind11::attribute_error(ss.str());
+    }
+    return implicit_to_py(wrapped_return_value["ret"],type_string);
+
 }
 
 void export_js_proxy(py::module_ & m)
@@ -85,12 +116,41 @@ void export_js_proxy(py::module_ & m)
 
     m_internal.def("apply_try_catch",[](
         em::val * js_function,
-        em::val * self,
         em::val * args
     ) -> py::object {
-        return wrap_result(em::val::module_property("_apply_try_catch")(*js_function, *self, *args));
+        return wrap_result(em::val::module_property("_apply_try_catch")(*js_function, *args));
     });
 
+    m_internal.def("japply_try_catch",[](
+        em::val * js_function,
+        em::val * jargs
+    ) -> py::object {
+        return wrap_result(em::val::module_property("_japply_try_catch")(*js_function, *jargs));
+    });
+
+    m_internal.def("gapply_try_catch",[](
+        em::val * js_function,
+        em::val * jargs,
+        bool jin,
+        bool jout
+    ) -> py::object 
+    {
+        em::val wrapped_return_value = em::val::module_property("_gapply_try_catch")(*js_function, *jargs, jin, jout);
+        const bool has_err = wrapped_return_value["has_err"].as<bool>();
+        if(has_err)
+        {
+            py::module pyjs = py::module::import("pyjs");
+            pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
+
+        }
+        if(jout){
+            em::val out = wrapped_return_value["ret"];
+            return py::cast(out.as<std::string>());
+        }
+        else{
+            return wrap_result(wrapped_return_value, has_err);
+        }
+    });
 
     m_internal.def("getattr_try_catch",[](
         em::val * obj,
@@ -104,8 +164,8 @@ void export_js_proxy(py::module_ & m)
         em::val * obj,
         em::val * key,
         em::val * value
-    ) -> py::object {
-       return wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value));
+    ) {
+       wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value));
     });
 
 
@@ -274,7 +334,8 @@ void export_js_proxy(py::module_ & m)
        return v->call<std::string>("toString");
     });
     // this class is heavy extended on the python side
-    py::class_<em::val>(m, "JsValue",  py::dynamic_attr())
+    // py::class_<em::val>(m, "JsValue",  py::dynamic_attr())
+    py::class_<em::val>(m, "JsValue")//,  py::dynamic_attr())
 
         .def(py::init([](std::string arg) {
             return std::unique_ptr<em::val>(new em::val(arg.c_str()));
@@ -296,7 +357,24 @@ void export_js_proxy(py::module_ & m)
         .def(py::init([](py::object obj) {
             return std::unique_ptr<em::val>(new em::val(std::move(obj)));
         }))
-    ;
+
+        .def("__getattr__", &getattr)
+        .def("__getitem__", &getattr)
+        .def("__setattr__",[](
+            em::val * obj,
+            em::val * key,
+            em::val * value
+        ) {
+           wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value));
+        })
+        .def("__setitem__",[](
+            em::val * obj,
+            em::val * key,
+            em::val * value
+        ) {
+           wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value));
+        })
+        ;
 
     py::implicitly_convertible<std::string, em::val>();
     py::implicitly_convertible<float, em::val>();

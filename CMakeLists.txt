@@ -5,6 +5,15 @@ project(pyjs VERSION 0.7.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNNER "Build runner" OFF)
 
+include(CheckCXXCompilerFlag)
+CHECK_CXX_COMPILER_FLAG("-std=c++17" HAS_CPP17_FLAG)
+
+if (HAS_CPP17_FLAG)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+else ()
+    message(FATAL_ERROR "Unsupported compiler -- xeus requires C++17 support!")
+endif ()
+
 set(PYJS_HEADERS
     include/pyjs/convert.hpp
     include/pyjs/export_js_module.hpp
@@ -17,8 +26,7 @@ set(PYJS_HEADERS
     include/pyjs/extend_js_val.py
     include/pyjs/webloop.py
     include/pyjs/error_handling.py
-    pre.js
-)
+    pre.js)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -85,6 +93,7 @@ if(BUILD_RUNNER)
         PUBLIC "SHELL: -fwasm-exceptions"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
+        PUBLIC "SHELL: -flto"
     )
 
     target_link_options(pyjs_main
@@ -110,6 +119,7 @@ if(BUILD_RUNNER)
         PUBLIC "SHELL: -s LZ4=1"
         PUBLIC "SHELL: --post-js post.js"
         PUBLIC "SHELL: --pre-js pre.js"
+        PUBLIC "SHELL: -flto"
     )
 
 

@@ -171,11 +171,16 @@ def to_py(js_val,  depth=0, cache=None, converter_options=None):
     return converters.get(ts, default_converter)(js_val, depth, cache, converter_options)
 
 
+
+
+
 def error_to_py(err):
     default_converter=functools.partial(error_converter,error_cls=JsGenericError)
     converter_options=JsToPyConverterOptions(converters=error_to_py_converters,default_converter=default_converter)
     return to_py(err, converter_options=converter_options)
 
+def error_to_py_and_raise(err):
+    raise error_to_py(err)
 
 
 def py_to_js_array_converter(val, depth, cache, converter_options):

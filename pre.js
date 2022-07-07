@@ -9,12 +9,21 @@ function _make_error(e){
     return err_obj
 }
 
+const _NULL = "0"
+const _UNDEFINED = "1"
+const _OBJECT = "2"
+const _STR = "3"
+const _INT = "4"
+const _FLOAT = "5"
+const _BOOL = "6"
+const _FUNCTION = "7"
+
 function _get_type_string(instance){
     if(instance === null){
-        return "null"
+        return _NULL
     }
     else if(instance === undefined){
-        return "undefined"
+        return _UNDEFINED
     }
     else
     {
@@ -27,30 +36,30 @@ function _get_type_string(instance){
             {
                 return constructor.name
             }
-            return "object"
+            return _OBJECT
         }
         else if(type === "string")
         {
-            return "string"
+            return _STR
         }
         else if(type === "number")
         {
             if(Number.isInteger(instance))
             {
-                return "integer"
+                return _INT
             }
             else
             {
-                return "float"
+                return _FLOAT
             }
         }
         else if(type === "boolean")
         {
-            return "boolean"
+            return _BOOL
         }
         else if(type === "function")
         {
-            return "function"
+            return _FUNCTION
         }
         else
         {
@@ -74,11 +83,33 @@ function _wrap_return_value(raw_ret){
         ret : raw_ret,
         has_err: false,
         has_ret: !is_none,
-        type_string: _get_type_string(raw_ret),
-        is_object: (typeof raw_ret == "object") && !is_none
+        type_string: _get_type_string(raw_ret)
     }
     return wret;
 }
+
+
+function _wrap_jreturn_value(raw_ret){
+    if(raw_ret === undefined)
+    {
+        return {
+            ret : "",
+            has_err: false
+        }
+    }
+    else
+    {
+        return {
+            ret : JSON.stringify(raw_ret),
+            has_err: false
+        }
+    }
+}
+
+
+
+
+
 function _wrap_catched_error(err){
     return {
         err : err,
@@ -88,17 +119,59 @@ function _wrap_catched_error(err){
 }
 
 
-Module['_apply_try_catch'] =  function(val, self, args){
+Module['_apply_try_catch'] =  function(obj, args){
     try {
-        return _wrap_return_value(val.apply(self, args))
+        return _wrap_return_value(obj(...args));
     }
     catch(e){
-        return _wrap_catched_error(e)
+        return _wrap_catched_error(e);
     }
 }
+
+
+
+Module['_gapply_try_catch'] =  function(obj, args, jin, jout){
+    try {
+        if(jin){
+            args = JSON.parse(args)
+        }
+        if(jout){
+            return _wrap_jreturn_value(obj(...args));
+        }
+        else{
+            return _wrap_return_value(obj(...args));
+        }
+    }
+    catch(e){
+        return _wrap_catched_error(e);
+    }
+}
+
+
+
+
+Module['_japply_try_catch'] =  function(obj, jargs){
+    try {
+        args = JSON.parse(jargs)
+        return _wrap_return_value(obj(...args));
+    }
+    catch(e){
+        return _wrap_catched_error(e);
+    }
+}
+
+
 Module['_getattr_try_catch'] =  function(obj, property_name){
     try {
-        return _wrap_return_value(obj[property_name])
+        let ret = obj[property_name]
+        if(typeof ret === "function")
+        {
+            return _wrap_return_value(ret.bind(obj))
+        }
+        else
+        {
+            return _wrap_return_value(ret)
+        }
     }
     catch(e){
         return _wrap_catched_error(e)
@@ -191,62 +264,62 @@ Module['_iter'] = function dir(x) {
 Module['_get_type_string'] = _get_type_string
 
 
-Module['_get_type_info'] = function(instance){
+// Module['_get_type_info'] = function(instance){
 
-    // let info = {
-    //     is_object: false,
-    //     is_class: false
-    // }
+//     // let info = {
+//     //     is_object: false,
+//     //     is_class: false
+//     // }
 
-    if(instance === null){
-        return "null"
-    }
-    else if(instance === undefined){
-        return "undefined"
-    }
-    else
-    {
-        const type = typeof instance;
+//     if(instance === null){
+//         return "null"
+//     }
+//     else if(instance === undefined){
+//         return "undefined"
+//     }
+//     else
+//     {
+//         const type = typeof instance;
         
-        if( type === "object")
-        {   
-            const constructor = instance.constructor;
-            if( constructor !== undefined)
-            {
-                return constructor.name
-            }
-            return "object"
-        }
-        else if(type === "string")
-        {
-            return "string"
-        }
-        else if(type === "number")
-        {
-            if(Number.isInteger(instance))
-            {
-                return "integer"
-            }
-            else
-            {
-                return "float"
-            }
-        }
-        else if(type === "boolean")
-        {
-            return "boolean"
-        }
-        else if(type === "function")
-        {
-            return "function"
-        }
-        else
-        {
-            console.log(instance, "is unhandled type")
-            throw Error("internal error -- this should be unreachable")
-        }
-    }
-}
+//         if( type === "object")
+//         {   
+//             const constructor = instance.constructor;
+//             if( constructor !== undefined)
+//             {
+//                 return constructor.name
+//             }
+//             return "object"
+//         }
+//         else if(type === "string")
+//         {
+//             return "string"
+//         }
+//         else if(type === "number")
+//         {
+//             if(Number.isInteger(instance))
+//             {
+//                 return "integer"
+//             }
+//             else
+//             {
+//                 return "float"
+//             }
+//         }
+//         else if(type === "boolean")
+//         {
+//             return "boolean"
+//         }
+//         else if(type === "function")
+//         {
+//             return "function"
+//         }
+//         else
+//         {
+//             console.log(instance, "is unhandled type")
+//             throw Error("internal error -- this should be unreachable")
+//         }
+//     }
+// }
 
 
 

@@ -99,10 +99,10 @@ def test_callable():
 
 
 def test_interal_type_str():
-    assert pyjs.internal.get_type_string(pyjs.JsValue(True)) == "boolean"
-    assert pyjs.internal.get_type_string(pyjs.JsValue(1)) == "integer"
-    assert pyjs.internal.get_type_string(pyjs.JsValue(1.5)) == "float"
-    assert pyjs.internal.get_type_string(pyjs.JsValue("1")) == "string"
+    assert pyjs.internal.get_type_string(pyjs.JsValue(True)) == "6"
+    assert pyjs.internal.get_type_string(pyjs.JsValue(1)) == "4"
+    assert pyjs.internal.get_type_string(pyjs.JsValue(1.5)) == "5"
+    assert pyjs.internal.get_type_string(pyjs.JsValue("1")) == "3"
     assert pyjs.internal.get_type_string(pyjs.JsValue([1,2,3])) == "pyobject"
 
 @pytest.mark.parametrize("test_input,expected_type,expected_value,comperator", [
@@ -415,11 +415,25 @@ def test_js_execptions():
 
 
 
+def test_int_container():
+    from pyjs.js import Function
+
+    jsf = Function("""
+        return [1,1]
+    """)
+    js_obj = jsf()
+    print("the obj",js_obj)
+    py_obj = pyjs.to_py(js_obj)
 
 if __name__ == "__main__":
     import pyjs
     # start the tests
     os.environ["NO_COLOR"] = "1"
-    retcode = pytest.main(["-s","/script/test_pyjs.py"])
+
+    specific_test = None
+    args = ["-s","/script/test_pyjs.py"]
+    if specific_test is not None:
+        args += ["-k",str(specific_test)]
+    retcode = pytest.main(args)
     if retcode != 0:
         raise RuntimeError(f"pytest failed with return code: {retcode}")

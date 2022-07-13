@@ -11,7 +11,7 @@ CHECK_CXX_COMPILER_FLAG("-std=c++17" HAS_CPP17_FLAG)
 if (HAS_CPP17_FLAG)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 else ()
-    message(FATAL_ERROR "Unsupported compiler -- xeus requires C++17 support!")
+    message(FATAL_ERROR "Unsupported compiler -- pyjs requires C++17 support!")
 endif ()
 
 set(PYJS_HEADERS
@@ -163,7 +163,7 @@ set(PYJS_CMAKECONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 set(PYJS_CONFIG_CODE "")
 
 
-# Configure 'xeus-pythonConfig.cmake' for a build tree
+# Configure 'pyjs-pythonConfig.cmake' for a build tree
 set(PYJS_CONFIG_CODE "####### Expanded from \@PYJS_CONFIG_CODE\@ #######\n")
 set(PYJS_CONFIG_CODE "${PYJS_CONFIG_CODE}set(CMAKE_MODULE_PATH \"${CMAKE_CURRENT_SOURCE_DIR}/cmake;\${CMAKE_MODULE_PATH}\")\n")
 set(PYJS_CONFIG_CODE "${PYJS_CONFIG_CODE}##################################################")
@@ -171,7 +171,7 @@ configure_package_config_file(${PROJECT_NAME}Config.cmake.in
                               "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
                               INSTALL_DESTINATION ${PROJECT_BINARY_DIR})
 
-# Configure 'xeus-pythonConfig.cmake' for an install tree
+# Configure 'pyjs-pythonConfig.cmake' for an install tree
 set(PYJS_CONFIG_CODE "")
 
 

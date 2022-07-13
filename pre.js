@@ -264,64 +264,6 @@ Module['_iter'] = function dir(x) {
 Module['_get_type_string'] = _get_type_string
 
 
-// Module['_get_type_info'] = function(instance){
-
-//     // let info = {
-//     //     is_object: false,
-//     //     is_class: false
-//     // }
-
-//     if(instance === null){
-//         return "null"
-//     }
-//     else if(instance === undefined){
-//         return "undefined"
-//     }
-//     else
-//     {
-//         const type = typeof instance;
-        
-//         if( type === "object")
-//         {   
-//             const constructor = instance.constructor;
-//             if( constructor !== undefined)
-//             {
-//                 return constructor.name
-//             }
-//             return "object"
-//         }
-//         else if(type === "string")
-//         {
-//             return "string"
-//         }
-//         else if(type === "number")
-//         {
-//             if(Number.isInteger(instance))
-//             {
-//                 return "integer"
-//             }
-//             else
-//             {
-//                 return "float"
-//             }
-//         }
-//         else if(type === "boolean")
-//         {
-//             return "boolean"
-//         }
-//         else if(type === "function")
-//         {
-//             return "function"
-//         }
-//         else
-//         {
-//             console.log(instance, "is unhandled type")
-//             throw Error("internal error -- this should be unreachable")
-//         }
-//     }
-// }
-
-
 
 Module['_create_once_callable'] = function(py_object){
 

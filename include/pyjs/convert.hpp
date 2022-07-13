@@ -8,11 +8,6 @@ namespace py = pybind11;
 namespace em = emscripten;
 
 
-
-
-
-
-
 namespace pyjs
 {
 
@@ -26,8 +21,6 @@ enum class JsType : char {
     JS_BOOL = '6',
     JS_FUNCTION = '7'
 };
-
-
 
 
 inline bool instanceof(em::val instance, const std::string & cls_name){

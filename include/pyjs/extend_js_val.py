@@ -17,9 +17,9 @@ class JsInfo(object):
     def __init__(self, parent=None):
         self._pyjs_parent = parent
 
-_PYJS_JS_INFO_KEY  = '_pyjs_info'
-_PYJS_IPYMAGIC_KEY =  "_ipython_canary_method_should_not_exist_"
-_PYJS_PROHIBITED_KEYS = set([_PYJS_JS_INFO_KEY, _PYJS_IPYMAGIC_KEY])
+# _PYJS_JS_INFO_KEY  = '_pyjs_info'
+# _PYJS_IPYMAGIC_KEY =  "_ipython_canary_method_should_not_exist_"
+# _PYJS_PROHIBITED_KEYS = set([_PYJS_JS_INFO_KEY, _PYJS_IPYMAGIC_KEY])
 
 def extend_val():
 

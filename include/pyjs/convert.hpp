@@ -7,8 +7,27 @@
 namespace py = pybind11;
 namespace em = emscripten;
 
+
+
+
+
+
+
 namespace pyjs
 {
+
+enum class JsType : char {
+    JS_NULL = '0',
+    JS_UNDEFINED = '1',
+    JS_OBJECT = '2',
+    JS_STR = '3',
+    JS_INT = '4',
+    JS_FLOAT = '5',
+    JS_BOOL = '6',
+    JS_FUNCTION = '7'
+};
+
+
 
 
 inline bool instanceof(em::val instance, const std::string & cls_name){
@@ -52,9 +71,6 @@ py::object typed_array_to_numpy_array_impl(em::val js_array){
 
     return np_array;
 }
-
-
-
 
 
 inline py::object  typed_array_to_numpy_array(em::val js_array){
@@ -109,7 +125,6 @@ inline py::object  typed_array_to_numpy_array(em::val js_array){
 }
 
 
-
 inline py::object implicit_to_py(
     em::val val,
     const std::string & type_string
@@ -120,30 +135,30 @@ inline py::object implicit_to_py(
         const char s = type_string[0];
         switch(s)
         {
-            case '0':
+            case static_cast<char>(JsType::JS_NULL):
             {
                 return  py::none();
             }
-            case '1':
+            case static_cast<char>(JsType::JS_UNDEFINED):
             {
                 return  py::none();
             }
             // 2 is object
-            case '3':
+            case static_cast<char>(JsType::JS_STR):
             {
                 return py::cast(val.as<std::string>());
             }
-            case '4':
+            case static_cast<char>(JsType::JS_INT):
             {
                 const auto double_number = val.as<double>();
                 const auto rounded_double_number = std::round(double_number);
                 return py::cast(int(rounded_double_number));
             }
-            case '5':
+            case static_cast<char>(JsType::JS_FLOAT):
             {
                 return py::cast(val.as<double>());
             }
-            case '6':
+            case static_cast<char>(JsType::JS_BOOL):
             {
                 return py::cast(val.as<bool>());
             }
@@ -157,36 +172,9 @@ inline py::object implicit_to_py(
     {
         return py::cast(val);
     }
-
-
-
-    // if(type_string == "null" || type_string == "undefined")
-    // {
-    //     return py::none();
-    // }
-    // else if(type_string == "string")
-    // {
-    //     return py::cast(val.as<std::string>());
-    // }
-    // else if(type_string == "boolean")
-    // {
-    //     return py::cast(val.as<bool>());
-    // }
-    // else if(type_string == "float")
-    // {
-    //     return py::cast(val.as<double>());
-    // }
-    // else if(type_string == "integer")
-    // {
-    //     const auto double_number = val.as<double>();
-    //     const auto rounded_double_number = std::round(double_number);
-    //     return py::cast(int(rounded_double_number));
-    // }
-    // else
-    // {
-    //     return py::cast(val);
-    // }
 }
 
 
 }
+
+

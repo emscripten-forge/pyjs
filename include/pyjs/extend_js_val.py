@@ -21,6 +21,13 @@ _PYJS_JS_INFO_KEY  = '_pyjs_info'
 _PYJS_IPYMAGIC_KEY =  "_ipython_canary_method_should_not_exist_"
 _PYJS_PROHIBITED_KEYS = set([_PYJS_JS_INFO_KEY, _PYJS_IPYMAGIC_KEY])
 
+try:
+    print("try thyis")
+    a = _n_unresolved[0]
+    print("a",a)
+except:
+    _n_unresolved = [0]
+
 def extend_val():
 
    
@@ -40,16 +47,23 @@ def extend_val():
         return _module._typeof(s)
 
     def val_to_future(self, callback=None):
+        print("val to future",  _n_unresolved[0])
         future = asyncio.Future()
+        _n_unresolved[0] = _n_unresolved[0] + 1
 
         def _then(val, cb):
             if cb is not None:
                 val = cb(val)
+
             future.set_result(val)
+            print("THEN!")
+            _n_unresolved[0] = _n_unresolved[0] - 1
 
         def _catch(str_err):
+            print("CATCh")
             str_err = to_py(str_err)
             future.set_exception(RuntimeError(str_err))
+            _n_unresolved[0] = _n_unresolved[0] - 1
 
         binded_then = functools.partial(_then, cb=callback)
         _module._set_promise_then_catch(self, JsValue(binded_then), JsValue(_catch))

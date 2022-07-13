@@ -21,6 +21,8 @@ set(PYJS_HEADERS
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
     include/pyjs/macro_magic.hpp
+    include/pyjs/export_mamba.hpp
+    include/pyjs/mpool.hpp
     include/pyjs/convert.py
     include/pyjs/core.py
     include/pyjs/extend_js_val.py
@@ -39,6 +41,21 @@ if (NOT TARGET pybind11::headers)
 endif ()
 
 
+find_path(SOLV_INCLUDE_DIR solv/solver.h
+    PATHS $ENV{CONDA_PREFIX}
+    NO_CMAKE_FIND_ROOT_PATH
+)
+find_library(SOLV_LIBRARY solv
+    PATHS $ENV{CONDA_PREFIX}
+    NO_CMAKE_FIND_ROOT_PATH
+)
+find_library(SOLV_EXT_LIBRARY solvext
+    PATHS $ENV{CONDA_PREFIX}
+    NO_CMAKE_FIND_ROOT_PATH
+)
+
+
+
 
 configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js  COPYONLY)
 configure_file(post.js               ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
@@ -48,8 +65,8 @@ set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
 
 
 add_library(pyjs INTERFACE)
-
-
+target_link_libraries(pyjs  INTERFACE ${SOLV_LIBRARY} ${SOLV_EXT_LIBRARY})
+target_include_directories(pyjs INTERFACE ${SOLV_INCLUDE_DIR})
 
 
 set_target_properties(pyjs PROPERTIES 

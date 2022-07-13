@@ -41,7 +41,7 @@ def start_server(work_dir, port):
         def log_message(self, format, *args):
             return
 
-    httpd = HTTPServer(("localhost", port), Handler)
+    httpd = HTTPServer(("0.0.0.0", port), Handler)
 
     thread = threading.Thread(target=httpd.serve_forever)
     thread.start()
@@ -51,18 +51,18 @@ def start_server(work_dir, port):
 @contextmanager
 def server_context(work_dir, port):
     thread, server = start_server(work_dir=work_dir, port=port)
-    yield server, f"http://localhost:{port}"
+    yield server, f"http://0.0.0.0:{port}"
     server.shutdown()
     thread.join()
 
 
 async def playwright_main(page_url, workdir, script_basename):
     async with async_playwright() as p:
-        if True:
+        if False:
             browser = await p.chromium.launch(headless=True)
         else:
             browser = await p.chromium.launch(headless=False, slow_mo=100000)
-        page = await browser.new_page()
+        page = await browser.new_page(ignore_https_errors=True)
 
         # 1 min = 60 * 1000 ms
         page.set_default_timeout(60 * 1000)
@@ -113,6 +113,7 @@ async def playwright_main(page_url, workdir, script_basename):
                 {{
                     await new Promise(resolve => setTimeout(resolve, 100));
                     const n_unfinished = myModule.n_unfinished();
+                    console.log("n_unfinished",n_unfinished)
                     if(n_unfinished <= 0)
                     {{
                         break;

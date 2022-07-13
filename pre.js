@@ -359,7 +359,7 @@ Module['_set_promise_then_catch'] = function(promise, py_object_then, py_object_
         py_object_catch.delete()
     }
     var callable_catch = function(err){
-
+        console.log("IN CATCH",err)
         str_err = JSON.stringify(err, Object.getOwnPropertyNames(err))
         py_object_catch.__usafe_void_val__(str_err);
      
@@ -367,6 +367,8 @@ Module['_set_promise_then_catch'] = function(promise, py_object_then, py_object_
         py_object_then.delete()
         py_object_catch.delete()
     }
+    //promise.then(callable_then,callable_catch)
+
     promise.then(callable_then).catch(callable_catch)
 }
 

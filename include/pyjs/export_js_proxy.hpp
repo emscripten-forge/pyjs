@@ -91,7 +91,7 @@ inline py::object getattr(em::val * self, em::val * key)
     else if(type_string == "1")
     {
         std::stringstream ss;
-        ss<<"has no attribute/key ";
+        ss<< self->call<std::string>("toString")<<" has no attribute/key "<<key->call<std::string>("toString");
         throw pybind11::attribute_error(ss.str());
     }
     return implicit_to_py(wrapped_return_value["ret"],type_string);

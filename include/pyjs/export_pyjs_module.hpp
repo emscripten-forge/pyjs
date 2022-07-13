@@ -8,6 +8,7 @@
 #include <filesystem>
 
 #include <pyjs/export_js_proxy.hpp>
+#include <pyjs/export_mamba.hpp>
 #include <pyjs/macro_magic.hpp>
 
 // python
@@ -26,6 +27,7 @@ namespace pyjs
 void export_pyjs_module(py::module_ & pyjs_module)
 {  
     export_js_proxy(pyjs_module);
+    export_mamba(pyjs_module);
     try{
         PYTHON_INIT(pyjs_core)(pyjs_module);
         PYTHON_INIT(pyjs_extend_js_val)(pyjs_module);

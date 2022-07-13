@@ -2,6 +2,7 @@
 #include <emscripten/bind.h>
 #include <pyjs/export_pyjs_module.hpp>
 #include <pyjs/export_js_module.hpp>
+#include <pyjs/mpool.hpp>
 #include <sstream>
 
 
@@ -52,7 +53,12 @@ int n_unfinished()
     try{
         py::object scope = py::module_::import("__main__").attr("__dict__");
         py::module_ asyncio = py::module_::import("asyncio");
-        return asyncio.attr("get_event_loop")().attr("_n_unfinished").cast<int>();
+        py::module_ pyjs = py::module_::import("pyjs");
+        auto n_unfinished =  asyncio.attr("get_event_loop")().attr("_n_unfinished").cast<int>();
+        auto n_unresolved =  pyjs.attr("_n_unresolved").cast<int>();
+        std::cout<<"_n_unfinished "<<n_unfinished<<"\n";
+        std::cout<<"_n_unresolved "<<n_unresolved<<"\n";
+        return n_unfinished + n_unresolved;
     }
     catch (py::error_already_set& e)
     {

@@ -50,11 +50,9 @@ endif ()
 
 
 configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js  COPYONLY)
-configure_file(post.js               ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
+configure_file(post.js ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
 
 set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
-
-
 
 add_library(pyjs INTERFACE)
 
@@ -68,7 +66,7 @@ target_compile_options(pyjs INTERFACE -fPIC)
 target_include_directories(pyjs
                            INTERFACE
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                            $<INSTALL_INTERFACE:include>)
 
 SET(PYTHON_UTIL_LIBS

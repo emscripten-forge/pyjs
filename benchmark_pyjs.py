@@ -1,11 +1,6 @@
-import os
-import time
-
 import pytest
-import pytest_benchmark
 
 import pyjs
-from pyjs import js
 
 # os.environ["PYJS_DONT_AUTOSTART_EVENT_LOOP"] = "1"
 
@@ -86,8 +81,6 @@ def test_function_gcall(benchmark, n_args, jin, jout):
 
 
 if __name__ == "__main__":
-    import pyjs
-
     # start the tests
     # os.environ["NO_COLOR"] = "1"
     args = [

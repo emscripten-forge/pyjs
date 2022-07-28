@@ -1,20 +1,13 @@
-import asyncio
-import functools
 import http
 import os
 import socket
-import ssl
-import subprocess
 import sys
 import threading
-import time
 from contextlib import closing, contextmanager
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import List, Optional
+from http.server import HTTPServer
 
 import empack
-import typer
-from playwright.async_api import Page, async_playwright
+from playwright.async_api import async_playwright
 
 
 @contextmanager
@@ -36,7 +29,7 @@ def start_server(work_dir, port):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=work_dir, **kwargs)
 
-        def log_message(self, format, *args):
+        def log_message(self, fmt, *args):
             return
 
     httpd = HTTPServer(("localhost", port), Handler)

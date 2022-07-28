@@ -1,7 +1,6 @@
 import json
 import operator
 import os
-import types
 from types import NoneType
 
 import numpy
@@ -14,7 +13,7 @@ def nullary(body):
     return pyjs.js.Function(body)()
 
 
-def eval(body):
+def eval_jsfunc(body):
     return pyjs.js.Function("return " + body)()
 
 
@@ -23,7 +22,7 @@ def ensure_js(val):
         if not isinstance(val, str):
             return pyjs.JsValue(val)
         else:
-            return eval(val)
+            return eval_jsfunc(val)
     else:
         return val
 
@@ -72,11 +71,11 @@ def test_create_once_callable_nullary():
     assert pyjs.to_py(ret) == "hello_from_pyfunc"
     ret.delete()
 
-    with pytest.raises(Exception) as e_info:
+    with pytest.raises(Exception):
         # call the second time
         ret = js_once_callable()
 
-    with pytest.raises(Exception) as e_info:
+    with pytest.raises(Exception):
         # call the third time
         ret = js_once_callable()
 
@@ -253,14 +252,14 @@ def test_eq(a, b, out):
 
 
 def test_array_iterator():
-    array = eval('[1,2,"three"]')
+    array = eval_jsfunc('[1,2,"three"]')
     py_array = [pyjs.to_py(v) for v in array]
     assert len(py_array) == 3
     assert py_array == [1, 2, "three"]
 
     # make sure that elements of iterator
     # are still js values
-    array = eval('[{fo:"bar"}]')
+    array = eval_jsfunc('[{fo:"bar"}]')
     element = next(iter(array))
     assert element.typeof == "object"
 
@@ -300,7 +299,7 @@ def test_custom_converter():
 
 
 def test_del_attr():
-    obj = eval(
+    obj = eval_jsfunc(
         """{
         foo : 1,
         bar : "bar",
@@ -314,7 +313,7 @@ def test_del_attr():
 
 
 def test_del_item():
-    js_set = eval("""new Set([1,2,3,"four"])""")
+    js_set = eval_jsfunc("""new Set([1,2,3,"four"])""")
 
     assert js_set.has(1)
     assert len(js_set) == 4
@@ -484,7 +483,7 @@ def test_js_execptions():
 
     with pytest.raises(pyjs.JsGenericError) as e_info:
         f()
-    pyjs.to_py(e_info.value.value) == "i_am_not_a_real_exception"
+    assert pyjs.to_py(e_info.value.value) == "i_am_not_a_real_exception"
 
 
 def test_int_container():
@@ -498,6 +497,7 @@ def test_int_container():
     js_obj = jsf()
     print("the obj", js_obj)
     py_obj = pyjs.to_py(js_obj)
+    assert py_obj
 
 
 if __name__ == "__main__":

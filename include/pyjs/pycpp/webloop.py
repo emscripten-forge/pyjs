@@ -4,8 +4,8 @@
 if IN_BROWSER:
 
     import asyncio
+    import contextlib
     import contextvars
-    import functools
     import os
     import sys
     import time
@@ -28,7 +28,8 @@ if IN_BROWSER:
         task not as a microtask. ``setTimeout(callback, 0)`` enqueues the callback as a
         task so it works well for our purposes.
 
-        See `Event Loop Methods <https://docs.python.org/3/library/asyncio-eventloop.html#asyncio-event-loop>`_.
+        See `Event Loop Methods
+            <https://docs.python.org/3/library/asyncio-eventloop.html#asyncio-event-loop>`_.
         """
 
         def __init__(self):
@@ -425,7 +426,7 @@ if IN_BROWSER:
             self._default_loop = loop
 
     asyncio.set_event_loop_policy(WebLoopPolicy())
-    if not "PYJS_DONT_AUTOSTART_EVENT_LOOP" in os.environ:
+    if "PYJS_DONT_AUTOSTART_EVENT_LOOP" not in os.environ:
         try:
             asyncio.get_running_loop()
         except RuntimeError:

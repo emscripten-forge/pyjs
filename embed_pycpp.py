@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 header = """
 #include "pyjs/macro_magic.hpp"
@@ -11,14 +11,16 @@ footer = """
 END_PYTHON_INIT
 """
 
+
 def generate_embed(fn_in, fn_out):
-	fn_in = Path(fn_in)
-	fn = fn_in.name
-	modname = "pyjs_" + fn.split('.')[0]
-	text = fn_in.read_text()
-	res = header.format(module_name=modname) + text + footer
-	fn_out = Path(fn_out)
-	fn_out.write_text(res)
+    fn_in = Path(fn_in)
+    fn = fn_in.name
+    modname = "pyjs_" + fn.split(".")[0]
+    text = fn_in.read_text()
+    res = header.format(module_name=modname) + text + footer
+    fn_out = Path(fn_out)
+    fn_out.write_text(res)
+
 
 if __name__ == "__main__":
-	generate_embed(sys.argv[1], sys.argv[2])
+    generate_embed(sys.argv[1], sys.argv[2])

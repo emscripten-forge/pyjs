@@ -4,8 +4,6 @@ import sys
 import types
 from typing import Any
 
-import numpy
-
 
 def install_submodules():
     def _js_mod__getattr__(name: str) -> Any:

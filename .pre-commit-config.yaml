@@ -46,4 +46,4 @@ repos:
     hooks:
     -   id: clang-format
         args: [--style=file, -i]
-        exclude: ".json"
+        exclude: ".json|.js"

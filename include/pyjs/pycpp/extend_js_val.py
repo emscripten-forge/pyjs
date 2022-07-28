@@ -1,3 +1,6 @@
+import asyncio
+
+
 # JsValue *can* hold this as a property
 class JsInfo(object):
     def __init__(self, parent=None):

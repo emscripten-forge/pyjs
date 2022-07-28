@@ -1,18 +1,25 @@
 cmake_minimum_required(VERSION 3.9)
 project(pyjs VERSION 0.7.0 DESCRIPTION "pyjs")
 
-
-
 option(BUILD_RUNNER "Build runner" OFF)
 
-include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++17" HAS_CPP17_FLAG)
+set(PYCPPSCRIPTS
+    convert.py
+    core.py
+    error_handling.py
+    extend_js_val.py
+    webloop.py
+)
 
-if (HAS_CPP17_FLAG)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-else ()
-    message(FATAL_ERROR "Unsupported compiler -- pyjs requires C++17 support!")
-endif ()
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
+foreach(script ${PYCPPSCRIPTS})
+    string(REPLACE "." "_" script_var ${script})
+    add_custom_command(OUTPUT pycpp_includes/${script}.hpp
+                       DEPENDS include/pyjs/pycpp/${script}
+                       COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/embed_pycpp.py
+                        ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pycpp/${script}
+                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes/${script}.hpp)
+endforeach()
 
 set(PYJS_HEADERS
     include/pyjs/convert.hpp
@@ -21,12 +28,14 @@ set(PYJS_HEADERS
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
     include/pyjs/macro_magic.hpp
-    include/pyjs/convert.py
-    include/pyjs/core.py
-    include/pyjs/extend_js_val.py
-    include/pyjs/webloop.py
-    include/pyjs/error_handling.py
-    pre.js)
+    pre.js
+)
+
+set(PYCPPSOURCES "")
+foreach(script ${PYCPPSCRIPTS})
+    list(APPEND PYCPPSOURCES pycpp_includes/${script}.hpp)
+endforeach()
+
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,49 +50,42 @@ endif ()
 
 
 configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js  COPYONLY)
-configure_file(post.js               ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
+configure_file(post.js ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
 
 set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
 
-
-
 add_library(pyjs INTERFACE)
 
-
-
-
-set_target_properties(pyjs PROPERTIES 
+set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
 )
-# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
 
 target_link_libraries(pyjs INTERFACE pybind11::pybind11)
 target_compile_options(pyjs INTERFACE -fPIC)
 
-
 target_include_directories(pyjs
                            INTERFACE
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                            $<INSTALL_INTERFACE:include>)
 
-
-
-SET(PYTHON_UTIL_LIBS 
-    $ENV{PREFIX}/lib/libbz2.a
-    $ENV{PREFIX}/lib/libz.a
-    $ENV{PREFIX}/lib/libsqlite3.a
-    $ENV{PREFIX}/lib/libffi.a
+SET(PYTHON_UTIL_LIBS
+    ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libz.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libsqlite3.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
 )
 
 if(BUILD_RUNNER)
-    add_executable(pyjs_main      src/main.cpp)
-    target_compile_definitions(pyjs_main PUBLIC -DPYJS_WEB) 
+    add_executable(pyjs_main src/main.cpp ${PYCPPSOURCES})
+    set_target_properties(pyjs_main
+        PROPERTIES
+            CXX_STANDARD 17
+    )
+    target_compile_definitions(pyjs_main PUBLIC -DPYJS_WEB)
     target_compile_options(pyjs_main PRIVATE -fPIC)
     target_link_libraries(pyjs_main PUBLIC pyjs)
     target_link_libraries(pyjs_main PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
-
-
 
     target_compile_options(pyjs_main
         PUBLIC --std=c++17
@@ -121,47 +123,15 @@ if(BUILD_RUNNER)
         PUBLIC "SHELL: --pre-js pre.js"
         PUBLIC "SHELL: -flto"
     )
-
-
 endif()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 set(PYJS_CMAKECONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}" CACHE STRING "install path for pyjsConfig.cmake")
 
-
 # Configure 'pyjsConfig.cmake' for an install tree
 set(PYJS_CONFIG_CODE "")
-
 
 # Configure 'pyjs-pythonConfig.cmake' for a build tree
 set(PYJS_CONFIG_CODE "####### Expanded from \@PYJS_CONFIG_CODE\@ #######\n")
@@ -173,7 +143,6 @@ configure_package_config_file(${PROJECT_NAME}Config.cmake.in
 
 # Configure 'pyjs-pythonConfig.cmake' for an install tree
 set(PYJS_CONFIG_CODE "")
-
 
 configure_package_config_file(${PROJECT_NAME}Config.cmake.in
                               "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${PROJECT_NAME}Config.cmake"
@@ -206,8 +175,3 @@ export(EXPORT ${PROJECT_NAME}-targets
 install(EXPORT ${PROJECT_NAME}-targets
             FILE ${PROJECT_NAME}Targets.cmake
             DESTINATION ${PYJS_CMAKECONFIG_INSTALL_DIR})
-
-
-
-
-

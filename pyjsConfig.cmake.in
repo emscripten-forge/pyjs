@@ -23,6 +23,6 @@ find_dependency(pybind11 @pybind11_REQUIRED_VERSION@)
 
 if (NOT TARGET pyjs)
     include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
-    get_target_property(@PROJECT_NAME@_INCLUDE_DIR pyjs INTERFACE_INCLUDE_DIRECTORIES)   
+    get_target_property(@PROJECT_NAME@_INCLUDE_DIR pyjs INTERFACE_INCLUDE_DIRECTORIES)
     SET(@PROJECT_NAME@_PRE_JS_PATH ${@PROJECT_NAME@_INCLUDE_DIR}/pyjs/pre.js)
 endif ()

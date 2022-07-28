@@ -1,22 +1,13 @@
-from typing import List, Optional
-import typer
 import http
-import socket
-from contextlib import closing, contextmanager
-import threading
-import functools
 import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import ssl
-import threading
-import time
-import asyncio
-from playwright.async_api import async_playwright
-from playwright.async_api import Page
-from contextlib import contextmanager
-import subprocess
-import empack
+import socket
 import sys
+import threading
+from contextlib import closing, contextmanager
+from http.server import HTTPServer
+
+import empack
+from playwright.async_api import async_playwright
 
 
 @contextmanager
@@ -38,7 +29,7 @@ def start_server(work_dir, port):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=work_dir, **kwargs)
 
-        def log_message(self, format, *args):
+        def log_message(self, fmt, *args):
             return
 
     httpd = HTTPServer(("localhost", port), Handler)
@@ -66,9 +57,10 @@ async def playwright_main(page_url, workdir, script_basename):
 
         # 1 min = 60 * 1000 ms
         page.set_default_timeout(60 * 1000)
+
         async def handle_worker(worker):
             test_output = await worker.evaluate_handle(
-                f"""async () => 
+                f"""async () =>
             {{
                  const sink = (text) =>{{}}
                  var outputString = ""
@@ -134,26 +126,27 @@ async def playwright_main(page_url, workdir, script_basename):
 
         page.on("worker", handle_worker)
 
-
         async def handle_console(msg):
             txt = str(msg)
-            if  txt.startswith("warning: Browser does not support creating object URLs") or \
-                txt.startswith("Failed to load resource:") or \
-                txt.startswith("Could not find platform dependent libraries") or \
-                txt.startswith("Consider setting $PYTHONHOME"):
+            if (
+                txt.startswith("warning: Browser does not support creating object URLs")
+                or txt.startswith("Failed to load resource:")
+                or txt.startswith("Could not find platform dependent libraries")
+                or txt.startswith("Consider setting $PYTHONHOME")
+            ):
                 pass
             else:
                 print(txt)
 
-        page.on('console', handle_console)
+        page.on("console", handle_console)
 
         await page.goto(page_url)
         await page.wait_for_function("() => globalThis.done")
 
         test_output = await page.evaluate_handle(
             """
-            () => 
-            {   
+            () =>
+            {
             return globalThis.test_output
             }
         """

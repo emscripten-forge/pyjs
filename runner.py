@@ -1,11 +1,14 @@
-from runner_tools import *
-from typing import List, Optional
-import typer
-import shutil
-import os
+import asyncio
 import contextlib
-import sys
-import empack
+import os
+import shutil
+
+import typer
+
+from runner_tools.runners_utils import (find_free_port, pack_script,
+                                        patch_emscripten_generated_js,
+                                        playwright_main, restore_cwd,
+                                        server_context)
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 PAGE_FILENAME = os.path.join(THIS_DIR, "runner_tools", "runner.html")
@@ -19,7 +22,7 @@ app.add_typer(run_app, name="run")
 
 
 @run_app.command()
-def script(script_file) :
+def script(script_file):
 
     if not os.path.isabs(script_file):
         script_file = os.path.abspath(script_file)
@@ -40,7 +43,6 @@ def script(script_file) :
             os.chdir(BLD_DIR)
             pack_script(script_file)
 
-
     with server_context(work_dir=BLD_DIR, port=port) as (server, url):
         page_url = f"{url}/runner.html"
         asyncio.run(
@@ -48,6 +50,7 @@ def script(script_file) :
                 page_url=page_url, script_basename=script_basename, workdir="/script"
             )
         )
+
 
 if __name__ == "__main__":
     app()

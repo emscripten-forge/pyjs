@@ -28,9 +28,9 @@ function _get_type_string(instance){
     else
     {
         const type = typeof instance;
-        
+
         if( type === "object")
-        {   
+        {
             const constructor = instance.constructor;
             if( constructor !== undefined)
             {
@@ -193,12 +193,12 @@ Module['_setattr_try_catch'] =  function(obj, property_name, value){
 
 Module['_new'] = function(cls, ...args){
     return new cls(... args);
-} 
+}
 
 
 Module['_call_py_object_variadic'] = function(py_val, ...args){
     return py_val['__call_variadic__'](args);
-} 
+}
 
 
 Module['_is_null'] = function(value){
@@ -277,7 +277,7 @@ Module['_create_once_callable'] = function(py_object){
 
         // make the call
         ret = py_object.__call__(... args);
-        
+
         // delete
         py_object.delete()
 
@@ -295,7 +295,7 @@ Module['_set_promise_then_catch'] = function(promise, py_object_then, py_object_
     var callable_then = function(v){
 
         py_object_then.__usafe_void_val__(v);
-        
+
         // delete
         py_object_then.delete()
         py_object_catch.delete()
@@ -304,7 +304,7 @@ Module['_set_promise_then_catch'] = function(promise, py_object_then, py_object_
 
         str_err = JSON.stringify(err, Object.getOwnPropertyNames(err))
         py_object_catch.__usafe_void_val__(str_err);
-     
+
         // delete
         py_object_then.delete()
         py_object_catch.delete()
@@ -324,7 +324,7 @@ Module['_create_once_callable_unsave_void_void'] = function(py_object){
 
         // make the call
         py_object.__usafe_void_void__();
-        
+
         // delete
         py_object.delete()
     }
@@ -339,7 +339,7 @@ Module["_delete"] = function(x,key){
     delete x[key];
 }
 
-Module['_IS_NODE'] = (typeof process === "object" && typeof require === "function") 
+Module['_IS_NODE'] = (typeof process === "object" && typeof require === "function")
 
 Module['_IS_BROWSER_WORKER_THREAD'] = (typeof importScripts === "function")
 

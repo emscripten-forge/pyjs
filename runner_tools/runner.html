@@ -24,7 +24,7 @@
     let res = (async function() {
 
         var promise =  new Promise( (resolve, reject) => {
-        
+
 
           globalThis.worker.onmessage = e => {
               resolve(e.data)

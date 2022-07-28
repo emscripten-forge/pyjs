@@ -1,19 +1,16 @@
-#include "pyjs/macro_magic.hpp"
-BEGIN_PYTHON_INIT(pyjs_webloop) R"pycode(#"
-
 # webloop impl is from pyodide:
 # https://github.com/pyodide/pyodide/blob/main/src/py/pyodide/webloop.py
 
 if IN_BROWSER:
 
     import asyncio
+    import contextlib
     import contextvars
+    import os
     import sys
     import time
     import traceback
     from typing import Callable
-    import functools
-    import os
 
     class WebLoop(asyncio.AbstractEventLoop):
         """A custom event loop for use in Pyodide.
@@ -31,7 +28,8 @@ if IN_BROWSER:
         task not as a microtask. ``setTimeout(callback, 0)`` enqueues the callback as a
         task so it works well for our purposes.
 
-        See `Event Loop Methods <https://docs.python.org/3/library/asyncio-eventloop.html#asyncio-event-loop>`_.
+        See `Event Loop Methods
+            <https://docs.python.org/3/library/asyncio-eventloop.html#asyncio-event-loop>`_.
         """
 
         def __init__(self):
@@ -42,7 +40,7 @@ if IN_BROWSER:
             self._set_timeout = js.setTimeout
             self._n_unfinished = 0
 
-        def get_debug(self):    
+        def get_debug(self):
             return False
 
         #
@@ -101,7 +99,9 @@ if IN_BROWSER:
         # Scheduling methods: use browser.setTimeout to schedule tasks on the browser event loop.
         #
 
-        def call_soon(self, callback: Callable, *args, context: contextvars.Context = None):
+        def call_soon(
+            self, callback: Callable, *args, context: contextvars.Context = None
+        ):
             """Arrange for a callback to be called as soon as possible.
 
             Any positional arguments after the callback will be passed to
@@ -165,7 +165,9 @@ if IN_BROWSER:
             # use an internal optimized function, that does not allow for
             # any arguments, does not return anything, and does assume
             # that the function does not throw
-            once_callable = _module._create_once_callable_unsave_void_void(JsValue(run_handle))
+            once_callable = _module._create_once_callable_unsave_void_void(
+                JsValue(run_handle)
+            )
             self._set_timeout(once_callable, delay * 1000)
             return h
 
@@ -308,7 +310,6 @@ if IN_BROWSER:
 
             # internal.console_log("context", context)
             # internal.console_log("message", message)
-            
 
             if not message:
                 message = "Unhandled exception in event loop"
@@ -425,15 +426,8 @@ if IN_BROWSER:
             self._default_loop = loop
 
     asyncio.set_event_loop_policy(WebLoopPolicy())
-    if not "PYJS_DONT_AUTOSTART_EVENT_LOOP" in os.environ:
+    if "PYJS_DONT_AUTOSTART_EVENT_LOOP" not in os.environ:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
             asyncio.set_event_loop(WebLoop())
-
-
-
-
-
-#)pycode"
-END_PYTHON_INIT

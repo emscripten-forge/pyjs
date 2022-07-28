@@ -10,3 +10,4 @@ dependencies:
   - emsdk >=3.1.11
   - empack >=0.5.3
   - microsoft::playwright
+  - ninja

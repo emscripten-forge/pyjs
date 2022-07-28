@@ -67,7 +67,7 @@ jobs:
 
           emcmake cmake \
             -GNinja \
-            -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX \
+            -DCMAKE_INSTALL_PREFIX=$PREFIX \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
             -DBUILD_RUNNER=ON \

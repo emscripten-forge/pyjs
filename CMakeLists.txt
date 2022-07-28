@@ -11,14 +11,12 @@ set(PYCPPSCRIPTS
     webloop.py
 )
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
 foreach(script ${PYCPPSCRIPTS})
     string(REPLACE "." "_" script_var ${script})
     add_custom_command(OUTPUT pycpp_includes/${script}.hpp
                        DEPENDS include/pyjs/pycpp/${script}
-                       COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/embed_pycpp.py
+                       COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/embed_pycpp.py
                         ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pycpp/${script}
                         ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes/${script}.hpp)
 endforeach()

@@ -123,30 +123,30 @@ namespace pyjs
             const char s = type_string[0];
             switch (s)
             {
-                case JsType::JS_NULL:
+                case static_cast<char>(JsType::JS_NULL):
                 {
                     return py::none();
                 }
-                case JsType::JS_UNDEFINED:
+                case static_cast<char>(JsType::JS_UNDEFINED):
                 {
                     return py::none();
                 }
                 // 2 is object
-                case JsType::JS_STR:
+                case static_cast<char>(JsType::JS_STR):
                 {
                     return py::cast(val.as<std::string>());
                 }
-                case JsType::JS_INT:
+                case static_cast<char>(JsType::JS_INT):
                 {
                     const auto double_number = val.as<double>();
                     const auto rounded_double_number = std::round(double_number);
                     return py::cast(int(rounded_double_number));
                 }
-                case JsType::JS_FLOAT:
+                case static_cast<char>(JsType::JS_FLOAT):
                 {
                     return py::cast(val.as<double>());
                 }
-                case JsType::JS_BOOL:
+                case static_cast<char>(JsType::JS_BOOL):
                 {
                     return py::cast(val.as<bool>());
                 }

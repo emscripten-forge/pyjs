@@ -72,12 +72,12 @@ target_include_directories(pyjs
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                            $<INSTALL_INTERFACE:include>)
 
-# SET(PYTHON_UTIL_LIBS
-#     ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a
-#     ${CMAKE_INSTALL_PREFIX}/lib/libz.a
-#     ${CMAKE_INSTALL_PREFIX}/lib/libsqlite3.a
-#     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
-# )
+SET(PYTHON_UTIL_LIBS
+    ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libz.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libsqlite3.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
+)
 
 if(BUILD_RUNNER)
     add_executable(pyjs_main src/main.cpp ${PYCPPSOURCES})

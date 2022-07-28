@@ -66,12 +66,14 @@ jobs:
           export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
 
           emcmake cmake \
+            -GNinja \
+            -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
             -DBUILD_RUNNER=ON \
             ..
 
-          make -j5
+          ninja
 
           empack pack python core $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm --version=3.10
 

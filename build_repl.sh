@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e 
+set -e
 
 # install wasm env
 rm -rf $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
@@ -33,4 +33,4 @@ emcmake cmake \
 
 cp ../examples/repl.html .
 
-python -m http.server 
+python -m http.server

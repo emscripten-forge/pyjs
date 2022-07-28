@@ -22,22 +22,21 @@ namespace em = emscripten;
 
 namespace pyjs
 {
-
-void export_pyjs_module(py::module_ & pyjs_module)
-{  
-    export_js_proxy(pyjs_module);
-    try{
-        PYTHON_INIT(pyjs_core)(pyjs_module);
-        PYTHON_INIT(pyjs_extend_js_val)(pyjs_module);
-        PYTHON_INIT(pyjs_error_handling)(pyjs_module);
-        PYTHON_INIT(pyjs_convert)(pyjs_module);
-        PYTHON_INIT(pyjs_webloop)(pyjs_module);
-    } 
-    catch (py::error_already_set& e)
+    void export_pyjs_module(py::module_& pyjs_module)
     {
-        std::cout<<"error: "<<e.what()<<"\n";
-        throw e;
+        export_js_proxy(pyjs_module);
+        try
+        {
+            PYTHON_INIT(pyjs_core)(pyjs_module);
+            PYTHON_INIT(pyjs_extend_js_val)(pyjs_module);
+            PYTHON_INIT(pyjs_error_handling)(pyjs_module);
+            PYTHON_INIT(pyjs_convert)(pyjs_module);
+            PYTHON_INIT(pyjs_webloop)(pyjs_module);
+        }
+        catch (py::error_already_set& e)
+        {
+            std::cout << "error: " << e.what() << "\n";
+            throw e;
+        }
     }
-}
-
 }

@@ -9,10 +9,10 @@
   <!-- <h3>python3.11-wasm embeded via pybind11 build by boa</h3> -->
   <form name="myform">
   <td><textarea name="inputtext"></textarea></td>
-   <td><canvas name="mycanvas" id="mycanvas" width="1000" height="200"></canvas></td> 
+   <td><canvas name="mycanvas" id="mycanvas" width="1000" height="200"></canvas></td>
 
   Output:
-  <td><textarea name="outputtext"></textarea></td> 
+  <td><textarea name="outputtext"></textarea></td>
   </form>
 
 
@@ -97,9 +97,9 @@ if True:\n\
     });
     logeditor.setSize(null, 200);
 
-    
+
     const print = (text) => {
-      
+
       logeditor.replaceRange(text+"\n", CodeMirror.Pos(logeditor.lastLine()))
       editor.scrollTo(CodeMirror.Pos(logeditor.lastLine()));
     }

@@ -5,10 +5,14 @@ import shutil
 
 import typer
 
-from runner_tools.runners_utils import (find_free_port, pack_script,
-                                        patch_emscripten_generated_js,
-                                        playwright_main, restore_cwd,
-                                        server_context)
+from runner_tools.runners_utils import (
+    find_free_port,
+    pack_script,
+    patch_emscripten_generated_js,
+    playwright_main,
+    restore_cwd,
+    server_context,
+)
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 PAGE_FILENAME = os.path.join(THIS_DIR, "runner_tools", "runner.html")

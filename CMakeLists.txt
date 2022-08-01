@@ -27,7 +27,6 @@ set(PYJS_HEADERS
     include/pyjs/export_js_proxy.hpp
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
-    include/pyjs/macro_magic.hpp
     pre.js
 )
 

@@ -8,7 +8,6 @@
 #include <filesystem>
 
 #include <pyjs/export_js_proxy.hpp>
-#include <pyjs/macro_magic.hpp>
 
 // python
 #include <pycpp_includes/core.py.hpp>
@@ -27,11 +26,11 @@ namespace pyjs
         export_js_proxy(pyjs_module);
         try
         {
-            PYTHON_INIT(pyjs_core)(pyjs_module);
-            PYTHON_INIT(pyjs_extend_js_val)(pyjs_module);
-            PYTHON_INIT(pyjs_error_handling)(pyjs_module);
-            PYTHON_INIT(pyjs_convert)(pyjs_module);
-            PYTHON_INIT(pyjs_webloop)(pyjs_module);
+            pyjs_core_pseudo_init(pyjs_module);
+            pyjs_extend_js_val_pseudo_init(pyjs_module);
+            pyjs_error_handling_pseudo_init(pyjs_module);
+            pyjs_convert_pseudo_init(pyjs_module);
+            pyjs_webloop_pseudo_init(pyjs_module);
         }
         catch (py::error_already_set& e)
         {

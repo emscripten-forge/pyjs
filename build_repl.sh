@@ -16,6 +16,11 @@ mkdir -p build_repl
 cd build_repl
 
 
+unset CFLAGS
+unset CXXFLAGS
+unset LDFLAGS
+
+
 # pack the environment in a js/data file
 empack pack python core $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm --version=3.10
 

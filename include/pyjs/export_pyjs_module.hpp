@@ -8,7 +8,6 @@
 #include <filesystem>
 
 #include <pyjs/export_js_proxy.hpp>
-#include <pyjs/macro_magic.hpp>
 
 // python
 #include <pycpp_includes/core.py.hpp>

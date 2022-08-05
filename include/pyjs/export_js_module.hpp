@@ -76,6 +76,13 @@ namespace pyjs
 
     void export_js_module()
     {
+
+
+        em::class_<py::scoped_interpreter>("Interpreter")
+            .constructor<>()
+        ;
+
+
         export_py_object();
 
         em::function("cout",

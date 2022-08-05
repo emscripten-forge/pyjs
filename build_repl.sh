@@ -8,7 +8,7 @@ micromamba create -n pyjs-build-wasm \
     -c https://repo.mamba.pm/emscripten-forge \
     -c https://repo.mamba.pm/conda-forge \
     --yes \
-    python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi
+    python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi pyb2d pydantic scikit-image scikit-learn
 
 
 # create build/work dir
@@ -16,8 +16,16 @@ mkdir -p build_repl
 cd build_repl
 
 
+# donload empack config
+EMPACK_CONFIG=empack_config.yaml
+echo "donwload empack config"
+wget -O $EMPACK_CONFIG https://raw.githubusercontent.com/emscripten-forge/recipes/main/empack_config.yaml
+
+
+
+
 # pack the environment in a js/data file
-empack pack python core $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm --version=3.10
+empack pack env --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm --outname python_data --config empack_config.yaml
 
 # let cmake know where the env is
 export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
@@ -28,8 +36,12 @@ export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
 emcmake cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
-    -DBUILD_RUNNER=ON \
+    -DBUILD_RUNTIME_BROWSER=ON \
+    -DBUILD_RUNTIME_NODE=ON \
+    -DCMAKE_INSTALL_PREFIX=$PREFIX \
     ..
+
+make -j12
 
 cp ../examples/repl.html .
 

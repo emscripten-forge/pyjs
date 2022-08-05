@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.9)
 project(pyjs VERSION 0.7.0 DESCRIPTION "pyjs")
 
-option(BUILD_RUNNER "Build runner" OFF)
+option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
+option(BUILD_RUNTIME_NODE "Build runtime" ON)
 
 set(PYCPPSCRIPTS
     convert.py
@@ -75,29 +76,36 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
 )
 
-if(BUILD_RUNNER)
-    add_executable(pyjs_main src/main.cpp ${PYCPPSOURCES})
-    set_target_properties(pyjs_main
+
+# TODO MAKE LOOP 
+
+if(BUILD_RUNTIME_BROWSER)
+    add_executable(pyjs_runtime_browser src/runtime.cpp ${PYCPPSOURCES})
+    SET(ENVIRONMENT "web,worker")
+    target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
+
+
+    set_target_properties(pyjs_runtime_browser
         PROPERTIES
             CXX_STANDARD 17
     )
-    target_compile_definitions(pyjs_main PUBLIC -DPYJS_WEB)
-    target_compile_options(pyjs_main PRIVATE -fPIC)
-    target_link_libraries(pyjs_main PUBLIC pyjs)
-    target_link_libraries(pyjs_main PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
+    target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
+    target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
+    target_link_libraries(pyjs_runtime_browser PUBLIC pyjs)
+    target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
 
-    target_compile_options(pyjs_main
+    target_compile_options(pyjs_runtime_browser
         PUBLIC --std=c++17
         PUBLIC -Wno-deprecated
         PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -s ENVIRONMENT=worker"
+        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
         PUBLIC "SHELL: -fwasm-exceptions"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
         PUBLIC "SHELL: -flto"
     )
 
-    target_link_options(pyjs_main
+    target_link_options(pyjs_runtime_browser
         PUBLIC --bind
         PUBLIC -Wno-unused-command-line-argument
         PUBLIC "SHELL: --bind"
@@ -113,7 +121,61 @@ if(BUILD_RUNNER)
         PUBLIC "SHELL: -s USE_PTHREADS=0"
         PUBLIC "SHELL: -fwasm-exceptions"
         PUBLIC "SHELL: -s MAIN_MODULE=1"
-        PUBLIC "SHELL: -s ENVIRONMENT=worker"
+        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
+        PUBLIC "SHELL: -s TOTAL_STACK=512mb"
+        PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
+        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+        PUBLIC "SHELL: -s LZ4=1"
+        PUBLIC "SHELL: --post-js post.js"
+        PUBLIC "SHELL: --pre-js pre.js"
+        PUBLIC "SHELL: -flto"
+    )
+endif()
+
+if(BUILD_RUNTIME_NODE)
+    add_executable(pyjs_runtime_node src/runtime.cpp ${PYCPPSOURCES})
+    SET(ENVIRONMENT "node")
+    target_compile_definitions(pyjs_runtime_node PUBLIC -DPYTEST_DRIVER_NODE) 
+
+
+
+    set_target_properties(pyjs_runtime_node
+        PROPERTIES
+            CXX_STANDARD 17
+    )
+    target_compile_definitions(pyjs_runtime_node PUBLIC -DPYJS_WEB)
+    target_compile_options(pyjs_runtime_node PRIVATE -fPIC)
+    target_link_libraries(pyjs_runtime_node PUBLIC pyjs)
+    target_link_libraries(pyjs_runtime_node PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
+
+    target_compile_options(pyjs_runtime_node
+        PUBLIC --std=c++17
+        PUBLIC -Wno-deprecated
+        PUBLIC "SHELL: --bind"
+        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
+        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+        PUBLIC "SHELL: -s LZ4=1"
+        PUBLIC "SHELL: -flto"
+    )
+
+    target_link_options(pyjs_runtime_node
+        PUBLIC --bind
+        PUBLIC -Wno-unused-command-line-argument
+        PUBLIC "SHELL: --bind"
+        PUBLIC "SHELL: -s MODULARIZE=1"
+        PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
+        PUBLIC "SHELL: -s EXPORT_ES6=0"
+        PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
+        PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
+        PUBLIC "SHELL: -s ASSERTIONS=0"
+        PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
+        PUBLIC "SHELL: -s EXIT_RUNTIME=1"
+        PUBLIC "SHELL: -s WASM=1"
+        PUBLIC "SHELL: -s USE_PTHREADS=0"
+        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -s MAIN_MODULE=1"
+        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
         PUBLIC "SHELL: -s TOTAL_STACK=512mb"
         PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"

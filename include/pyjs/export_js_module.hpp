@@ -5,9 +5,13 @@
 #include <emscripten/bind.h>
 
 
+
+
 namespace pyjs
 {
     namespace em = emscripten;
+
+
 
 
     int n_unfinished()
@@ -77,13 +81,31 @@ namespace pyjs
     void export_js_module()
     {
 
-
+        // interpreter itself, note that only one interpreter at the time allowed
         em::class_<py::scoped_interpreter>("Interpreter")
             .constructor<>()
         ;
 
-
+        // py-object (proxy)
         export_py_object();
+
+        // main scope
+        em::function("main_scope",em::select_overload<py::object()>(
+            []()->py::object{ return py::module_::import("__main__").attr("__dict__"); }
+        ));
+
+        // eval_expr,
+        // eval_single_statement,
+        // eval_statements
+
+
+        // // run-code
+        // em::function("eval_expr",
+        //     em::select_overload<py::object()>(
+        //     []()->py::object{
+
+        //     }
+        // ));
 
         em::function("cout",
                      em::select_overload<void(const std::string&)>([](const std::string& val)

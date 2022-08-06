@@ -1,0 +1,33 @@
+// import test from 'ava';
+test = require('ava')
+let Module = {};
+
+
+function waitRunDependency() {
+  const promise = new Promise((r) => {
+    Module.monitorRunDependencies = (n) => {
+      if (n === 0) {
+        r();
+      }
+    };
+  });
+  Module.addRunDependency("dummy");
+  Module.removeRunDependency("dummy");
+  return promise;
+}
+
+
+test('test-loading-data',async function (t) {
+
+    console.log("require pyjs_runtime_node.js")
+    var createModule = require('@CMAKE_BINARY_DIR@/pyjs_runtime_node.js')
+
+    var myModule = await createModule()
+    Module = myModule
+    global.Module = Module
+
+
+    await import('./python_data.js');
+    var deps = await waitRunDependency()
+    t.is(1,1)
+});

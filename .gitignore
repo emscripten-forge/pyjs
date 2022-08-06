@@ -3,3 +3,6 @@ sandbox
 build_local.sh
 build
 build_repl
+build_tests/
+node_modules
+package-lock.json

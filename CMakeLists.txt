@@ -3,7 +3,13 @@ project(pyjs VERSION 0.7.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
+option(WITH_NODE_TESTS "With node tests" ON)
 
+
+
+##########################################################
+# embed python files in C++ headers
+##########################################################
 set(PYCPPSCRIPTS
     convert.py
     core.py
@@ -22,6 +28,10 @@ foreach(script ${PYCPPSCRIPTS})
                         ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes/${script}.hpp)
 endforeach()
 
+
+##########################################################
+# headers to install (TODO generated files are missing)
+##########################################################
 set(PYJS_HEADERS
     include/pyjs/convert.hpp
     include/pyjs/export_js_module.hpp
@@ -77,7 +87,7 @@ SET(PYTHON_UTIL_LIBS
 )
 
 
-# TODO MAKE LOOP 
+# TODO MAKE LOOP
 
 if(BUILD_RUNTIME_BROWSER)
     add_executable(pyjs_runtime_browser src/runtime.cpp ${PYCPPSOURCES})
@@ -133,9 +143,13 @@ if(BUILD_RUNTIME_BROWSER)
 endif()
 
 if(BUILD_RUNTIME_NODE)
+
+
+
     add_executable(pyjs_runtime_node src/runtime.cpp ${PYCPPSOURCES})
     SET(ENVIRONMENT "node")
-    target_compile_definitions(pyjs_runtime_node PUBLIC -DPYTEST_DRIVER_NODE) 
+    target_compile_definitions(pyjs_runtime_node PUBLIC -DPYTEST_DRIVER_NODE)
+
 
 
 
@@ -184,6 +198,24 @@ if(BUILD_RUNTIME_NODE)
         PUBLIC "SHELL: --pre-js pre.js"
         PUBLIC "SHELL: -flto"
     )
+
+
+
+    if(WITH_NODE_TESTS)
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/test.js.in ${CMAKE_CURRENT_BINARY_DIR}/test.cjs @ONLY)
+        execute_process(
+            COMMAND npm bin
+            OUTPUT_VARIABLE NODE_BIN_PATH
+        )
+        message(STATUS "NODEBINPATH  " ${NODE_BIN_PATH})
+        string(STRIP ${NODE_BIN_PATH} NODE_BIN_PATH)
+        message(STATUS "P" ${NODE_BIN_PATH}/ava )
+        add_custom_target(node_tests
+            COMMAND "${NODE_BIN_PATH}/ava" "--node-arguments=\"--no-experimental-fetch\"" "" test.cjs
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            DEPENDS pyjs_runtime_node)
+    endif()
+
 endif()
 
 include(GNUInstallDirs)

@@ -81,7 +81,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$PREFIX \
             ..
 
-          ninja
+          make -j2
 
 
           # pack the environment in a js/data file

@@ -108,7 +108,7 @@ EMSCRIPTEN_BINDINGS(my_module)
     pyjs::export_js_module();
 
     em::function("run_script", &run_script);
-    em::function("run_code", &run_code);
+
     em::function(
         "initialize_interpreter",
         em::select_overload<void()>([]() { py::initialize_interpreter(true, 0, nullptr, false); }));

@@ -1,33 +1,40 @@
 // import test from 'ava';
 test = require('ava')
-let Module = {};
 
 
-function waitRunDependency() {
-  const promise = new Promise((r) => {
-    Module.monitorRunDependencies = (n) => {
-      if (n === 0) {
-        r();
-      }
-    };
-  });
-  Module.addRunDependency("dummy");
-  Module.removeRunDependency("dummy");
-  return promise;
+
+async function prepare_all(){
+    var createModule = require('./pyjs_runtime_node.js')
+    var pyjs_module = await createModule()
+    global.Module = pyjs_module
+    await import('./python_data.js');
+    var deps = await Module['_wait_run_dependencies']()
+    return pyjs_module
 }
 
 
-test('test-loading-data',async function (t) {
+var pyjs_promise = prepare_all()
+
+
+
+
+test('test-loading-data-2',async function (t) {
 
     console.log("require pyjs_runtime_node.js")
-    var createModule = require('@CMAKE_BINARY_DIR@/pyjs_runtime_node.js')
 
-    var myModule = await createModule()
-    Module = myModule
-    global.Module = Module
+    var pyjs = await pyjs_promise
+    var interpreter =  new pyjs.Interpreter()
+    var main_scope = pyjs.main_scope()
 
+    try{
+        interpreter.exec("raise RuntimeError('this error is raised and caught on purpose!')", main_scope)
+    } catch(e){        console.log(e)
+        console.error(pyjs.get_last_exception())
+    }
 
-    await import('./python_data.js');
-    var deps = await waitRunDependency()
     t.is(1,1)
+
+    main_scope.delete()
+    interpreter.delete()
+
 });

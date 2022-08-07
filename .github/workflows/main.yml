@@ -143,6 +143,8 @@ jobs:
             --yes \
             python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi
 
+          which node
+          node --version
           npm install
 
           mkdir build

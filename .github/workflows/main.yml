@@ -129,7 +129,7 @@ jobs:
           micromamba activate pyjs-wasm
           emsdk install ${{matrix.emsdk_ver}}
 
-      - name: Build pyjs
+      - name: Build and run node-tests
         run: |
           micromamba activate pyjs-wasm
 
@@ -181,8 +181,3 @@ jobs:
 
 
           popd
-
-      - name: Run Tests
-        run: |
-          micromamba activate pyjs-wasm
-          python runner.py run script test_pyjs.py

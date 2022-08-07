@@ -8,17 +8,17 @@ cd build_tests
 
 if false; then
     # install wasm env
-    rm -rf $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
+    # rm -rf $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
     micromamba create -n pyjs-build-wasm \
         --platform=emscripten-32 \
         -c https://repo.mamba.pm/emscripten-forge \
         -c https://repo.mamba.pm/conda-forge \
         --yes \
-        python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi pyb2d pydantic scikit-image scikit-learn
+        python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi pyb2d pydantic
 
 
 
-    # donload empack config
+    # # donload empack config
     EMPACK_CONFIG=empack_config.yaml
     echo "donwload empack config"
     wget -O $EMPACK_CONFIG https://raw.githubusercontent.com/emscripten-forge/recipes/main/empack_config.yaml

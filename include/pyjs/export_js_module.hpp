@@ -1,7 +1,9 @@
 #include <pyjs/export_py_object.hpp>
+#include <pyjs/convert.hpp>
 
 
 #include <pybind11/embed.h>
+
 #include <emscripten/bind.h>
 
 
@@ -77,32 +79,6 @@ namespace pyjs
         }
     }
 
-    em::val implicit_conversion(py::object & py_ret)
-    {
-        py::module_ pyjs = py::module_::import("pyjs");
-        const std::string info =  pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
-        if(info == "int"){
-            return em::val(py_ret.cast<int>());
-        }
-        else if(info == "str"){
-            return em::val(py_ret.cast<std::string>());
-        }
-        else if(info == "bool"){
-            return em::val(py_ret.cast<bool>());
-        }
-        else if(info == "double"){
-            return em::val(py_ret.cast<double>());
-        }
-        else if(info == "None"){
-            return em::val::undefined();
-        }
-        else{
-            return em::val(py_ret);
-        }
-    }
-
-
-
 
     em::val eval(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
     {
@@ -159,6 +135,7 @@ namespace pyjs
            return ret;
         }
     }
+
 
 
 

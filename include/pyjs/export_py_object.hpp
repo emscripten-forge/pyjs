@@ -76,6 +76,30 @@ namespace pyjs
                               }
                           }))
 
+            .function("_raw_getattr",
+                      em::select_overload<em::val(py::object&, const std::string & )>(
+                          [](py::object& pyobject,const std::string & attr_name) -> em::val
+                          {
+
+
+                            em::val ret = em::val::object();
+                            try
+                            {
+                                py::object py_ret = pyobject.attr(attr_name.c_str());
+                                ret.set("has_err",em::val(false));
+                                ret.set("ret",implicit_conversion(py_ret));
+                                return ret;
+                            }
+                            catch (py::error_already_set& e)
+                            {
+                               ret.set("has_err",em::val(true));
+                               ret.set("message",em::val(std::string(e.what())));
+                               ret.set("error",em::val(std::string(e.what())));
+                               return ret;
+                            }
+                          }))
+
+
 
             ;
     }

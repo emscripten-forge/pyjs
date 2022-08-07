@@ -2,6 +2,9 @@
 test = require('ava')
 
 
+var pyjs_promise = prepare_all()
+var interpreter = null
+
 
 async function prepare_all(){
     var createModule = require('./pyjs_runtime_node.js')
@@ -10,11 +13,12 @@ async function prepare_all(){
     global.Module = pyjs_module
     await import('./python_data.js');
     var deps = await Module['_wait_run_dependencies']()
+    interpreter =  new pyjs_module.Interpreter()
     return pyjs_module
+
 }
 
 
-var pyjs_promise = prepare_all()
 
 
 
@@ -48,7 +52,7 @@ test('test-basics',async function (t) {
     console.log("require pyjs_runtime_node.js")
 
     var pyjs = await pyjs_promise
-    var interpreter =  new pyjs.Interpreter()
+    // var interpreter =  new pyjs.Interpreter()
     var main_scope = pyjs.main_scope()
 
 
@@ -58,7 +62,25 @@ test('test-basics',async function (t) {
     s1 = interpreter.eval("numpy.ones([640, 480]).shape[1]", main_scope)
     t.is(s1,480)
 
+
     main_scope.delete()
-    interpreter.delete()
+
+});
+
+
+test('test-getattr',async function (t) {
+
+    console.log("require pyjs_runtime_node.js")
+
+    var pyjs = await pyjs_promise
+
+    var main_scope = pyjs.main_scope()
+
+    interpreter.exec("import numpy\nimport pyjs", main_scope)
+    var arr = interpreter.eval("numpy.ones([640, 480])", main_scope)
+    var shape = arr.shape
+    t.is(shape !== undefined, true)
+
+    main_scope.delete()
 
 });

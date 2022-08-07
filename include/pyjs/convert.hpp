@@ -7,9 +7,34 @@
 namespace py = pybind11;
 namespace em = emscripten;
 
-
 namespace pyjs
 {
+    em::val implicit_conversion(py::object & py_ret)
+    {
+        py::module_ pyjs = py::module_::import("pyjs");
+        const std::string info =  pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
+        if(info == "int"){
+            return em::val(py_ret.cast<int>());
+        }
+        else if(info == "str"){
+            return em::val(py_ret.cast<std::string>());
+        }
+        else if(info == "bool"){
+            return em::val(py_ret.cast<bool>());
+        }
+        else if(info == "double"){
+            return em::val(py_ret.cast<double>());
+        }
+        else if(info == "None"){
+            return em::val::undefined();
+        }
+        else{
+            // return em::val(py_ret);
+            return em::val::module_property("make_proxy")(em::val(py_ret));
+        }
+    }
+
+
 
     enum class JsType : char
     {
@@ -115,7 +140,6 @@ namespace pyjs
         }
     }
 
-
     inline py::object implicit_to_py(em::val val, const std::string& type_string)
     {
         if (type_string.size() == 1)
@@ -161,6 +185,5 @@ namespace pyjs
             return py::cast(val);
         }
     }
-
 
 }

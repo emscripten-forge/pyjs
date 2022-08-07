@@ -45,6 +45,10 @@ const _FUNCTION = "7"
 // }
 
 
+Module['py_apply'] = function(py_object, args, kwargs){
+
+}
+
 
 Module['make_proxy'] = function(py_object) {
 

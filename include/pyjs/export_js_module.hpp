@@ -84,6 +84,18 @@ namespace pyjs
         if(info == "int"){
             return em::val(py_ret.cast<int>());
         }
+        else if(info == "str"){
+            return em::val(py_ret.cast<std::string>());
+        }
+        else if(info == "bool"){
+            return em::val(py_ret.cast<bool>());
+        }
+        else if(info == "double"){
+            return em::val(py_ret.cast<double>());
+        }
+        else if(info == "None"){
+            return em::val::undefined();
+        }
         else{
             return em::val(py_ret);
         }
@@ -135,7 +147,7 @@ namespace pyjs
         em::val ret = em::val::object();
         try
         {
-            py::exec(filename, scope);
+            py::eval_file(filename, scope);
             ret.set("has_err",em::val(false));
             return ret;
         }

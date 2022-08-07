@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import os
 import shutil
+import sys
 
 import typer
 
@@ -18,7 +19,7 @@ THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 PAGE_FILENAME = os.path.join(THIS_DIR, "runner_tools", "runner.html")
 WORKER_FILENAME = os.path.join(THIS_DIR, "runner_tools", "worker.js")
 BLD_DIR = os.path.join(THIS_DIR, "build")
-PYJS_MAIN_JS_FILENAME = os.path.join(BLD_DIR, "pyjs_main.js")
+PYJS_MAIN_JS_FILENAME = os.path.join(BLD_DIR, "pyjs_runtime_browser.js")
 
 app = typer.Typer()
 run_app = typer.Typer()
@@ -49,11 +50,12 @@ def script(script_file):
 
     with server_context(work_dir=BLD_DIR, port=port) as (server, url):
         page_url = f"{url}/runner.html"
-        asyncio.run(
+        ret = asyncio.run(
             playwright_main(
                 page_url=page_url, script_basename=script_basename, workdir="/script"
             )
         )
+    sys.exit(ret)
 
 
 if __name__ == "__main__":

@@ -28,8 +28,8 @@
 
           globalThis.worker.onmessage = e => {
               resolve(e.data)
-              // console.log("RESOLVE DONE")
-              // worker.terminate();
+              globalThis.done = true
+              globalThis.worker.terminate();
           }
           // worker.onerror = e => (reject(e.message), worker.terminate());
           // worker.postMessage(args);

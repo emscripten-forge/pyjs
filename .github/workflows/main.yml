@@ -58,24 +58,39 @@ jobs:
             --yes \
             python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi
 
+
           mkdir build
           pushd build
+
+          # donload empack config
+          EMPACK_CONFIG=empack_config.yaml
+          echo "donwload empack config"
+          wget -O $EMPACK_CONFIG https://raw.githubusercontent.com/e
+
 
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
           export CMAKE_PREFIX_PATH=$PREFIX
           export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
 
+          # build pyjs
           emcmake cmake \
-            -GNinja \
-            -DCMAKE_INSTALL_PREFIX=$PREFIX \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
-            -DBUILD_RUNNER=ON \
+            -DBUILD_RUNTIME_BROWSER=ON \
+            -DBUILD_RUNTIME_NODE=OFF \
+            -DCMAKE_INSTALL_PREFIX=$PREFIX \
             ..
 
           ninja
 
-          empack pack python core $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm --version=3.10
+
+          # pack the environment in a js/data file
+          empack pack env \
+              --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
+              --outname python_data \
+              --config empack_config.yaml \
+              --export-name "globalThis.Module"
+
 
           popd
 

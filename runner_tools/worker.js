@@ -1,1 +1,1 @@
-importScripts('./pyjs_main.js')
+importScripts('./pyjs_runtime_browser.js')

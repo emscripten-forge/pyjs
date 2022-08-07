@@ -179,7 +179,7 @@ jobs:
             ..
 
           make -j2
-
+          npm install
           $MAMBA_ROOT_PREFIX/envs/pyjs-wasm/bin/node --no-experimental-fetch ../node_modules/.bin/ava test.cjs
 
 

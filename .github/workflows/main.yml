@@ -68,6 +68,15 @@ jobs:
           wget -O $EMPACK_CONFIG https://raw.githubusercontent.com/emscripten-forge/recipes/main/empack_config.yaml
 
 
+
+          # pack the environment in a js/data file
+          empack pack env \
+              --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
+              --outname python_data \
+              --config empack_config.yaml \
+              --export-name "globalThis.Module"
+
+
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
           export CMAKE_PREFIX_PATH=$PREFIX
           export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
@@ -83,13 +92,6 @@ jobs:
 
           make -j2
 
-
-          # pack the environment in a js/data file
-          empack pack env \
-              --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
-              --outname python_data \
-              --config empack_config.yaml \
-              --export-name "globalThis.Module"
 
 
           popd

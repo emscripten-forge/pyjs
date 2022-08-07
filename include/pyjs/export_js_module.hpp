@@ -11,18 +11,6 @@ namespace pyjs
 {
     namespace em = emscripten;
 
-    // this is a workaround since the wasm-exceptions do not show us
-    // the error message on the js side.
-    // We just store the last exception(-message) on the js side.
-    // When such an exception is caught on the js side, we can
-    // print the last error message
-    // TODO dispatch the errors better!
-    void store_and_throw_exception(py::error_already_set& e)
-    {
-        em::val _add_exception = em::val::module_property("_add_exception");
-        _add_exception(std::string("RuntimeError"),std::string(e.what()),std::string(""));
-        throw std::runtime_error(std::string(e.what()));
-    }
 
 
 
@@ -89,45 +77,78 @@ namespace pyjs
         }
     }
 
-
-
-    py::object eval(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
+    em::val implicit_conversion(py::object & py_ret)
     {
-        try
-        {
-            return py::eval(code, scope);
+        py::module_ pyjs = py::module_::import("pyjs");
+        const std::string info =  pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
+        if(info == "int"){
+            return em::val(py_ret.cast<int>());
         }
-        catch (py::error_already_set& e)
-        {
-            store_and_throw_exception(e);
+        else{
+            return em::val(py_ret);
         }
     }
 
 
-    void exec(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
+
+
+    em::val eval(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
     {
+        em::val ret = em::val::object();
+        try
+        {
+            py::object py_ret = py::eval(code, scope);
+            ret.set("has_err",em::val(false));
+            ret.set("ret",implicit_conversion(py_ret));
+            return ret;
+        }
+        catch (py::error_already_set& e)
+        {
+           ret.set("has_err",em::val(true));
+           ret.set("message",em::val(std::string(e.what())));
+           ret.set("error",em::val(std::string(e.what())));
+           return ret;
+        }
+    }
+
+
+    em::val exec(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
+    {
+        em::val ret = em::val::object();
         try
         {
             py::exec(code, scope);
+            ret.set("has_err",em::val(false));
+            return ret;
         }
         catch (py::error_already_set& e)
         {
-            store_and_throw_exception(e);
+           ret.set("has_err",em::val(true));
+           ret.set("message",em::val(std::string(e.what())));
+           ret.set("error",em::val(std::string(e.what())));
+           return ret;
         }
     }
 
-    void eval_file(py::scoped_interpreter  & ,const  std::string & filename, const py::object & scope)
+    em::val eval_file(py::scoped_interpreter  & ,const  std::string & filename, const py::object & scope)
     {
+        em::val ret = em::val::object();
         try
         {
             py::exec(filename, scope);
+            ret.set("has_err",em::val(false));
+            return ret;
         }
         catch (py::error_already_set& e)
         {
-            store_and_throw_exception(e);
+           ret.set("has_err",em::val(true));
+           ret.set("message",em::val(std::string(e.what())));
+           ret.set("error",em::val(std::string(e.what())));
+           return ret;
         }
-
     }
+
+
 
     void export_js_module()
     {
@@ -136,9 +157,9 @@ namespace pyjs
         // interpreter itself, note that only one interpreter at the time allowed
         em::class_<py::scoped_interpreter>("Interpreter")
             .constructor<>()
-            .function("eval", &eval)
-            .function("exec", &exec)
-            .function("eval_file", &eval_file)
+            .function("_eval", &eval)
+            .function("_exec", &exec)
+            .function("_eval_file", &eval_file)
         ;
 
         // py-object (proxy)

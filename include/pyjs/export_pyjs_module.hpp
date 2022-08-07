@@ -20,7 +20,6 @@ namespace py = pybind11;
 namespace em = emscripten;
 
 
-
 namespace pyjs
 {
     void export_pyjs_module(py::module_& pyjs_module)

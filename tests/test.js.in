@@ -6,6 +6,7 @@ test = require('ava')
 async function prepare_all(){
     var createModule = require('./pyjs_runtime_node.js')
     var pyjs_module = await createModule()
+    pyjs_module.init()
     global.Module = pyjs_module
     await import('./python_data.js');
     var deps = await Module['_wait_run_dependencies']()
@@ -18,7 +19,31 @@ var pyjs_promise = prepare_all()
 
 
 
-test('test-loading-data',async function (t) {
+// test('test-error-handling',async function (t) {
+
+//     console.log("require pyjs_runtime_node.js")
+
+//     var pyjs = await pyjs_promise
+//     var interpreter =  new pyjs.Interpreter()
+//     var main_scope = pyjs.main_scope()
+
+//     var caught = false;
+//     try{
+//         interpreter.exec("raise RuntimeError('this error is raised and caught on purpose!')", main_scope)
+//     } catch(e){
+//         caught = true
+//     }
+
+//     t.is(caught, true);
+
+//     main_scope.delete()
+//     interpreter.delete()
+
+// });
+
+
+
+test('test-basics',async function (t) {
 
     console.log("require pyjs_runtime_node.js")
 
@@ -26,13 +51,12 @@ test('test-loading-data',async function (t) {
     var interpreter =  new pyjs.Interpreter()
     var main_scope = pyjs.main_scope()
 
-    try{
-        interpreter.exec("raise RuntimeError('this error is raised and caught on purpose!')", main_scope)
-    } catch(e){
-        console.error(pyjs.get_last_exception())
-    }
 
-    t.is(1,1)
+    interpreter.exec("import numpy\nimport pyjs", main_scope)
+    var s0 = interpreter.eval("numpy.ones([640, 480]).shape[0]", main_scope)
+    t.is(s0,640)
+    s1 = interpreter.eval("numpy.ones([640, 480]).shape[1]", main_scope)
+    t.is(s1,480)
 
     main_scope.delete()
     interpreter.delete()

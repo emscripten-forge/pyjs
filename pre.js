@@ -19,31 +19,62 @@ const _BOOL = "6"
 const _FUNCTION = "7"
 
 
-Module['_last_exception'] = null
+// Module['_last_exception'] = null
 
 
-Module['_add_exception'] = function(exception_type, exception_msg, traceback){
+// Module['_add_exception'] = function(exception_type, exception_msg, traceback){
 
-    Module['_last_exception'] = {
-        "name" : exception_type,
-        "message" :  exception_msg,
-        "traceback":traceback
+//     Module['_last_exception'] = {
+//         "name" : exception_type,
+//         "message" :  exception_msg,
+//         "traceback":traceback
+//     };
+
+// }
+
+
+// Module['get_last_exception'] = function(){
+//     const e = Module['_last_exception'];
+//     if(e !== null){
+//         Module['_last_exception'] = null
+//         return e;
+//     }
+//     else{
+//         return null;
+//     }
+// }
+
+
+
+Module['init'] = function(){
+
+    Module['Interpreter'].prototype.exec = function (code, scope) {
+        ret = this._exec(code, scope)
+        if(ret.has_err)
+        {
+            throw ret
+        }
     };
 
+    Module['Interpreter'].prototype.eval = function (code, scope) {
+        ret = this._eval(code, scope)
+        if(ret.has_err)
+        {
+            throw ret
+        }
+        else{
+            return ret['ret']
+        }
+    };
+
+    Module['Interpreter'].prototype.eval_file = function (file, scope) {
+        ret = this._eval_file(file, scope)
+        if(ret.has_err)
+        {
+            throw ret
+        }
+    };
 }
-
-
-Module['get_last_exception'] = function(){
-    const e = Module['_last_exception'];
-    if(e !== null){
-        Module['_last_exception'] = null
-        return e;
-    }
-    else{
-        return null;
-    }
-}
-
 
 
 

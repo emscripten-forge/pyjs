@@ -151,6 +151,9 @@ namespace pyjs
             { wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value)); });
 
 
+
+        m.def("js_int", [](const int v) { return em::val(v); });
+
         m.def("js_array", []() { return em::val::array(); });
         m.def("js_object", []() { return em::val::object(); });
         m.def("js_undefined", []() { return em::val::undefined(); });

@@ -7,7 +7,7 @@ void {name}_pseudo_init(py::module_& m){{
     py::object scope = m.attr("__dict__");
     py::exec(R"(
 {content}
-)");
+)",scope);
 
 }}
 """

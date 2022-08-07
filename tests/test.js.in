@@ -18,7 +18,7 @@ var pyjs_promise = prepare_all()
 
 
 
-test('test-loading-data-2',async function (t) {
+test('test-loading-data',async function (t) {
 
     console.log("require pyjs_runtime_node.js")
 
@@ -28,7 +28,7 @@ test('test-loading-data-2',async function (t) {
 
     try{
         interpreter.exec("raise RuntimeError('this error is raised and caught on purpose!')", main_scope)
-    } catch(e){        console.log(e)
+    } catch(e){
         console.error(pyjs.get_last_exception())
     }
 

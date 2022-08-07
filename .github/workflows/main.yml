@@ -143,10 +143,7 @@ jobs:
             --yes \
             python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi
 
-          rm -rf /home/runner/micromamba-root/envs/pyjs-wasm/lib/python3.10/site-packages/emsdk/node
-          which node
-          node --version
-          npm install
+
 
           mkdir build
           pushd build
@@ -165,6 +162,10 @@ jobs:
               --config empack_config.yaml \
               --export-name "global.Module"
 
+          rm -rf /home/runner/micromamba-root/envs/pyjs-wasm/lib/python3.10/site-packages/emsdk/node
+          which node
+          node --version
+          npm install
 
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
           export CMAKE_PREFIX_PATH=$PREFIX

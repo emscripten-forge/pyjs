@@ -201,8 +201,8 @@ if(BUILD_RUNTIME_NODE)
 
 
 
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/test.js.in ${CMAKE_CURRENT_BINARY_DIR}/test.cjs @ONLY)
     if(WITH_NODE_TESTS)
-        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/test.js.in ${CMAKE_CURRENT_BINARY_DIR}/test.cjs @ONLY)
         execute_process(
             COMMAND npm bin
             OUTPUT_VARIABLE NODE_BIN_PATH

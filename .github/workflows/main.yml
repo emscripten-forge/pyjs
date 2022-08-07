@@ -162,10 +162,7 @@ jobs:
               --config empack_config.yaml \
               --export-name "global.Module"
 
-          rm -rf /home/runner/micromamba-root/envs/pyjs-wasm/lib/python3.10/site-packages/emsdk/node
-          which node
-          node --version
-          npm install
+
 
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
           export CMAKE_PREFIX_PATH=$PREFIX
@@ -177,11 +174,18 @@ jobs:
             -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
             -DBUILD_RUNTIME_BROWSER=OFF \
             -DBUILD_RUNTIME_NODE=ON \
+            -DWITH_NODE_TESTS=OFF \
             -DCMAKE_INSTALL_PREFIX=$PREFIX \
             ..
 
-          make -j2 node_tests
+          make -j2
 
+          rm -rf /home/runner/micromamba-root/envs/pyjs-wasm/lib/python3.10/site-packages/emsdk/node
+          which node
+          node --version
+          npm install
+
+          ../node_modules/.bin/ava test.cjs --node-arguments=\"--no-experimental-fetch\"
 
 
           popd

@@ -2,9 +2,8 @@
   "devDependencies": {
     "ava": "^4.3.1"
   },
-  "engines": {
-    "node": ">=18.7.0"
+  "scripts": {
+    "test": "ava"
   },
-  "scripts": {},
   "type": "commonjs"
 }

@@ -103,7 +103,7 @@ if(BUILD_RUNTIME_BROWSER)
     SET(ENVIRONMENT "web,worker")
     target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
 
-    target_include_directories(pyjs_runtime_node
+    target_include_directories(pyjs_runtime_browser
                            PRIVATE
                            ${CMAKE_SOURCE_DIR}/include
                            ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)

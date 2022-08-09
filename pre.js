@@ -44,6 +44,10 @@ const _FUNCTION = "7"
 //     }
 // }
 
+// * py_getitem(py_obj, key)            => py_obj[key]
+// * py_setitem(py_obj, key, value)     => py_obj[key] = value
+// * py_apply(py_obj, args, kwargs)     => py_obj(*args, **kwargs)
+// * py_call(py_obj, ...args)           => py_obj(*args)
 
 Module['py_apply'] = function(py_object, args, kwargs){
 
@@ -55,6 +59,11 @@ Module['make_proxy'] = function(py_object) {
     const handler = {
         get(target, property, receiver) {
             console.log(`called: ${property}`);
+
+            var ret = target[property]
+            if(ret !== undefined){
+                return ret
+            }
             return target._getattr(property);
         }
     };
@@ -99,6 +108,16 @@ Module['init'] = function() {
         } else {
             return ret['ret']
         }
+    };
+
+    Module['pyobject'].prototype.py_call = function(...args) {
+        console.log(this, args)
+        // this._raw_call(attr_name)
+        // if (ret.has_err) {
+        //     throw ret
+        // } else {
+        //     return ret['ret']
+        // }
     };
 }
 

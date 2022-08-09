@@ -64,20 +64,28 @@ configure_file(post.js ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
 
 set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
 
-add_library(pyjs INTERFACE)
+add_library(pyjs STATIC
+    src/export_js_module.cpp
+    src/export_js_proxy.cpp
+    src/export_py_object.cpp
+    src/convert.cpp
+)
+
+target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
 set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
 )
 
-target_link_libraries(pyjs INTERFACE pybind11::pybind11)
-target_compile_options(pyjs INTERFACE -fPIC)
+target_link_libraries(pyjs PRIVATE pybind11::pybind11)
+target_compile_options(pyjs PRIVATE -fPIC)
 
 target_include_directories(pyjs
-                           INTERFACE
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-                           $<INSTALL_INTERFACE:include>)
+                           PRIVATE
+                           ${CMAKE_SOURCE_DIR}/include
+                           ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes
+)
+
 
 SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a
@@ -94,6 +102,10 @@ if(BUILD_RUNTIME_BROWSER)
     SET(ENVIRONMENT "web,worker")
     target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
 
+    target_include_directories(pyjs_runtime_node
+                           PRIVATE
+                           ${CMAKE_SOURCE_DIR}/include
+                           ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
 
     set_target_properties(pyjs_runtime_browser
         PROPERTIES
@@ -101,8 +113,8 @@ if(BUILD_RUNTIME_BROWSER)
     )
     target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
     target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
-    target_link_libraries(pyjs_runtime_browser PUBLIC pyjs)
-    target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
+    target_link_libraries(pyjs_runtime_browser PRIVATE pyjs)
+    target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS})
 
     target_compile_options(pyjs_runtime_browser
         PUBLIC --std=c++17
@@ -149,6 +161,10 @@ if(BUILD_RUNTIME_NODE)
     add_executable(pyjs_runtime_node src/runtime.cpp ${PYCPPSOURCES})
     SET(ENVIRONMENT "node")
     target_compile_definitions(pyjs_runtime_node PUBLIC -DPYTEST_DRIVER_NODE)
+    target_include_directories(pyjs_runtime_node
+                           PRIVATE
+                           ${CMAKE_SOURCE_DIR}/include
+                           ${CMAKE_CURRENT_BINARY_DIR})
 
 
 
@@ -159,7 +175,6 @@ if(BUILD_RUNTIME_NODE)
     )
     target_compile_definitions(pyjs_runtime_node PUBLIC -DPYJS_WEB)
     target_compile_options(pyjs_runtime_node PRIVATE -fPIC)
-    target_link_libraries(pyjs_runtime_node PUBLIC pyjs)
     target_link_libraries(pyjs_runtime_node PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
 
     target_compile_options(pyjs_runtime_node

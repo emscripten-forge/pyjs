@@ -47,12 +47,23 @@ test.serial('test-basics',async function (t) {
 
 test.serial('test-getattr',async function (t) {
 
-
-
     interpreter.exec("import numpy\nimport pyjs", main_scope)
     var arr = interpreter.eval("numpy.ones([640, 480])", main_scope)
     var shape = arr.shape
     t.is(shape !== undefined, true)
 
+});
+
+
+test.serial('test-apply',async function (t) {
+
+    interpreter.exec("import numpy\nimport pyjs", main_scope)
+    var f_ones = interpreter.eval("numpy.ones", main_scope)
+    console.log("f_ones",f_ones)
+
+    ones = f_ones['py_call'](10)
+    // f_ones.delete()
+    // ones.delete()
+    t.pass()
 
 });

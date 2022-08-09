@@ -3,11 +3,11 @@
 #include <emscripten/bind.h>
 #include <pybind11/pybind11.h>
 
-
 namespace pyjs
 {
-    namespace em = emscripten;
 
+
+    namespace em = emscripten;
 
     int n_unfinished();
 

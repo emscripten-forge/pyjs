@@ -95,23 +95,53 @@ test.serial('test-getitem',async function (t) {
 
 test.serial('test-getitem-multi-key',async function (t) {
 
-var py_code = '\
-import numpy \n\
-class Foo(object):  \n\
-    def __init__(self):  \n\
-        self.a = numpy.identity(3) \n\
-    def __getitem__(self, key): \n\
-        return int(self.a[key]) \n\
-foo = Foo()\
+var py_code = '                     \n\
+import numpy                        \n\
+class Foo(object):                  \n\
+    def __init__(self):             \n\
+        self.a = numpy.identity(3)  \n\
+    def __getitem__(self, key):     \n\
+        return int(self.a[key])     \n\
 '
 ;
 
 
     interpreter.exec(py_code, main_scope)
-    var foo = interpreter.eval("foo", main_scope)
+    var foo = interpreter.eval("Foo()", main_scope)
     t.is(foo.py_getitem(0,1),0)
     t.is(foo.py_getitem(1,0),0)
     t.is(foo.py_getitem(0,0),1)
     t.is(foo.py_getitem(1,1),1)
     foo.delete()
 });
+
+
+
+
+// test.serial('test-async-exec',async function (t) {
+
+// var py_code = '                     \n\
+// import numpy                        \n\
+// class Foo(object):                  \n\
+//     def __init__(self):             \n\
+//         self.a = numpy.identity(3)  \n\
+//     def __getitem__(self, key):     \n\
+//         return int(self.a[key])     \n\
+// ';
+
+
+//     p = interpreter.async_exec(py_code, main_scope)
+//     await p
+//     try{
+//         var foo = await  interpreter.async_eval("Foo()", main_scope)
+//     }
+//     catch(err){
+//         t.fail(JSON.stringify(err))
+//     };
+//     // t.is(foo.py_getitem(0,1),0)
+//     // t.is(foo.py_getitem(1,0),0)
+//     // t.is(foo.py_getitem(0,0),1)
+//     // t.is(foo.py_getitem(1,1),1)
+//     // foo.delete()
+//     t.pass()
+// });

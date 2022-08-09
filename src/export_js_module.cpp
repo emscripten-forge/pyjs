@@ -96,6 +96,7 @@ namespace pyjs
     }
 
 
+
     em::val exec(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
     {
         em::val ret = em::val::object();
@@ -114,6 +115,7 @@ namespace pyjs
         }
     }
 
+
     em::val eval_file(py::scoped_interpreter  & ,const  std::string & filename, const py::object & scope)
     {
         em::val ret = em::val::object();
@@ -131,6 +133,7 @@ namespace pyjs
            return ret;
         }
     }
+
 
 
 

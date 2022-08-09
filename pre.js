@@ -74,6 +74,44 @@ Module['make_proxy'] = function(py_object) {
 Module['init'] = function() {
 
 
+    // Module['Interpreter'].prototype.async_exec = function(code, scope) {
+    //     return new Promise((resolve, reject) => {
+    //         try {
+    //             const res = this.exec(code, scope)
+    //             resolve(res);
+    //         }
+    //         catch(err){
+    //             reject(err);
+    //         };
+    //     });
+    // };
+    // Module['Interpreter'].prototype.async_eval = function(code, scope) {
+    //     return new Promise((resolve, reject) => {
+    //         try {
+    //             console.log("pre eval")
+    //             const res = this.eval(code, scope)
+    //             console.log("in prs res=",res)
+    //             resolve(res);
+    //         }
+    //         catch(err){
+    //             print("catching err...",err)
+    //             reject(err);
+    //         };
+    //     });
+    // };
+    // Module['Interpreter'].prototype.async_eval_file = function(file, scope) {
+    //     return new Promise((resolve, reject) => {
+    //         try {
+    //             const res = this.eval_file(file, scope)
+    //             resolve(res);
+    //         }
+    //         catch(err){
+    //             reject(err);
+    //         };
+    //     });
+    // };
+
+
 
     Module['Interpreter'].prototype.exec = function(code, scope) {
         ret = this._exec(code, scope)

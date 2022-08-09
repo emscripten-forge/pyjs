@@ -115,7 +115,7 @@ if(BUILD_RUNTIME_BROWSER)
     target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
     target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
     target_link_libraries(pyjs_runtime_browser PRIVATE pyjs)
-    target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS})
+    target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
     target_compile_options(pyjs_runtime_browser
         PUBLIC --std=c++17

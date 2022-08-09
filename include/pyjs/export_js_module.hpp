@@ -9,8 +9,6 @@ namespace pyjs
     namespace em = emscripten;
 
 
-
-
     int n_unfinished();
 
     std::string run_pickled(const std::string& in);

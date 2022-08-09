@@ -45,25 +45,73 @@ test.serial('test-basics',async function (t) {
 });
 
 
+test.serial('test-exceptions',async function (t) {
+    var err = false;
+    try{
+        interpreter.exec("raise RuntimeError(\"this is intended\")", main_scope)
+    }
+    catch(e)
+    {
+        err = true
+        t.is(e.message.startsWith("RuntimeError: this is intended"),true)
+    }
+    t.is(err, true)
+});
+
+
+
 test.serial('test-getattr',async function (t) {
 
     interpreter.exec("import numpy\nimport pyjs", main_scope)
     var arr = interpreter.eval("numpy.ones([640, 480])", main_scope)
     var shape = arr.shape
     t.is(shape !== undefined, true)
+    shape.delete()
+    arr.delete()
 
 });
 
 
-test.serial('test-apply',async function (t) {
+test.serial('test-call',async function (t) {
+    var square = interpreter.eval("lambda a : a * a", main_scope)
+    res = square.py_call(10)
+    t.is(res,100)
+});
+
+
+test.serial('test-getitem',async function (t) {
 
     interpreter.exec("import numpy\nimport pyjs", main_scope)
-    var f_ones = interpreter.eval("numpy.ones", main_scope)
-    console.log("f_ones",f_ones)
+    var arr = interpreter.eval("numpy.ones([64, 48])", main_scope)
+    var shape = arr.shape
+    var s0 = shape.py_getitem(0)
+    t.is(s0,64)
+    var s1 = shape.py_getitem(1)
+    t.is(s1,48)
+    shape.delete()
+    arr.delete()
+});
 
-    ones = f_ones['py_call'](10)
-    // f_ones.delete()
-    // ones.delete()
-    t.pass()
 
+test.serial('test-getitem-multi-key',async function (t) {
+
+var py_code = '\
+import numpy \n\
+class Foo(object):  \n\
+    def __init__(self):  \n\
+        self.a = numpy.identity(3) \n\
+    def __getitem__(self, key): \n\
+        return int(self.a[key]) \n\
+foo = Foo()\
+'
+;
+
+
+    interpreter.exec(py_code, main_scope)
+    var foo = interpreter.eval("foo", main_scope)
+    t.is(foo.py_getitem(0,1),0)
+    t.is(foo.py_getitem(1,0),0)
+    t.is(foo.py_getitem(0,0),1)
+    t.is(foo.py_getitem(1,1),1)
+    foo.delete()
 });

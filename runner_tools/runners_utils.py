@@ -1,7 +1,6 @@
 import http
 import os
 import socket
-import sys
 import threading
 from contextlib import closing, contextmanager
 from http.server import HTTPServer
@@ -69,55 +68,52 @@ async def playwright_main(page_url, workdir, script_basename):
                    outputString += text;
                    outputString += "\\n";
                  }}
-                 function waitRunDependency() {{
-                   const promise = new Promise((r) => {{
-                     Module.monitorRunDependencies = (n) => {{
-                       if (n === 0) {{
-                         r();
-                       }}
-                     }};
-                   }});
-                   globalThis.Module.addRunDependency("dummy");
-                   globalThis.Module.removeRunDependency("dummy");
-                   return promise;
-                 }}
 
-                console.log("create module ...")
-                var myModule = await createModule({{print:print,error:print}})
-                var Module = myModule
+                var pyjs = await createModule({{print:print,error:print}})
+                var Module = pyjs
 
                 globalThis.Module = Module
-                //console.log("import python_data ...")
                 await import('./python_data.js')
-                //console.log("import script_data ...")
                 await import('./script_data.js')
-                console.log("wait for dependencies ...")
-                var deps = await waitRunDependency()
+
+                var deps = await pyjs['_wait_run_dependencies']()
+                pyjs.init()
+
+                var interpreter =  new pyjs.Interpreter()
+                var main_scope = pyjs.main_scope()
 
 
-
-                console.log("initialize ...")
-                myModule.initialize_interpreter()
-                console.log("run scripts ...")
-                var r = myModule.run_script("{workdir}","{os.path.join(workdir, script_basename)}")
-
-                while(true)
+                var r = 0;
+                try{{
+                    interpreter.exec("import os", main_scope)
+                    interpreter.exec("os.chdir('{workdir}')", main_scope)
+                    var script_path = "{os.path.join(workdir, script_basename)}";
+                    interpreter.eval_file(script_path, main_scope);
+                }} catch(e)
                 {{
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    const n_unfinished = myModule.n_unfinished();
-                    if(n_unfinished <= 0)
-                    {{
-                        break;
-                    }}
+                    console.error(e);
+                    r = 1;
                 }}
 
-                myModule.run_code("print('collect');import gc;gc.collect();")
-                myModule.finalize_interpreter()
+
+
+                //while(true)
+                //{{
+                //    await new Promise(resolve => setTimeout(resolve, 100));
+                //    const n_unfinished = pyjs.n_unfinished();
+                //    if(n_unfinished <= 0)
+                //    {{
+                //        break;
+                //    }}
+                //}}
+
                 msg = {{
-                    return_code : 0,
+                    return_code : r,
                     collected_prints : outputString
                 }}
                 self.postMessage(msg)
+                main_scope.delete()
+                interpreter.delete()
                 return r
             }}"""
             )
@@ -152,10 +148,7 @@ async def playwright_main(page_url, workdir, script_basename):
         """
         )
         return_code = int(str(await test_output.get_property("return_code")))
-
-        await browser.close()
-        if return_code != 0:
-            sys.exit(return_code)
+    return return_code
 
 
 def pack_script(script_file):

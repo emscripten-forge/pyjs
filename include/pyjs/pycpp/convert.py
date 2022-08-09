@@ -185,4 +185,21 @@ def py_to_js_array_converter(val, depth, cache, converter_options):
     pass
 
 
+def implicit_convert_info(val):
+    if val is None:
+        return "None"
+    elif isinstance(val, int):
+        return "int"
+    elif isinstance(val, int):
+        return "int"
+    elif isinstance(val, float):
+        return "double"
+    elif isinstance(val, str):
+        return "str"
+    elif isinstance(val, bool):
+        return "bool"
+    else:
+        return "object"
+
+
 IN_BROWSER = not to_py(internal.module_property("_IS_NODE"))

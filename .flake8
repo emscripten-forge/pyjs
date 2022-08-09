@@ -1,4 +1,4 @@
 [flake8]
 max-line-length=100
-extend-ignore=E203,D104,D100,I004
+extend-ignore=E203,D104,D100,I004,F821
 exclude=*/tests/*,docs/source/tools/*

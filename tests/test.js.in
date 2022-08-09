@@ -1,0 +1,69 @@
+// import test from 'ava';
+test = require('ava')
+
+
+var interpreter = null
+var pyjs = null
+var main_scope = null
+
+// This runs before all tests
+test.before(async function (t) {
+  var createModule = require('./pyjs_runtime_node.js')
+    pyjs = await createModule()
+    pyjs.init()
+    global.Module = pyjs
+    await import('./python_data.js');
+    var deps = await Module['_wait_run_dependencies']()
+    interpreter =  new pyjs.Interpreter()
+    return pyjs
+});
+
+test.after.always('guaranteed cleanup', t => {
+    // This will always run, regardless of earlier failures
+    interpreter.delete()
+});
+
+
+test.beforeEach(t => {
+    // This runs before each test
+    main_scope = pyjs.main_scope()
+});
+
+test.afterEach(t => {
+    // This runs after each test
+    main_scope.delete()
+});
+
+
+test.serial('test-basics',async function (t) {
+
+    interpreter.exec("import numpy\nimport pyjs", main_scope)
+    var s0 = interpreter.eval("numpy.ones([640, 480]).shape[0]", main_scope)
+    t.is(s0,640)
+    s1 = interpreter.eval("numpy.ones([640, 480]).shape[1]", main_scope)
+    t.is(s1,480)
+});
+
+
+test.serial('test-getattr',async function (t) {
+
+    interpreter.exec("import numpy\nimport pyjs", main_scope)
+    var arr = interpreter.eval("numpy.ones([640, 480])", main_scope)
+    var shape = arr.shape
+    t.is(shape !== undefined, true)
+
+});
+
+
+test.serial('test-apply',async function (t) {
+
+    interpreter.exec("import numpy\nimport pyjs", main_scope)
+    var f_ones = interpreter.eval("numpy.ones", main_scope)
+    console.log("f_ones",f_ones)
+
+    ones = f_ones['py_call'](10)
+    // f_ones.delete()
+    // ones.delete()
+    t.pass()
+
+});

@@ -1,14 +1,17 @@
 import sys
 from pathlib import Path
 
-
 template = """
+#include <pybind11/pybind11.h>
+#include <pybind11/embed.h>
+namespace py = pybind11;
+
 void {name}_pseudo_init(py::module_& m){{
 
-    py::object scope = m.attr("__dict__");                                                     
+    py::object scope = m.attr("__dict__");
     py::exec(R"(
 {content}
-)");
+)",scope);
 
 }}
 """

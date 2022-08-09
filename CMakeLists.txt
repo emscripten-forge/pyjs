@@ -1,8 +1,15 @@
 cmake_minimum_required(VERSION 3.9)
 project(pyjs VERSION 0.7.0 DESCRIPTION "pyjs")
 
-option(BUILD_RUNNER "Build runner" OFF)
+option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
+option(BUILD_RUNTIME_NODE "Build runtime" ON)
+option(WITH_NODE_TESTS "With node tests" ON)
 
+
+
+##########################################################
+# embed python files in C++ headers
+##########################################################
 set(PYCPPSCRIPTS
     convert.py
     core.py
@@ -14,13 +21,17 @@ set(PYCPPSCRIPTS
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
 foreach(script ${PYCPPSCRIPTS})
     string(REPLACE "." "_" script_var ${script})
-    add_custom_command(OUTPUT pycpp_includes/${script}.hpp
+    add_custom_command(OUTPUT pycpp_includes/${script}.cpp
                        DEPENDS include/pyjs/pycpp/${script}
                        COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/embed_pycpp.py
                         ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pycpp/${script}
-                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes/${script}.hpp)
+                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes/${script}.cpp)
 endforeach()
 
+
+##########################################################
+# headers to install (TODO generated files are missing)
+##########################################################
 set(PYJS_HEADERS
     include/pyjs/convert.hpp
     include/pyjs/export_js_module.hpp
@@ -32,7 +43,7 @@ set(PYJS_HEADERS
 
 set(PYCPPSOURCES "")
 foreach(script ${PYCPPSCRIPTS})
-    list(APPEND PYCPPSOURCES pycpp_includes/${script}.hpp)
+    list(APPEND PYCPPSOURCES pycpp_includes/${script}.cpp)
 endforeach()
 
 
@@ -53,20 +64,29 @@ configure_file(post.js ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
 
 set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
 
-add_library(pyjs INTERFACE)
+add_library(pyjs STATIC
+    src/export_js_module.cpp
+    src/export_js_proxy.cpp
+    src/export_py_object.cpp
+    src/convert.cpp
+    ${PYCPPSOURCES}
+)
+
+target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
 set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
 )
 
-target_link_libraries(pyjs INTERFACE pybind11::pybind11)
-target_compile_options(pyjs INTERFACE -fPIC)
+target_link_libraries(pyjs PRIVATE pybind11::pybind11)
+target_compile_options(pyjs PRIVATE -fPIC)
 
 target_include_directories(pyjs
-                           INTERFACE
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-                           $<INSTALL_INTERFACE:include>)
+                           PRIVATE
+                           ${CMAKE_SOURCE_DIR}/include
+                           ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes
+)
+
 
 SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a
@@ -75,29 +95,40 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
 )
 
-if(BUILD_RUNNER)
-    add_executable(pyjs_main src/main.cpp ${PYCPPSOURCES})
-    set_target_properties(pyjs_main
+
+# TODO MAKE LOOP
+
+if(BUILD_RUNTIME_BROWSER)
+    add_executable(pyjs_runtime_browser src/runtime.cpp )
+    SET(ENVIRONMENT "web,worker")
+    target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
+
+    target_include_directories(pyjs_runtime_browser
+                           PRIVATE
+                           ${CMAKE_SOURCE_DIR}/include
+                           ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
+
+    set_target_properties(pyjs_runtime_browser
         PROPERTIES
             CXX_STANDARD 17
     )
-    target_compile_definitions(pyjs_main PUBLIC -DPYJS_WEB)
-    target_compile_options(pyjs_main PRIVATE -fPIC)
-    target_link_libraries(pyjs_main PUBLIC pyjs)
-    target_link_libraries(pyjs_main PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
+    target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
+    target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
+    target_link_libraries(pyjs_runtime_browser PRIVATE pyjs)
+    target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
-    target_compile_options(pyjs_main
+    target_compile_options(pyjs_runtime_browser
         PUBLIC --std=c++17
         PUBLIC -Wno-deprecated
         PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -s ENVIRONMENT=worker"
+        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
         PUBLIC "SHELL: -fwasm-exceptions"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
         PUBLIC "SHELL: -flto"
     )
 
-    target_link_options(pyjs_main
+    target_link_options(pyjs_runtime_browser
         PUBLIC --bind
         PUBLIC -Wno-unused-command-line-argument
         PUBLIC "SHELL: --bind"
@@ -113,7 +144,7 @@ if(BUILD_RUNNER)
         PUBLIC "SHELL: -s USE_PTHREADS=0"
         PUBLIC "SHELL: -fwasm-exceptions"
         PUBLIC "SHELL: -s MAIN_MODULE=1"
-        PUBLIC "SHELL: -s ENVIRONMENT=worker"
+        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
         PUBLIC "SHELL: -s TOTAL_STACK=512mb"
         PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
@@ -122,6 +153,85 @@ if(BUILD_RUNNER)
         PUBLIC "SHELL: --pre-js pre.js"
         PUBLIC "SHELL: -flto"
     )
+endif()
+
+if(BUILD_RUNTIME_NODE)
+
+
+
+    add_executable(pyjs_runtime_node src/runtime.cpp )
+    SET(ENVIRONMENT "node")
+    target_compile_definitions(pyjs_runtime_node PUBLIC -DPYTEST_DRIVER_NODE)
+    target_include_directories(pyjs_runtime_node
+                           PRIVATE
+                           ${CMAKE_SOURCE_DIR}/include
+                           ${CMAKE_CURRENT_BINARY_DIR})
+
+
+
+
+    set_target_properties(pyjs_runtime_node
+        PROPERTIES
+            CXX_STANDARD 17
+    )
+    target_compile_definitions(pyjs_runtime_node PUBLIC -DPYJS_WEB)
+    target_compile_options(pyjs_runtime_node PRIVATE -fPIC)
+    target_link_libraries(pyjs_runtime_node PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
+
+    target_compile_options(pyjs_runtime_node
+        PUBLIC --std=c++17
+        PUBLIC -Wno-deprecated
+        PUBLIC "SHELL: --bind"
+        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
+        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+        PUBLIC "SHELL: -s LZ4=1"
+        PUBLIC "SHELL: -flto"
+    )
+
+    target_link_options(pyjs_runtime_node
+        PUBLIC --bind
+        PUBLIC -Wno-unused-command-line-argument
+        PUBLIC "SHELL: --bind"
+        PUBLIC "SHELL: -s MODULARIZE=1"
+        PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
+        PUBLIC "SHELL: -s EXPORT_ES6=0"
+        PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
+        PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
+        PUBLIC "SHELL: -s ASSERTIONS=0"
+        PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
+        PUBLIC "SHELL: -s EXIT_RUNTIME=1"
+        PUBLIC "SHELL: -s WASM=1"
+        PUBLIC "SHELL: -s USE_PTHREADS=0"
+        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -s MAIN_MODULE=1"
+        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
+        PUBLIC "SHELL: -s TOTAL_STACK=512mb"
+        PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
+        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+        PUBLIC "SHELL: -s LZ4=1"
+        PUBLIC "SHELL: --post-js post.js"
+        PUBLIC "SHELL: --pre-js pre.js"
+        PUBLIC "SHELL: -flto"
+    )
+
+
+
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/test.js.in ${CMAKE_CURRENT_BINARY_DIR}/test.cjs @ONLY)
+    if(WITH_NODE_TESTS)
+        execute_process(
+            COMMAND npm bin
+            OUTPUT_VARIABLE NODE_BIN_PATH
+        )
+        message(STATUS "NODEBINPATH  " ${NODE_BIN_PATH})
+        string(STRIP ${NODE_BIN_PATH} NODE_BIN_PATH)
+        message(STATUS "P" ${NODE_BIN_PATH}/ava )
+        add_custom_target(node_tests
+            COMMAND "${NODE_BIN_PATH}/ava" "--node-arguments=\"--no-experimental-fetch\"" "" test.cjs
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            DEPENDS pyjs_runtime_node)
+    endif()
+
 endif()
 
 include(GNUInstallDirs)

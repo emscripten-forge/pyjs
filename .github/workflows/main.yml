@@ -13,7 +13,7 @@ defaults:
 
 jobs:
 
-  test-wasm:
+  test-browser:
 
     runs-on: ubuntu-latest
 
@@ -58,24 +58,41 @@ jobs:
             --yes \
             python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi
 
+
           mkdir build
           pushd build
+
+          # donload empack config
+          EMPACK_CONFIG=empack_config.yaml
+          echo "donwload empack config"
+          wget -O $EMPACK_CONFIG https://raw.githubusercontent.com/emscripten-forge/recipes/main/empack_config.yaml
+
+
+
+          # pack the environment in a js/data file
+          empack pack env \
+              --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
+              --outname python_data \
+              --config empack_config.yaml \
+              --export-name "globalThis.Module"
+
 
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
           export CMAKE_PREFIX_PATH=$PREFIX
           export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
 
+          # build pyjs
           emcmake cmake \
-            -GNinja \
-            -DCMAKE_INSTALL_PREFIX=$PREFIX \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
-            -DBUILD_RUNNER=ON \
+            -DBUILD_RUNTIME_BROWSER=ON \
+            -DBUILD_RUNTIME_NODE=OFF \
+            -DCMAKE_INSTALL_PREFIX=$PREFIX \
             ..
 
-          ninja
+          make -j2
 
-          empack pack python core $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm --version=3.10
+
 
           popd
 
@@ -83,3 +100,88 @@ jobs:
         run: |
           micromamba activate pyjs-wasm
           python runner.py run script test_pyjs.py
+  test-node:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        emsdk_ver: ["3.1.2"]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Get number of CPU cores
+        uses: SimenB/github-actions-cpu-cores@v1
+
+      - name: Install mamba
+        uses: mamba-org/provision-with-micromamba@main
+        with:
+          environment-file: environment-dev.yml
+          environment-name: pyjs-wasm
+          micromamba-version: "0.22.0"
+
+
+
+      - name: Setup emsdk
+        run: |
+          micromamba activate pyjs-wasm
+          emsdk install ${{matrix.emsdk_ver}}
+
+      - name: Build and run node-tests
+        run: |
+          micromamba activate pyjs-wasm
+
+          emsdk activate ${{matrix.emsdk_ver}}
+          source $CONDA_EMSDK_DIR/emsdk_env.sh
+
+          micromamba create -n pyjs-build-wasm \
+            --platform=emscripten-32 \
+            -c https://repo.mamba.pm/emscripten-forge \
+            -c https://repo.mamba.pm/conda-forge \
+            --yes \
+            python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi
+
+
+
+          mkdir build
+          pushd build
+
+          # donload empack config
+          EMPACK_CONFIG=empack_config.yaml
+          echo "donwload empack config"
+          wget -O $EMPACK_CONFIG https://raw.githubusercontent.com/emscripten-forge/recipes/main/empack_config.yaml
+
+
+
+          # pack the environment in a js/data file
+          empack pack env \
+              --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
+              --outname python_data \
+              --config empack_config.yaml \
+              --export-name "global.Module"
+
+
+
+          export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
+          export CMAKE_PREFIX_PATH=$PREFIX
+          export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
+
+          # build pyjs
+          emcmake cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
+            -DBUILD_RUNTIME_BROWSER=OFF \
+            -DBUILD_RUNTIME_NODE=ON \
+            -DWITH_NODE_TESTS=OFF \
+            -DCMAKE_INSTALL_PREFIX=$PREFIX \
+            ..
+
+          make -j2
+          npm install
+          $MAMBA_ROOT_PREFIX/envs/pyjs-wasm/bin/node --no-experimental-fetch ../node_modules/.bin/ava test.cjs
+
+
+
+          popd

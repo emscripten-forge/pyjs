@@ -21,11 +21,11 @@ set(PYCPPSCRIPTS
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
 foreach(script ${PYCPPSCRIPTS})
     string(REPLACE "." "_" script_var ${script})
-    add_custom_command(OUTPUT pycpp_includes/${script}.hpp
+    add_custom_command(OUTPUT pycpp_includes/${script}.cpp
                        DEPENDS include/pyjs/pycpp/${script}
                        COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/embed_pycpp.py
                         ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pycpp/${script}
-                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes/${script}.hpp)
+                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes/${script}.cpp)
 endforeach()
 
 
@@ -43,7 +43,7 @@ set(PYJS_HEADERS
 
 set(PYCPPSOURCES "")
 foreach(script ${PYCPPSCRIPTS})
-    list(APPEND PYCPPSOURCES pycpp_includes/${script}.hpp)
+    list(APPEND PYCPPSOURCES pycpp_includes/${script}.cpp)
 endforeach()
 
 
@@ -69,6 +69,7 @@ add_library(pyjs STATIC
     src/export_js_proxy.cpp
     src/export_py_object.cpp
     src/convert.cpp
+    ${PYCPPSOURCES}
 )
 
 target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
@@ -98,7 +99,7 @@ SET(PYTHON_UTIL_LIBS
 # TODO MAKE LOOP
 
 if(BUILD_RUNTIME_BROWSER)
-    add_executable(pyjs_runtime_browser src/runtime.cpp ${PYCPPSOURCES})
+    add_executable(pyjs_runtime_browser src/runtime.cpp )
     SET(ENVIRONMENT "web,worker")
     target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
 
@@ -158,7 +159,7 @@ if(BUILD_RUNTIME_NODE)
 
 
 
-    add_executable(pyjs_runtime_node src/runtime.cpp ${PYCPPSOURCES})
+    add_executable(pyjs_runtime_node src/runtime.cpp )
     SET(ENVIRONMENT "node")
     target_compile_definitions(pyjs_runtime_node PUBLIC -DPYTEST_DRIVER_NODE)
     target_include_directories(pyjs_runtime_node

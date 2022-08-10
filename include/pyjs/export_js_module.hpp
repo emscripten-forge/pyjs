@@ -15,7 +15,6 @@ namespace pyjs
 
     em::val eval(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope);
 
-
     em::val exec(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope);
 
     em::val eval_file(py::scoped_interpreter  & ,const  std::string & filename, const py::object & scope);

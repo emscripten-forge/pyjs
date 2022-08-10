@@ -77,8 +77,7 @@ namespace pyjs
     }
 
     em::val eval(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
-    {
-        em::val ret = em::val::object();
+     {       em::val ret = em::val::object();
         try
         {
             py::object py_ret = py::eval(code, scope);

@@ -10,6 +10,16 @@ namespace em = emscripten;
 
 namespace pyjs
 {
+    template <class E>
+    em::val wrap_py_err(E& e)
+    {
+        em::val ret = em::val::object();
+        ret.set("has_err", em::val(true));
+        ret.set("message", em::val(std::string(e.what())));
+        ret.set("error", em::val(std::string(e.what())));
+        return ret;
+    }
+
     void export_py_object()
     {
         em::class_<py::object>("pyobject")
@@ -23,9 +33,6 @@ namespace pyjs
                     {
                         py::gil_scoped_acquire acquire;
 
-                        em::val ret = em::val::object();
-
-                        // implicit to py
 
                         py::list py_args;
                         for (std::size_t i = 0; i < n_args; ++i)
@@ -37,24 +44,20 @@ namespace pyjs
 
                         try
                         {
+                            em::val ret = em::val::object();
                             py::object py_ret = pyobject(*py_args);
                             ret.set("has_err", em::val(false));
                             ret.set("ret", implicit_conversion(py_ret));
+                            return ret;
                         }
                         catch (py::error_already_set& e)
                         {
-                            ret.set("has_err", em::val(true));
-                            ret.set("message", em::val(std::string(e.what())));
-                            ret.set("error", em::val(std::string(e.what())));
+                            return wrap_py_err(e);
                         }
                         catch (std::exception& e)
                         {
-                            ret.set("has_err", em::val(true));
-                            ret.set("message", em::val(std::string(e.what())));
-                            ret.set("error", em::val(std::string(e.what())));
+                            return wrap_py_err(e);
                         }
-
-                        return ret;
                     }))
 
             .function(
@@ -65,7 +68,6 @@ namespace pyjs
                     {
                         py::gil_scoped_acquire acquire;
 
-                        em::val ret = em::val::object();
 
                         // implicit to py
 
@@ -79,40 +81,34 @@ namespace pyjs
 
                         try
                         {
+                            em::val ret = em::val::object();
+                            ret.set("has_err", em::val(false));
                             if (n_keys == 0)
                             {
                                 py::object py_ret = pyobject.attr("__getitem__")();
-                                ret.set("has_err", em::val(false));
                                 ret.set("ret", implicit_conversion(py_ret));
                             }
                             if (n_keys == 1)
                             {
                                 py::object py_ret = pyobject.attr("__getitem__")(py_args[0]);
-                                ret.set("has_err", em::val(false));
                                 ret.set("ret", implicit_conversion(py_ret));
                             }
                             else
                             {
                                 py::tuple tuple_args(py_args);
                                 py::object py_ret = pyobject.attr("__getitem__")(tuple_args);
-                                ret.set("has_err", em::val(false));
                                 ret.set("ret", implicit_conversion(py_ret));
                             }
+                            return ret;
                         }
                         catch (py::error_already_set& e)
                         {
-                            ret.set("has_err", em::val(true));
-                            ret.set("message", em::val(std::string(e.what())));
-                            ret.set("error", em::val(std::string(e.what())));
+                            return wrap_py_err(e);
                         }
                         catch (std::exception& e)
                         {
-                            ret.set("has_err", em::val(true));
-                            ret.set("message", em::val(std::string(e.what())));
-                            ret.set("error", em::val(std::string(e.what())));
+                            return wrap_py_err(e);
                         }
-
-                        return ret;
                     }))
 
 

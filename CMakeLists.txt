@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.7.0 DESCRIPTION "pyjs")
+project(pyjs VERSION 0.8.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
@@ -193,6 +193,14 @@ if(BUILD_RUNTIME_BROWSER)
         PUBLIC "SHELL: --pre-js pre.js"
         PUBLIC "SHELL: -flto"
     )
+
+
+    install(TARGETS pyjs_runtime_browser
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+    install(FILES
+            "$<TARGET_FILE_DIR:pyjs_runtime_browser>/pyjs_runtime_browser.wasm"
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+
 endif()
 
 if(BUILD_RUNTIME_NODE)
@@ -273,6 +281,14 @@ if(BUILD_RUNTIME_NODE)
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             DEPENDS pyjs_runtime_node)
     endif()
+
+
+    install(TARGETS pyjs_runtime_node
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+    install(FILES
+            "$<TARGET_FILE_DIR:pyjs_runtime_node>/pyjs_runtime_node.wasm"
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+
 
 endif()
 

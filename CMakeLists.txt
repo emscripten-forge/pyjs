@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.7.0 DESCRIPTION "pyjs")
+project(pyjs VERSION 0.8.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
@@ -29,8 +29,31 @@ foreach(script ${PYCPPSCRIPTS})
 endforeach()
 
 
+
+
+
+    # add_custom_target( copy_pre_js
+    #                     DEPENDS ${CMAKE_SOURCE_DIR}/pre.js
+    #                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    #                    ${CMAKE_SOURCE_DIR}/pre.js
+    #                    ${CMAKE_BINARY_DIR}/pre.js
+    #                     COMMENT "Copying 'pre.js' library to bin")
+
+
+ADD_CUSTOM_COMMAND(OUTPUT  ${CMAKE_BINARY_DIR}/pre.js
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       ${CMAKE_SOURCE_DIR}/pre.js
+                       ${CMAKE_BINARY_DIR}/pre.js
+  DEPENDS ${CMAKE_SOURCE_DIR}/pre.js
+)
+ADD_CUSTOM_TARGET(CopyPreJs ALL
+   DEPENDS ${CMAKE_BINARY_DIR}/pre.js
+)
+
+
+
 ##########################################################
-# headers to install (TODO generated files are missing)
+# headers to install
 ##########################################################
 set(PYJS_HEADERS
     include/pyjs/convert.hpp
@@ -73,6 +96,23 @@ add_library(pyjs STATIC
 )
 
 target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
+
+
+    target_compile_options(pyjs
+        PUBLIC --std=c++17
+        PUBLIC -Wno-deprecated
+        PUBLIC "SHELL: --bind"
+        PUBLIC "SHELL: -fwasm-exceptions"
+    )
+
+    target_link_options(pyjs
+        PUBLIC --bind
+        PUBLIC -Wno-unused-command-line-argument
+        PUBLIC "SHELL: --bind"
+        PUBLIC "SHELL: -fwasm-exceptions"
+    )
+
+
 
 set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
@@ -153,6 +193,14 @@ if(BUILD_RUNTIME_BROWSER)
         PUBLIC "SHELL: --pre-js pre.js"
         PUBLIC "SHELL: -flto"
     )
+
+
+    install(TARGETS pyjs_runtime_browser
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+    install(FILES
+            "$<TARGET_FILE_DIR:pyjs_runtime_browser>/pyjs_runtime_browser.wasm"
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+
 endif()
 
 if(BUILD_RUNTIME_NODE)
@@ -215,6 +263,8 @@ if(BUILD_RUNTIME_NODE)
         PUBLIC "SHELL: -flto"
     )
 
+    add_dependencies(pyjs_runtime_node CopyPreJs)
+
 
 
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/test.js.in ${CMAKE_CURRENT_BINARY_DIR}/test.cjs @ONLY)
@@ -231,6 +281,14 @@ if(BUILD_RUNTIME_NODE)
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             DEPENDS pyjs_runtime_node)
     endif()
+
+
+    install(TARGETS pyjs_runtime_node
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+    install(FILES
+            "$<TARGET_FILE_DIR:pyjs_runtime_node>/pyjs_runtime_node.wasm"
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+
 
 endif()
 

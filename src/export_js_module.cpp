@@ -7,7 +7,6 @@
 
 #include <pybind11/pybind11.h>
 
-
 namespace pyjs
 {
     namespace em = emscripten;
@@ -77,10 +76,8 @@ namespace pyjs
         }
     }
 
-
     em::val eval(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
-    {
-        em::val ret = em::val::object();
+     {       em::val ret = em::val::object();
         try
         {
             py::object py_ret = py::eval(code, scope);
@@ -96,6 +93,7 @@ namespace pyjs
            return ret;
         }
     }
+
 
 
     em::val exec(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
@@ -116,6 +114,7 @@ namespace pyjs
         }
     }
 
+
     em::val eval_file(py::scoped_interpreter  & ,const  std::string & filename, const py::object & scope)
     {
         em::val ret = em::val::object();
@@ -133,6 +132,7 @@ namespace pyjs
            return ret;
         }
     }
+
 
 
 

@@ -55,11 +55,9 @@ Module['py_apply'] = function(py_object, args, kwargs){
 
 
 Module['make_proxy'] = function(py_object) {
-
+    // return py_object;
     const handler = {
         get(target, property, receiver) {
-            console.log(`called: ${property}`);
-
             var ret = target[property]
             if(ret !== undefined){
                 return ret
@@ -74,6 +72,7 @@ Module['make_proxy'] = function(py_object) {
 
 
 Module['init'] = function() {
+
 
 
 
@@ -111,15 +110,31 @@ Module['init'] = function() {
     };
 
     Module['pyobject'].prototype.py_call = function(...args) {
-        console.log(this, args)
-        // this._raw_call(attr_name)
-        // if (ret.has_err) {
-        //     throw ret
-        // } else {
-        //     return ret['ret']
-        // }
+
+        types = args.map(Module['_get_type_string'] )
+        ret = this._raw_call(args, types, args.length)
+        if (ret.has_err) {
+            throw ret
+        } else {
+            return ret['ret']
+        }
+    };
+
+    Module['pyobject'].prototype.py_getitem = function(...keys) {
+
+
+        types = keys.map(Module['_get_type_string'] )
+        ret = this._raw_getitem(keys, types, keys.length)
+        if (ret.has_err) {
+            throw ret
+        } else {
+            return ret['ret']
+        }
     };
 }
+
+
+
 
 
 

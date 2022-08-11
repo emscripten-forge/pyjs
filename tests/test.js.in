@@ -97,6 +97,26 @@ test.serial('test-call-with-py-objects',async function (t) {
 });
 
 
+test.serial('test-call-with-kwargs',async function (t) {
+    interpreter.exec("def myfunc(arg0, arg1, arg2, arg3): \n\
+        assert arg0==10                                   \n\
+        assert arg1==2                                    \n\
+        assert arg2==3                                    \n\
+        assert arg3=='four'                               \n\
+        return arg0 + arg1 + arg2                         \n\
+    ", main_scope)
+    var myfunc = interpreter.eval("myfunc", main_scope)
+
+    var args = [10,2]
+    var kwargs = {"arg2":3,"arg3":"four"}
+
+    res = myfunc.py_apply(args, kwargs)
+
+    myfunc.delete()
+    t.is(res, 15)
+});
+
+
 
 test.serial('test-getitem',async function (t) {
 

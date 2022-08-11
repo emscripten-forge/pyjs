@@ -20,45 +20,90 @@ namespace pyjs
         return ret;
     }
 
+    em::val raw_apply(py::object& self,
+                      em::val args,
+                      em::val args_types,
+                      std::size_t n_args,
+                      em::val kwargs_keys,
+                      em::val kwargs_values,
+                      em::val kwargs_values_types,
+                      std::size_t n_kwargs)
+    {
+        py::gil_scoped_acquire acquire;
+        py::list py_args;
+        py::dict py_kwargs;
+        for (std::size_t i = 0; i < n_args; ++i)
+        {
+            py::object py_arg = implicit_to_py(args[i], args_types[i].as<std::string>());
+            py_args.append(py_arg);
+        }
+
+        for (std::size_t i = 0; i < n_kwargs; ++i)
+        {
+            py::object py_kwarg_val
+                = implicit_to_py(kwargs_values[i], kwargs_values_types[i].as<std::string>());
+            const std::string key = kwargs_keys[i].as<std::string>();
+            py_kwargs[py::cast(key)] = py_kwarg_val;
+        }
+
+
+        try
+        {
+            em::val ret = em::val::object();
+            py::object py_ret = self(*py_args, **py_kwargs);
+            ret.set("has_err", em::val(false));
+            ret.set("ret", implicit_conversion(py_ret));
+            return ret;
+        }
+        catch (py::error_already_set& e)
+        {
+            return wrap_py_err(e);
+        }
+        catch (std::exception& e)
+        {
+            return wrap_py_err(e);
+        }
+    }
+
+
+    em::val raw_call(py::object& pyobject, em::val args, em::val arg_types, std::size_t n_args)
+    {
+        py::gil_scoped_acquire acquire;
+
+
+        py::list py_args;
+        for (std::size_t i = 0; i < n_args; ++i)
+        {
+            py::object py_arg = implicit_to_py(args[i], arg_types[i].as<std::string>());
+            py_args.append(py_arg);
+        }
+
+        try
+        {
+            em::val ret = em::val::object();
+            py::object py_ret = pyobject(*py_args);
+            ret.set("has_err", em::val(false));
+            ret.set("ret", implicit_conversion(py_ret));
+            return ret;
+        }
+        catch (py::error_already_set& e)
+        {
+            return wrap_py_err(e);
+        }
+        catch (std::exception& e)
+        {
+            return wrap_py_err(e);
+        }
+    }
+
     void export_py_object()
     {
         em::class_<py::object>("pyobject")
 
 
-            .function(
-                "_raw_call",
-                em::select_overload<em::val(py::object&, em::val, em::val, std::size_t)>(
-                    [](py::object& pyobject, em::val args, em::val arg_types, std::size_t n_args)
-                        -> em::val
-                    {
-                        py::gil_scoped_acquire acquire;
+            .function("_raw_apply", &raw_apply)
 
-
-                        py::list py_args;
-                        for (std::size_t i = 0; i < n_args; ++i)
-                        {
-                            py::object py_arg
-                                = implicit_to_py(args[i], arg_types[i].as<std::string>());
-                            py_args.append(py_arg);
-                        }
-
-                        try
-                        {
-                            em::val ret = em::val::object();
-                            py::object py_ret = pyobject(*py_args);
-                            ret.set("has_err", em::val(false));
-                            ret.set("ret", implicit_conversion(py_ret));
-                            return ret;
-                        }
-                        catch (py::error_already_set& e)
-                        {
-                            return wrap_py_err(e);
-                        }
-                        catch (std::exception& e)
-                        {
-                            return wrap_py_err(e);
-                        }
-                    }))
+            .function("_raw_call", &raw_call)
 
             .function(
                 "_raw_getitem",

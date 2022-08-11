@@ -73,7 +73,7 @@ Module['make_proxy'] = function(py_object) {
 
 Module['init'] = function() {
 
-
+    var p = Module['_wait_run_dependencies']();
 
 
     Module['Interpreter'].prototype.exec = function(code, scope) {
@@ -131,6 +131,8 @@ Module['init'] = function() {
             return ret['ret']
         }
     };
+
+    return p
 }
 
 
@@ -439,8 +441,8 @@ function _wait_run_dependencies() {
             }
         };
     });
-    globalThis.Module.addRunDependency("dummy");
-    globalThis.Module.removeRunDependency("dummy");
+    Module.addRunDependency("dummy");
+    Module.removeRunDependency("dummy");
     return promise;
 }
 

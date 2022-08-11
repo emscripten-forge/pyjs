@@ -19,35 +19,7 @@ const _BOOL = "6"
 const _FUNCTION = "7"
 
 
-// Module['_last_exception'] = null
 
-
-// Module['_add_exception'] = function(exception_type, exception_msg, traceback){
-
-//     Module['_last_exception'] = {
-//         "name" : exception_type,
-//         "message" :  exception_msg,
-//         "traceback":traceback
-//     };
-
-// }
-
-
-// Module['get_last_exception'] = function(){
-//     const e = Module['_last_exception'];
-//     if(e !== null){
-//         Module['_last_exception'] = null
-//         return e;
-//     }
-//     else{
-//         return null;
-//     }
-// }
-
-// * py_getitem(py_obj, key)            => py_obj[key]
-// * py_setitem(py_obj, key, value)     => py_obj[key] = value
-// * py_apply(py_obj, args, kwargs)     => py_obj(*args, **kwargs)
-// * py_call(py_obj, ...args)           => py_obj(*args)
 
 Module['py_apply'] = function(py_object, args, kwargs) {
 

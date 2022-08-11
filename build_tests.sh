@@ -52,7 +52,6 @@ emcmake cmake \
     -DCMAKE_INSTALL_PREFIX=$PREFIX \
     ..
 
-# make -j12
 
 make -j12 node_tests
 

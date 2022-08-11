@@ -68,8 +68,7 @@ def test_create_once_callable_nullary():
 
     # call the first time
     ret = js_once_callable()
-    assert pyjs.to_py(ret) == "hello_from_pyfunc"
-    ret.delete()
+    assert ret == "hello_from_pyfunc"
 
     with pytest.raises(Exception):
         # call the second time
@@ -86,8 +85,7 @@ def test_callable_context():
 
     with pyjs.callable_context(pyfunc) as js_cb:
         ret = js_cb()
-        assert pyjs.to_py(ret) == "hello_from_pyfunc"
-        ret.delete()
+        assert ret == "hello_from_pyfunc"
 
 
 def test_callable():
@@ -97,8 +95,7 @@ def test_callable():
     js_cb, cleanup = pyjs.create_callable(pyfunc)
 
     ret = js_cb()
-    assert pyjs.to_py(ret) == "hello_from_pyfunc"
-    ret.delete()
+    assert ret == "hello_from_pyfunc"
 
     cleanup.delete()
 

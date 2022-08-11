@@ -140,6 +140,10 @@ namespace pyjs
                 }
             }
         }
+        else if (type_string == "pyobject")
+        {
+            return val.as<py::object>();
+        }
         else
         {
             return py::cast(val);

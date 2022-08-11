@@ -8,12 +8,11 @@ var main_scope = null
 
 // This runs before all tests
 test.before(async function (t) {
-  var createModule = require('./pyjs_runtime_node.js')
+    var createModule = require('./pyjs_runtime_node.js')
     pyjs = await createModule()
-    pyjs.init()
     global.Module = pyjs
     await import('./python_data.js');
-    var deps = await Module['_wait_run_dependencies']()
+    await pyjs.init()
     interpreter =  new pyjs.Interpreter()
     return pyjs
 });
@@ -77,6 +76,46 @@ test.serial('test-call',async function (t) {
     res = square.py_call(10)
     t.is(res,100)
 });
+
+
+
+
+
+test.serial('test-call-with-py-objects',async function (t) {
+    interpreter.exec("def mysum(l):                 \n\
+        if not isinstance(l, list):                 \n\
+            raise RuntimeError(f'{l} is not list')  \n\
+        return sum(l)                               \n\
+    ", main_scope)
+    var list = interpreter.eval("[1,2,3]", main_scope)
+    var mysum = interpreter.eval("mysum", main_scope)
+
+    res = mysum.py_call(list)
+    list.delete()
+    mysum.delete()
+    t.is(res, 6)
+});
+
+
+test.serial('test-call-with-kwargs',async function (t) {
+    interpreter.exec("def myfunc(arg0, arg1, arg2, arg3): \n\
+        assert arg0==10                                   \n\
+        assert arg1==2                                    \n\
+        assert arg2==3                                    \n\
+        assert arg3=='four'                               \n\
+        return arg0 + arg1 + arg2                         \n\
+    ", main_scope)
+    var myfunc = interpreter.eval("myfunc", main_scope)
+
+    var args = [10,2]
+    var kwargs = {"arg2":3,"arg3":"four"}
+
+    res = myfunc.py_apply(args, kwargs)
+
+    myfunc.delete()
+    t.is(res, 15)
+});
+
 
 
 test.serial('test-getitem',async function (t) {

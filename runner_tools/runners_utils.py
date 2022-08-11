@@ -71,13 +71,12 @@ async def playwright_main(page_url, workdir, script_basename):
 
                 var pyjs = await createModule({{print:print,error:print}})
                 var Module = pyjs
-
                 globalThis.Module = Module
+
                 await import('./python_data.js')
                 await import('./script_data.js')
 
-                var deps = await pyjs['_wait_run_dependencies']()
-                pyjs.init()
+                await pyjs.init()
 
                 var interpreter =  new pyjs.Interpreter()
                 var main_scope = pyjs.main_scope()

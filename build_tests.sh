@@ -56,7 +56,7 @@ emcmake cmake \
 make -j12 node_tests
 
 
-make install
+# make install
 # cp ../examples/repl.html .
 
 # python -m http.server

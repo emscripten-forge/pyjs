@@ -96,6 +96,40 @@ namespace pyjs
         }
     }
 
+
+    em::val raw_call_async(py::object& pyobject,
+                           em::val args,
+                           em::val arg_types,
+                           std::size_t n_args)
+    {
+        py::gil_scoped_acquire acquire;
+
+
+        py::list py_args;
+        for (std::size_t i = 0; i < n_args; ++i)
+        {
+            py::object py_arg = implicit_to_py(args[i], arg_types[i].as<std::string>());
+            py_args.append(py_arg);
+        }
+
+        try
+        {
+            em::val ret = em::val::object();
+            py::object py_ret = pyobject(*py_args);
+            ret.set("has_err", em::val(false));
+            ret.set("ret", implicit_conversion(py_ret));
+            return ret;
+        }
+        catch (py::error_already_set& e)
+        {
+            return wrap_py_err(e);
+        }
+        catch (std::exception& e)
+        {
+            return wrap_py_err(e);
+        }
+    }
+
     void export_py_object()
     {
         em::class_<py::object>("pyobject")

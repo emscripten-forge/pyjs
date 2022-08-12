@@ -154,7 +154,11 @@ namespace pyjs
 
         // main scope
         em::function("main_scope",em::select_overload<py::object()>(
-            []()->py::object{ return py::module_::import("__main__").attr("__dict__"); }
+            []()->py::object{
+                auto scope = py::module_::import("__main__").attr("__dict__");
+                py::exec("import pyjs;import asyncio", scope);
+                return scope;
+            }
         ));
 
         // eval_expr,

@@ -82,11 +82,11 @@ test.serial('test-call',async function (t) {
 
 
 test.serial('test-call-with-py-objects',async function (t) {
-    interpreter.exec("def mysum(l):                 \n\
-        if not isinstance(l, list):                 \n\
-            raise RuntimeError(f'{l} is not list')  \n\
-        return sum(l)                               \n\
-    ", main_scope)
+    interpreter.exec(`def mysum(l):
+        if not isinstance(l, list):
+            raise RuntimeError(f'{l} is not list')
+        return sum(l)
+    `, main_scope)
     var list = interpreter.eval("[1,2,3]", main_scope)
     var mysum = interpreter.eval("mysum", main_scope)
 
@@ -98,13 +98,13 @@ test.serial('test-call-with-py-objects',async function (t) {
 
 
 test.serial('test-call-with-kwargs',async function (t) {
-    interpreter.exec("def myfunc(arg0, arg1, arg2, arg3): \n\
-        assert arg0==10                                   \n\
-        assert arg1==2                                    \n\
-        assert arg2==3                                    \n\
-        assert arg3=='four'                               \n\
-        return arg0 + arg1 + arg2                         \n\
-    ", main_scope)
+    interpreter.exec(`def myfunc(arg0, arg1, arg2, arg3):
+        assert arg0==10
+        assert arg1==2
+        assert arg2==3
+        assert arg3=='four'
+        return arg0 + arg1 + arg2
+    `, main_scope)
     var myfunc = interpreter.eval("myfunc", main_scope)
 
     var args = [10,2]
@@ -134,14 +134,14 @@ test.serial('test-getitem',async function (t) {
 
 test.serial('test-getitem-multi-key',async function (t) {
 
-var py_code = '                     \n\
-import numpy                        \n\
-class Foo(object):                  \n\
-    def __init__(self):             \n\
-        self.a = numpy.identity(3)  \n\
-    def __getitem__(self, key):     \n\
-        return int(self.a[key])     \n\
-'
+var py_code = `
+import numpy
+class Foo(object):
+    def __init__(self):
+        self.a = numpy.identity(3)
+    def __getitem__(self, key):
+        return int(self.a[key])
+`
 ;
 
 
@@ -155,32 +155,105 @@ class Foo(object):                  \n\
 });
 
 
+test.serial('test-main-scope',async function (t) {
+
+var py_code = `
+assert pyjs is not None
+assert asyncio is not None
+`;
+    interpreter.exec(py_code, main_scope)
+
+    t.pass()
+});
 
 
-// test.serial('test-async-exec',async function (t) {
 
-// var py_code = '                     \n\
-// import numpy                        \n\
-// class Foo(object):                  \n\
-//     def __init__(self):             \n\
-//         self.a = numpy.identity(3)  \n\
-//     def __getitem__(self, key):     \n\
-//         return int(self.a[key])     \n\
-// ';
+test.serial('test-async-manual',async function (t) {
+
+var py_code = `
+async def afunc(arg0, arg1):
+    await asyncio.sleep(1)
+    return arg0 + arg1
+`;
 
 
-//     p = interpreter.async_exec(py_code, main_scope)
-//     await p
-//     try{
-//         var foo = await  interpreter.async_eval("Foo()", main_scope)
-//     }
-//     catch(err){
-//         t.fail(JSON.stringify(err))
-//     };
-//     // t.is(foo.py_getitem(0,1),0)
-//     // t.is(foo.py_getitem(1,0),0)
-//     // t.is(foo.py_getitem(0,0),1)
-//     // t.is(foo.py_getitem(1,1),1)
-//     // foo.delete()
-//     t.pass()
-// });
+    interpreter.exec(py_code, main_scope)
+    var afunc = interpreter.eval("afunc", main_scope)
+    var afut0 = afunc.py_call(13,17)
+    var fensure_future = interpreter.eval("asyncio.ensure_future", main_scope)
+    var afut1 = fensure_future.py_call(afut0)
+    // afuture = interpreter.eval("asyncio.ensure_future(afunc())", main_scope)
+    var add_done_cb = interpreter.eval("pyjs._add_resolve_done_callback", main_scope)
+
+
+    p  = new Promise(function(resolve, reject) {
+
+
+        add_done_cb.py_call(afut1, resolve, reject)
+    })
+
+    p.then(function(value) {
+       afut1.delete()
+      }, function(reason) {
+
+       afut1.delete()
+    });
+    var res = await p
+
+
+    t.is(res, 30)
+});
+
+
+test.serial('test-async',async function (t) {
+
+var py_code = `
+async def muladd_inner(*args):
+    return args[0]*args[1] + args[2]
+
+async def muladd(a, b, c):
+    await asyncio.sleep(0.1)
+    return await muladd_inner(a,b,c)
+`;
+
+
+
+    interpreter.exec(py_code, main_scope)
+    var muladd = interpreter.eval("muladd", main_scope)
+
+    var r42 = await interpreter.py_call_async(muladd, main_scope, 4,10,2)
+    t.is(r42, 42)
+
+    var p43 = interpreter.py_apply_async(muladd, main_scope, [4,10], {c:3})
+    t.is(await p43, 43)
+
+
+});
+
+
+test.serial('test-async-errors',async function (t) {
+
+var py_code = `
+async def muladd_inner(*args):
+    return args[0]*args[1] + args[2] + c
+
+async def muladd(a, b, c):
+    await asyncio.sleep(0.1)
+    return await muladd_inner(a,b,c)
+`;
+
+    interpreter.exec(py_code, main_scope)
+    var muladd = interpreter.eval("muladd", main_scope)
+
+    var err = false
+    try{
+        await interpreter.py_call_async(muladd, main_scope, 4,10,2)
+    }
+    catch(e){
+        err = true
+        t.is(e,  'NameError("name \'c\' is not defined")')
+    }
+    t.is(err, true)
+
+
+});

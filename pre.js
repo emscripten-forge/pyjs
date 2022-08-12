@@ -71,6 +71,70 @@ Module['init'] = function() {
 		}
 	};
 
+    Module['Interpreter'].prototype.call = function(f, scope, ...args) {
+       return f.py_call(...args)
+    }
+    Module['Interpreter'].prototype.call = function(f, scope, ...args) {
+       return f.py_call(...args)
+    }
+
+    Module['Interpreter'].prototype.py_call = function(f, scope, args, kwargs) {
+        return f.py_call(args, kwargs)
+    }
+    Module['Interpreter'].prototype.py_call_async = function(f, scope, ...args) {
+        var afut0 = f.py_call(...args)
+        var fensure_future = this.eval("asyncio.ensure_future", scope)
+        var afut1 = fensure_future.py_call(afut0)
+        var add_done_cb = this.eval("pyjs._add_resolve_done_callback", scope)
+
+
+        p  = new Promise(function(resolve, reject) {
+            add_done_cb.py_call(afut1, resolve, reject)
+        });
+
+        p.then(function(value) {
+            afut0.delete()
+            fensure_future.delete()
+            afut1.delete()
+            add_done_cb.delete()
+          }, function(reason) {
+            afut0.delete()
+            fensure_future.delete()
+            afut1.delete()
+            add_done_cb.delete()
+        });
+        return p;
+    };
+
+    Module['Interpreter'].prototype.py_apply = function(f, scope, args, kwargs) {
+        return f.py_apply(args, kwargs)
+    }
+    Module['Interpreter'].prototype.py_apply_async = function(f, scope, args, kwargs) {
+        var afut0 = f.py_apply(args, kwargs)
+        var fensure_future = this.eval("asyncio.ensure_future", scope)
+        var afut1 = fensure_future.py_call(afut0)
+        var add_done_cb = this.eval("pyjs._add_resolve_done_callback", scope)
+
+
+        p  = new Promise(function(resolve, reject) {
+            add_done_cb.py_call(afut1, resolve, reject)
+        });
+
+        p.then(function(value) {
+            afut0.delete()
+            fensure_future.delete()
+            afut1.delete()
+            add_done_cb.delete()
+          }, function(reason) {
+            afut0.delete()
+            fensure_future.delete()
+            afut1.delete()
+            add_done_cb.delete()
+        });
+        return p;
+    };
+
+
 
 	Module['pyobject'].prototype._getattr = function(attr_name) {
 		ret = this._raw_getattr(attr_name)
@@ -80,6 +144,9 @@ Module['init'] = function() {
 			return ret['ret']
 		}
 	};
+
+
+
 
 	Module['pyobject'].prototype.py_call = function(...args) {
 

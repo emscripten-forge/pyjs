@@ -277,7 +277,7 @@ if(BUILD_RUNTIME_NODE)
         string(STRIP ${NODE_BIN_PATH} NODE_BIN_PATH)
         message(STATUS "P" ${NODE_BIN_PATH}/ava )
         add_custom_target(node_tests
-            COMMAND "${NODE_BIN_PATH}/ava" "--node-arguments=\"--no-experimental-fetch\"" "" test.cjs
+            COMMAND "${NODE_BIN_PATH}/ava" "--timeout=20s" "--node-arguments=\"--no-experimental-fetch\"" "" test.cjs
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             DEPENDS pyjs_runtime_node)
     endif()

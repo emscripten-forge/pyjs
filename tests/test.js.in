@@ -13,13 +13,11 @@ test.before(async function (t) {
     global.Module = pyjs
     await import('./python_data.js');
     await pyjs.init()
-    interpreter =  new pyjs.Interpreter()
     return pyjs
 });
 
 test.after.always('guaranteed cleanup', t => {
-    // This will always run, regardless of earlier failures
-    interpreter.delete()
+    pyjs.cleanup()
 });
 
 
@@ -36,10 +34,10 @@ test.afterEach(t => {
 
 test.serial('test-basics',async function (t) {
 
-    interpreter.exec("import numpy\nimport pyjs", main_scope)
-    var s0 = interpreter.eval("numpy.ones([640, 480]).shape[0]", main_scope)
+    pyjs.exec("import numpy\nimport pyjs", main_scope)
+    var s0 = pyjs.eval("numpy.ones([640, 480]).shape[0]", main_scope)
     t.is(s0,640)
-    s1 = interpreter.eval("numpy.ones([640, 480]).shape[1]", main_scope)
+    s1 = pyjs.eval("numpy.ones([640, 480]).shape[1]", main_scope)
     t.is(s1,480)
 });
 
@@ -47,7 +45,7 @@ test.serial('test-basics',async function (t) {
 test.serial('test-exceptions',async function (t) {
     var err = false;
     try{
-        interpreter.exec("raise RuntimeError(\"this is intended\")", main_scope)
+        pyjs.exec("raise RuntimeError(\"this is intended\")", main_scope)
     }
     catch(e)
     {
@@ -61,8 +59,8 @@ test.serial('test-exceptions',async function (t) {
 
 test.serial('test-getattr',async function (t) {
 
-    interpreter.exec("import numpy\nimport pyjs", main_scope)
-    var arr = interpreter.eval("numpy.ones([640, 480])", main_scope)
+    pyjs.exec("import numpy\nimport pyjs", main_scope)
+    var arr = pyjs.eval("numpy.ones([640, 480])", main_scope)
     var shape = arr.shape
     t.is(shape !== undefined, true)
     shape.delete()
@@ -72,7 +70,7 @@ test.serial('test-getattr',async function (t) {
 
 
 test.serial('test-call',async function (t) {
-    var square = interpreter.eval("lambda a : a * a", main_scope)
+    var square = pyjs.eval("lambda a : a * a", main_scope)
     res = square.py_call(10)
     t.is(res,100)
 });
@@ -82,13 +80,13 @@ test.serial('test-call',async function (t) {
 
 
 test.serial('test-call-with-py-objects',async function (t) {
-    interpreter.exec(`def mysum(l):
+    pyjs.exec(`def mysum(l):
         if not isinstance(l, list):
             raise RuntimeError(f'{l} is not list')
         return sum(l)
     `, main_scope)
-    var list = interpreter.eval("[1,2,3]", main_scope)
-    var mysum = interpreter.eval("mysum", main_scope)
+    var list = pyjs.eval("[1,2,3]", main_scope)
+    var mysum = pyjs.eval("mysum", main_scope)
 
     res = mysum.py_call(list)
     list.delete()
@@ -98,14 +96,14 @@ test.serial('test-call-with-py-objects',async function (t) {
 
 
 test.serial('test-call-with-kwargs',async function (t) {
-    interpreter.exec(`def myfunc(arg0, arg1, arg2, arg3):
+    pyjs.exec(`def myfunc(arg0, arg1, arg2, arg3):
         assert arg0==10
         assert arg1==2
         assert arg2==3
         assert arg3=='four'
         return arg0 + arg1 + arg2
     `, main_scope)
-    var myfunc = interpreter.eval("myfunc", main_scope)
+    var myfunc = pyjs.eval("myfunc", main_scope)
 
     var args = [10,2]
     var kwargs = {"arg2":3,"arg3":"four"}
@@ -120,8 +118,8 @@ test.serial('test-call-with-kwargs',async function (t) {
 
 test.serial('test-getitem',async function (t) {
 
-    interpreter.exec("import numpy\nimport pyjs", main_scope)
-    var arr = interpreter.eval("numpy.ones([64, 48])", main_scope)
+    pyjs.exec("import numpy\nimport pyjs", main_scope)
+    var arr = pyjs.eval("numpy.ones([64, 48])", main_scope)
     var shape = arr.shape
     var s0 = shape.py_getitem(0)
     t.is(s0,64)
@@ -145,8 +143,8 @@ class Foo(object):
     ;
 
 
-    interpreter.exec(py_code, main_scope)
-    var foo = interpreter.eval("Foo()", main_scope)
+    pyjs.exec(py_code, main_scope)
+    var foo = pyjs.eval("Foo()", main_scope)
     t.is(foo.py_getitem(0,1),0)
     t.is(foo.py_getitem(1,0),0)
     t.is(foo.py_getitem(0,0),1)
@@ -161,7 +159,7 @@ test.serial('test-main-scope',async function (t) {
 assert pyjs is not None
 assert asyncio is not None
     `;
-    interpreter.exec(py_code, main_scope)
+    pyjs.exec(py_code, main_scope)
 
     t.pass()
 });
@@ -177,13 +175,13 @@ async def afunc(arg0, arg1):
     `;
 
 
-    interpreter.exec(py_code, main_scope)
-    var afunc = interpreter.eval("afunc", main_scope)
+    pyjs.exec(py_code, main_scope)
+    var afunc = pyjs.eval("afunc", main_scope)
     var afut0 = afunc.py_call(13,17)
-    var fensure_future = interpreter.eval("asyncio.ensure_future", main_scope)
+    var fensure_future = pyjs.eval("asyncio.ensure_future", main_scope)
     var afut1 = fensure_future.py_call(afut0)
-    // afuture = interpreter.eval("asyncio.ensure_future(afunc())", main_scope)
-    var add_done_cb = interpreter.eval("pyjs._add_resolve_done_callback", main_scope)
+    // afuture = pyjs.eval("asyncio.ensure_future(afunc())", main_scope)
+    var add_done_cb = pyjs.eval("pyjs._add_resolve_done_callback", main_scope)
 
 
     p  = new Promise(function(resolve, reject) {
@@ -218,13 +216,13 @@ async def muladd(a, b, c):
 
 
 
-    interpreter.exec(py_code, main_scope)
-    var muladd = interpreter.eval("muladd", main_scope)
+    pyjs.exec(py_code, main_scope)
+    var muladd = pyjs.eval("muladd", main_scope)
 
-    var r42 = await interpreter.py_call_async(muladd, main_scope, 4,10,2)
+    var r42 = await muladd.py_call_async(4,10,2)
     t.is(r42, 42)
 
-    var p43 = interpreter.py_apply_async(muladd, main_scope, [4,10], {c:3})
+    var p43 = muladd.py_apply_async([4,10], {c:3})
     t.is(await p43, 43)
 
 
@@ -242,12 +240,12 @@ async def muladd(a, b, c):
     return await muladd_inner(a,b,c)
     `;
 
-    interpreter.exec(py_code, main_scope)
-    var muladd = interpreter.eval("muladd", main_scope)
+    pyjs.exec(py_code, main_scope)
+    var muladd = pyjs.eval("muladd", main_scope)
 
     var err = false
     try{
-        await interpreter.py_call_async(muladd, main_scope, 4,10,2)
+        await muladd.py_call_async(4,10,2)
     }
     catch(e){
         err = true

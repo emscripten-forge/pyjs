@@ -76,7 +76,7 @@ namespace pyjs
         }
     }
 
-    em::val eval(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
+    em::val eval(const  std::string & code, const py::object & scope)
      {       em::val ret = em::val::object();
         try
         {
@@ -96,7 +96,7 @@ namespace pyjs
 
 
 
-    em::val exec(py::scoped_interpreter  & ,const  std::string & code, const py::object & scope)
+    em::val exec(const  std::string & code, const py::object & scope)
     {
         em::val ret = em::val::object();
         try
@@ -115,7 +115,7 @@ namespace pyjs
     }
 
 
-    em::val eval_file(py::scoped_interpreter  & ,const  std::string & filename, const py::object & scope)
+    em::val eval_file(const  std::string & filename, const py::object & scope)
     {
         em::val ret = em::val::object();
         try
@@ -135,19 +135,17 @@ namespace pyjs
 
 
 
-
-
     void export_js_module()
     {
-
-
-        // interpreter itself, note that only one interpreter at the time allowed
-        em::class_<py::scoped_interpreter>("Interpreter")
+        // interpreter itself,
+        em::class_<py::scoped_interpreter>("_Interpreter")
             .constructor<>()
-            .function("_eval", &eval)
-            .function("_exec", &exec)
-            .function("_eval_file", &eval_file)
         ;
+
+        em::function("_eval", &eval);
+        em::function("_exec", &exec);
+        em::function("_eval_file", &eval_file);
+
 
         // py-object (proxy)
         export_py_object();
@@ -160,19 +158,6 @@ namespace pyjs
                 return scope;
             }
         ));
-
-        // eval_expr,
-        // eval_single_statement,
-        // eval_statements
-
-
-        // // run-code
-        // em::function("eval_expr",
-        //     em::select_overload<py::object()>(
-        //     []()->py::object{
-
-        //     }
-        // ));
 
         em::function("cout",
                      em::select_overload<void(const std::string&)>([](const std::string& val)

@@ -61,6 +61,8 @@ Module['init'] = async function() {
 	Module["default_scope"] = default_scope
 
 
+
+
 	Module['exec'] = function(code, scope=default_scope) {
 		ret = Module._exec(code, scope)
 		if (ret.has_err) {
@@ -92,26 +94,16 @@ Module['init'] = async function() {
 
 
     Module['pyobject'].prototype.py_apply_async = function(args, kwargs) {
-        var afut0 = this.py_apply(args, kwargs)
-        var fensure_future = Module.eval("asyncio.ensure_future")
-        var afut1 = fensure_future.py_call(afut0)
-        var add_done_cb = Module.eval("pyjs._add_resolve_done_callback")
-
+        var py_future = this.py_apply(args, kwargs)
 
         p  = new Promise(function(resolve, reject) {
-            add_done_cb.py_call(afut1, resolve, reject)
+            Module._add_resolve_done_callback.py_call(py_future, resolve, reject)
         });
 
         p.then(function(value) {
-            afut0.delete()
-            fensure_future.delete()
-            afut1.delete()
-            add_done_cb.delete()
+            py_future.delete()
           }, function(reason) {
-            afut0.delete()
-            fensure_future.delete()
-            afut1.delete()
-            add_done_cb.delete()
+            py_future.delete()
         });
         return p;
     };
@@ -178,6 +170,9 @@ Module['init'] = async function() {
 		}
 	};
 
+
+    Module._add_resolve_done_callback = Module.eval("pyjs._add_resolve_done_callback")
+
 	return p
 }
 
@@ -187,6 +182,7 @@ Module['cleanup'] = function()
 	{
 		Module['default_scope'].delete()
 		Module['_interpreter'].delete()
+    	Module._add_resolve_done_callback .delete()
 		Module["_is_initialized"] = false
 	}
 }

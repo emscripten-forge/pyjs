@@ -46,7 +46,6 @@ namespace pyjs
             py_kwargs[py::cast(key)] = py_kwarg_val;
         }
 
-
         try
         {
             em::val ret = em::val::object();

@@ -1,3 +1,4 @@
+import asyncio
 import functools
 import json
 
@@ -203,13 +204,15 @@ def implicit_convert_info(val):
 
 
 def _add_resolve_done_callback(future, resolve, reject):
+    ensured_future = asyncio.ensure_future(future)
+
     def done(f):
         try:
             resolve(f.result())
         except Exception as err:
             reject(repr(err))
 
-    future.add_done_callback(done)
+    ensured_future.add_done_callback(done)
 
 
 IN_BROWSER = not to_py(internal.module_property("_IS_NODE"))

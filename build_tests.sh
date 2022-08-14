@@ -6,10 +6,10 @@ mkdir -p build_tests
 cd build_tests
 
 
-if false; then
+if true; then
     # install wasm env
-    # rm -rf $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
-    micromamba create -n pyjs-build-wasm \
+    # rm -rf $MAMBA_ROOT_PREFIX/envs/pyjs-node-tests
+    micromamba create -n pyjs-node-tests \
         --platform=emscripten-32 \
         -c https://repo.mamba.pm/emscripten-forge \
         -c https://repo.mamba.pm/conda-forge \
@@ -27,7 +27,7 @@ if false; then
 
     # pack the environment in a js/data file
     empack pack env \
-        --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
+        --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-node-tests \
         --outname python_data \
         --config empack_config.yaml \
         --export-name "global.Module"
@@ -39,7 +39,7 @@ fi
 
 
 # let cmake know where the env is
-export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
+export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-node-tests
 export CMAKE_PREFIX_PATH=$PREFIX
 export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
 

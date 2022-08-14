@@ -78,16 +78,16 @@ async def playwright_main(page_url, workdir, script_basename):
 
                 await pyjs.init()
 
-                var interpreter =  new pyjs.Interpreter()
+
                 var main_scope = pyjs.main_scope()
 
 
                 var r = 0;
                 try{{
-                    interpreter.exec("import os", main_scope)
-                    interpreter.exec("os.chdir('{workdir}')", main_scope)
+                    pyjs.exec("import os", main_scope)
+                    pyjs.exec("os.chdir('{workdir}')", main_scope)
                     var script_path = "{os.path.join(workdir, script_basename)}";
-                    interpreter.eval_file(script_path, main_scope);
+                    pyjs.eval_file(script_path, main_scope);
                 }} catch(e)
                 {{
                     console.error(e);
@@ -112,7 +112,6 @@ async def playwright_main(page_url, workdir, script_basename):
                 }}
                 self.postMessage(msg)
                 main_scope.delete()
-                interpreter.delete()
                 return r
             }}"""
             )

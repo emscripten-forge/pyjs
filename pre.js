@@ -42,21 +42,36 @@ Module['make_proxy'] = function(py_object) {
 }
 
 
-
-Module['init'] = function() {
-
-	var p = Module['_wait_run_dependencies']();
+Module["_is_initialized"] = false
 
 
-	Module['Interpreter'].prototype.exec = function(code, scope) {
-		ret = this._exec(code, scope)
+Module['init'] = async function() {
+
+
+	// return empty promise when already initialized
+	if(Module["_is_initialized"])
+	{
+		return Promise.resolve();
+	}
+
+	var p = await Module['_wait_run_dependencies']();
+
+	Module["_interpreter"] = new Module["_Interpreter"]()
+	var default_scope = Module["main_scope"]()
+	Module["default_scope"] = default_scope
+
+
+
+
+	Module['exec'] = function(code, scope=default_scope) {
+		ret = Module._exec(code, scope)
 		if (ret.has_err) {
 			throw ret
 		}
 	};
 
-	Module['Interpreter'].prototype.eval = function(code, scope) {
-		ret = this._eval(code, scope)
+	Module['eval'] = function(code, scope=default_scope) {
+		ret = Module._eval(code, scope)
 		if (ret.has_err) {
 			throw ret
 		} else {
@@ -64,76 +79,34 @@ Module['init'] = function() {
 		}
 	};
 
-	Module['Interpreter'].prototype.eval_file = function(file, scope) {
-		ret = this._eval_file(file, scope)
+	Module['eval_file'] = function(file, scope=default_scope) {
+		ret = Module._eval_file(file, scope)
 		if (ret.has_err) {
 			throw ret
 		}
 	};
 
-    Module['Interpreter'].prototype.call = function(f, scope, ...args) {
-       return f.py_call(...args)
-    }
-    Module['Interpreter'].prototype.call = function(f, scope, ...args) {
-       return f.py_call(...args)
-    }
 
-    Module['Interpreter'].prototype.py_call = function(f, scope, args, kwargs) {
-        return f.py_call(args, kwargs)
-    }
-    Module['Interpreter'].prototype.py_call_async = function(f, scope, ...args) {
-        var afut0 = f.py_call(...args)
-        var fensure_future = this.eval("asyncio.ensure_future", scope)
-        var afut1 = fensure_future.py_call(afut0)
-        var add_done_cb = this.eval("pyjs._add_resolve_done_callback", scope)
 
+    Module['pyobject'].prototype.py_call_async = function(...args) {
+        return this.py_apply_async(args)
+    };
+
+
+    Module['pyobject'].prototype.py_apply_async = function(args, kwargs) {
+        var py_future = this.py_apply(args, kwargs)
 
         p  = new Promise(function(resolve, reject) {
-            add_done_cb.py_call(afut1, resolve, reject)
+            Module._add_resolve_done_callback.py_call(py_future, resolve, reject)
         });
 
         p.then(function(value) {
-            afut0.delete()
-            fensure_future.delete()
-            afut1.delete()
-            add_done_cb.delete()
+            py_future.delete()
           }, function(reason) {
-            afut0.delete()
-            fensure_future.delete()
-            afut1.delete()
-            add_done_cb.delete()
+            py_future.delete()
         });
         return p;
     };
-
-    Module['Interpreter'].prototype.py_apply = function(f, scope, args, kwargs) {
-        return f.py_apply(args, kwargs)
-    }
-    Module['Interpreter'].prototype.py_apply_async = function(f, scope, args, kwargs) {
-        var afut0 = f.py_apply(args, kwargs)
-        var fensure_future = this.eval("asyncio.ensure_future", scope)
-        var afut1 = fensure_future.py_call(afut0)
-        var add_done_cb = this.eval("pyjs._add_resolve_done_callback", scope)
-
-
-        p  = new Promise(function(resolve, reject) {
-            add_done_cb.py_call(afut1, resolve, reject)
-        });
-
-        p.then(function(value) {
-            afut0.delete()
-            fensure_future.delete()
-            afut1.delete()
-            add_done_cb.delete()
-          }, function(reason) {
-            afut0.delete()
-            fensure_future.delete()
-            afut1.delete()
-            add_done_cb.delete()
-        });
-        return p;
-    };
-
 
 
 	Module['pyobject'].prototype._getattr = function(attr_name) {
@@ -145,37 +118,35 @@ Module['init'] = function() {
 		}
 	};
 
-
-
-
 	Module['pyobject'].prototype.py_call = function(...args) {
-
-		types = args.map(Module['_get_type_string'])
-		ret = this._raw_call(args, types, args.length)
-		if (ret.has_err) {
-			throw ret
-		} else {
-			return ret['ret']
-		}
+		return this.py_apply(args)
 	};
-
 
 	Module['pyobject'].prototype.py_apply = function(args, kwargs) {
 
-		if (args === null) {
+		if (args === undefined) {
 			args = []
+			var args_types = []
+		}
+		else
+		{
+			var args_types = args.map(Module['_get_type_string'])
 		}
 
-		if (kwargs === null) {
+		if (kwargs === undefined) {
 			kwargs = {}
+			var kwargs_keys = []
+			var kwargs_values = []
+			var kwarg_values_types = []
+		}
+		else
+		{
+			var kwargs_keys = Object.keys(kwargs)
+			var kwargs_values = Object.values(kwargs)
+			var kwarg_values_types = kwargs_values.map(Module['_get_type_string'])
 		}
 
-		var kwargs_keys = Object.keys(kwargs)
-		var kwargs_values = Object.values(kwargs)
 
-
-		var args_types = args.map(Module['_get_type_string'])
-		var kwarg_values_types = kwargs_values.map(Module['_get_type_string'])
 
 		ret = this._raw_apply(args, args_types, args.length,
 			kwargs_keys, kwargs_values, kwarg_values_types, kwargs_keys.length
@@ -199,10 +170,22 @@ Module['init'] = function() {
 		}
 	};
 
+
+    Module._add_resolve_done_callback = Module.eval("pyjs._add_resolve_done_callback")
+
 	return p
 }
 
-
+Module['cleanup'] = function()
+{
+	if(Module["_is_initialized"])
+	{
+		Module['default_scope'].delete()
+		Module['_interpreter'].delete()
+    	Module._add_resolve_done_callback .delete()
+		Module["_is_initialized"] = false
+	}
+}
 
 
 

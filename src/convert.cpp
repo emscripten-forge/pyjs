@@ -2,6 +2,7 @@
 #include <pybind11/numpy.h>
 #include <emscripten/val.h>
 #include <string>
+#include <sstream>
 #include <pyjs/convert.hpp>
 
 namespace py = pybind11;
@@ -32,6 +33,10 @@ namespace pyjs
         else if (info == "None")
         {
             return em::val::undefined();
+        }
+        else if (info == "JsValue")
+        {
+            return py_ret.cast<em::val>();
         }
         else
         {
@@ -147,6 +152,100 @@ namespace pyjs
         else
         {
             return py::cast(val);
+        }
+    }
+
+
+    template <class T>
+    em::val py_1d_buffer_to_typed_array_t(const std::size_t size,
+                                          void* void_ptr,
+                                          bool view,
+                                          const std::string& js_cls_name)
+    {
+        T* ptr = static_cast<T*>(void_ptr);
+        em::val mem_view = em::val(em::typed_memory_view(size, ptr));
+        if (!view)
+        {
+            em::val mem_copy = em::val::global(js_cls_name.c_str()).new_(mem_view);
+            return mem_copy;
+        }
+        return mem_view;
+    }
+
+
+    em::val py_1d_buffer_to_typed_array(py::buffer buffer, bool view)
+    {
+        /* Request a buffer descriptor from Python */
+        py::buffer_info info = buffer.request();
+
+        const auto format = info.format;
+
+
+        if (info.ndim != 1)
+        {
+            throw std::runtime_error("Incompatible buffer dimension!");
+        }
+
+        // sizeof one element in bytes
+        const auto itemsize = info.itemsize;
+        const auto stride = (info.strides[0] / itemsize);
+        if (stride != 1)
+        {
+            std::stringstream s;
+            s << "only continous arrays are allowe but stride is " << stride << " raw stride "
+              << info.strides[0] << " itemsize " << itemsize << " shape " << info.shape[0];
+            throw std::runtime_error(s.str().c_str());
+        }
+
+        // shape
+        const std::size_t size = info.shape[0];
+
+
+        if (format == py::format_descriptor<float>::format())
+        {
+            return py_1d_buffer_to_typed_array_t<float>(size, info.ptr, view, "Float32Array");
+        }
+        else if (format == py::format_descriptor<double>::format())
+        {
+            return py_1d_buffer_to_typed_array_t<double>(size, info.ptr, view, "Float64Array");
+        }
+        else if (format == py::format_descriptor<uint8_t>::format())
+        {
+            return py_1d_buffer_to_typed_array_t<uint8_t>(size, info.ptr, view, "Uint8Array");
+        }
+        else if (format == py::format_descriptor<uint16_t>::format())
+        {
+            return py_1d_buffer_to_typed_array_t<uint16_t>(size, info.ptr, view, "Uint16Array");
+        }
+        else if (format == py::format_descriptor<uint32_t>::format() || format == "L")
+        {
+            return py_1d_buffer_to_typed_array_t<uint32_t>(size, info.ptr, view, "Uint32Array");
+        }
+        // else if(format == py::format_descriptor<uint64_t>::format()){
+        //     return py_1d_buffer_to_typed_array_t<uint64_t>(size, info.ptr, view,
+        //     "BigInt64Array");
+        // }
+        else if (format == py::format_descriptor<int8_t>::format())
+        {
+            return py_1d_buffer_to_typed_array_t<int16_t>(size, info.ptr, view, "Int8Array");
+        }
+        else if (format == py::format_descriptor<int16_t>::format())
+        {
+            return py_1d_buffer_to_typed_array_t<int16_t>(size, info.ptr, view, "Int16Array");
+        }
+        else if (format == py::format_descriptor<int32_t>::format() || format == "l")
+        {
+            return py_1d_buffer_to_typed_array_t<int32_t>(size, info.ptr, view, "Int32Array");
+        }
+        // else if(format == py::format_descriptor<int64_t>::format()){
+        //     return py_1d_buffer_to_typed_array_t<int64_t>(size, info.ptr, view, "BigInt64Array");
+        // }
+        else
+        {
+            std::stringstream s;
+            s << "unknown format: " << format
+              << "(note that uint64 / int64 is atm not yet supported)";
+            throw std::runtime_error(s.str());
         }
     }
 

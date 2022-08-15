@@ -166,6 +166,7 @@ if(BUILD_RUNTIME_BROWSER)
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
         PUBLIC "SHELL: -flto"
+        # PUBLIC "SHELL: -s WASM_BIGINT"
     )
 
     target_link_options(pyjs_runtime_browser
@@ -192,6 +193,7 @@ if(BUILD_RUNTIME_BROWSER)
         PUBLIC "SHELL: --post-js post.js"
         PUBLIC "SHELL: --pre-js pre.js"
         PUBLIC "SHELL: -flto"
+        # PUBLIC "SHELL: -s WASM_BIGINT"
     )
 
 
@@ -235,6 +237,7 @@ if(BUILD_RUNTIME_NODE)
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
         PUBLIC "SHELL: -flto"
+        # PUBLIC "SHELL: -s WASM_BIGINT"
     )
 
     target_link_options(pyjs_runtime_node
@@ -261,6 +264,7 @@ if(BUILD_RUNTIME_NODE)
         PUBLIC "SHELL: --post-js post.js"
         PUBLIC "SHELL: --pre-js pre.js"
         PUBLIC "SHELL: -flto"
+        # PUBLIC "SHELL: -s WASM_BIGINT"
     )
 
     add_dependencies(pyjs_runtime_node CopyPreJs)

@@ -66,4 +66,7 @@ namespace pyjs
 
     py::object implicit_to_py(em::val val, const std::string& type_string);
 
+
+    em::val py_1d_buffer_to_typed_array(py::buffer buffer, bool view);
+
 }

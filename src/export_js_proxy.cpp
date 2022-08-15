@@ -319,6 +319,11 @@ namespace pyjs
         py::implicitly_convertible<double, em::val>();
         py::implicitly_convertible<int, em::val>();
         py::implicitly_convertible<bool, em::val>();
+
+
+
+        m_internal.def("py_1d_buffer_to_typed_array", &py_1d_buffer_to_typed_array);
+
     }
 
 }

@@ -255,3 +255,61 @@ async def muladd(a, b, c):
 
 
 });
+
+
+
+
+test.serial('test-numpy-to-typed-array',async function (t) {
+
+
+
+    pyjs.exec(`
+import numpy
+arr = numpy.arange(5)
+print(arr.dtype)
+typed_array = pyjs.buffer_to_js_typed_array(arr)
+
+    `, main_scope)
+
+    var typed_array = pyjs.eval("typed_array", main_scope);
+
+    t.is(typed_array.constructor.name, "Int32Array");
+
+    var shouldArray = new Int32Array([0,1,2,3,4]);
+
+    t.deepEqual(typed_array, shouldArray);
+});
+
+
+
+test.serial('test-numpy-to-typed-array-types',async function (t) {
+
+    type_mapping = {
+        "uint8":  "Uint8Array",
+        "uint16": "Uint16Array",
+        "uint32": "Uint32Array",
+        // "uint64": "BigUint64Array",
+        "int8":   "Int8Array",
+        "int16":  "Int16Array",
+        "int32":  "Int32Array",
+        // "int64":  "BigInt64Array",
+        "float32": "Float32Array",
+        "float64": "Float64Array"
+    }
+
+    for (const [np_dtype, js_cls] of Object.entries(type_mapping)) {
+
+        pyjs.exec(`
+import numpy
+arr = numpy.arange(5, dtype='${np_dtype}')
+typed_array = pyjs.buffer_to_js_typed_array(arr)
+
+        `, main_scope)
+
+        var typed_array = pyjs.eval("typed_array", main_scope);
+
+        t.is(typed_array.constructor.name, js_cls);
+
+
+    }
+});

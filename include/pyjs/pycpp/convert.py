@@ -199,6 +199,8 @@ def implicit_convert_info(val):
         return "str"
     elif isinstance(val, bool):
         return "bool"
+    elif isinstance(val, JsValue):
+        return "JsValue"
     else:
         return "object"
 
@@ -213,6 +215,10 @@ def _add_resolve_done_callback(future, resolve, reject):
             reject(repr(err))
 
     ensured_future.add_done_callback(done)
+
+
+def buffer_to_js_typed_array(buffer, view=False):
+    return internal.py_1d_buffer_to_typed_array(buffer, bool(view))
 
 
 IN_BROWSER = not to_py(internal.module_property("_IS_NODE"))

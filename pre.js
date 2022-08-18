@@ -64,14 +64,14 @@ Module['init'] = async function() {
 
 
 	Module['exec'] = function(code, scope=default_scope) {
-		ret = Module._exec(code, scope)
+		let ret = Module._exec(code, scope)
 		if (ret.has_err) {
 			throw ret
 		}
 	};
 
 	Module['eval'] = function(code, scope=default_scope) {
-		ret = Module._eval(code, scope)
+		let ret = Module._eval(code, scope)
 		if (ret.has_err) {
 			throw ret
 		} else {
@@ -80,7 +80,7 @@ Module['init'] = async function() {
 	};
 
 	Module['eval_file'] = function(file, scope=default_scope) {
-		ret = Module._eval_file(file, scope)
+		let ret = Module._eval_file(file, scope)
 		if (ret.has_err) {
 			throw ret
 		}
@@ -94,9 +94,9 @@ Module['init'] = async function() {
 
 
     Module['pyobject'].prototype.py_apply_async = function(args, kwargs) {
-        var py_future = this.py_apply(args, kwargs)
+        let py_future = this.py_apply(args, kwargs)
 
-        p  = new Promise(function(resolve, reject) {
+        let p  = new Promise(function(resolve, reject) {
             Module._add_resolve_done_callback.py_call(py_future, resolve, reject)
         });
 
@@ -110,7 +110,7 @@ Module['init'] = async function() {
 
 
 	Module['pyobject'].prototype._getattr = function(attr_name) {
-		ret = this._raw_getattr(attr_name)
+		let ret = this._raw_getattr(attr_name)
 		if (ret.has_err) {
 			throw ret
 		} else {
@@ -125,7 +125,7 @@ Module['init'] = async function() {
 	Module['pyobject'].prototype.py_apply = function(args, kwargs) {
 
 		if (args === undefined) {
-			args = []
+			var args = []
 			var args_types = []
 		}
 		else
@@ -134,7 +134,7 @@ Module['init'] = async function() {
 		}
 
 		if (kwargs === undefined) {
-			kwargs = {}
+			var kwargs = {}
 			var kwargs_keys = []
 			var kwargs_values = []
 			var kwarg_values_types = []
@@ -148,7 +148,7 @@ Module['init'] = async function() {
 
 
 
-		ret = this._raw_apply(args, args_types, args.length,
+		let ret = this._raw_apply(args, args_types, args.length,
 			kwargs_keys, kwargs_values, kwarg_values_types, kwargs_keys.length
 		)
 		if (ret.has_err) {
@@ -161,8 +161,8 @@ Module['init'] = async function() {
 	Module['pyobject'].prototype.py_getitem = function(...keys) {
 
 
-		types = keys.map(Module['_get_type_string'])
-		ret = this._raw_getitem(keys, types, keys.length)
+		let types = keys.map(Module['_get_type_string'])
+		let ret = this._raw_getitem(keys, types, keys.length)
 		if (ret.has_err) {
 			throw ret
 		} else {
@@ -368,8 +368,8 @@ Module["__len__"] = function(instance) {
 
 
 Module["__contains__"] = function(instance, query) {
-	var _has = false;
-	var _includes = false;
+	let _has = false;
+	let _includes = false;
 	try {
 		_has = instance.has(query);
 	} catch (e) {}

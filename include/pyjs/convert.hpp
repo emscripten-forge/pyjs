@@ -10,7 +10,6 @@ namespace em = emscripten;
 namespace pyjs
 {
 
-
     enum class JsType : char
     {
         JS_NULL = '0',

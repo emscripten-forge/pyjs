@@ -22,9 +22,10 @@ dependencies:
   - emsdk >=3.1.11
 ```
 
+Assuming the yaml file above is named `pyjs-dev-env.yaml`, we can create the dev-environment with:
+
 ```bash
 micromamba create \
-    --platform=emscripten-32 \
     --yes --file  pyjs-dev-env.yaml  \
     -c https://repo.mamba.pm/emscripten-forge \
     -c https://repo.mamba.pm/conda-forge
@@ -45,7 +46,7 @@ dependencies:
   - numpy
   - pyb2d
 ```
-
+Assuming the yaml file above is named `pyjs-wasm-env.yaml`, we can create the web-environment with:
 
 ```Bash
 micromamba create \
@@ -53,4 +54,70 @@ micromamba create \
     --yes --file  pyjs-wasm-env.yaml  \
     -c https://repo.mamba.pm/emscripten-forge \
     -c https://repo.mamba.pm/conda-forge
+```
+
+
+## Pack the environment
+
+First we download the empack default configuration [github](https://raw.githubusercontent.com/emscripten-forge/recipes/main/empack_config.yaml)
+```bash
+curl https://raw.githubusercontent.com/emscripten-forge/recipes/main/empack_config.yaml --output empack_config.yaml
+```
+
+Next we invoke empack to pack the conda-environment `pyjs-wasm-env` into `*.data/*.js` files which can be fetched and imported from JavaScript.
+
+```bash
+empack pack env \
+    --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-wasm-env \
+    --outname my_sample_application \
+    --config empack_config.yaml \
+    --config extra_config.yaml  \
+    --outdir output \
+    --export-name globalThis.pyjs \
+    --split
+````
+
+
+## Use It
+Now that we packed our environment in (multiple) JavaScript files, we can start using `pyjs`:
+
+### Initialize pyjs
+
+The initialization of pyjs in JavaScript unfortunately still a bit complicated:
+
+```JavaScript
+// pyjs itself
+import {createModule} from '../pyjs_runtime_browser.js';
+let pyjs = await createModule()
+globalThis.pyjs = pyjs
+
+// content of the packaged wasm environment
+const { default: load_all }  = await import('../my_sample_application.js')
+await load_all()
+await pyjs.init()
+
+```
+
+
+### Use Pyjs
+
+The initialization of pyjs in JavaScript unfortunately still a bit complicated:
+
+```JavaScript
+// pyjs itself
+pysjs.exec(`
+import numpy
+print(numpy.zeros([10,20]))
+`)
+```
+
+
+Within the python code called from JavaScript, one has access to the `pyjs` python module.
+This allows access to the JavaScript side from Python.
+
+
+```python
+from pyjs.js import console
+
+console.log("print to browser console")
 ```

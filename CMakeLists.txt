@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.11.1 DESCRIPTION "pyjs")
+project(pyjs VERSION 0.11.2 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
@@ -186,8 +186,8 @@ if(BUILD_RUNTIME_BROWSER)
         PUBLIC "SHELL: -fwasm-exceptions"
         PUBLIC "SHELL: -s MAIN_MODULE=1"
         PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-        PUBLIC "SHELL: -s TOTAL_STACK=512mb"
-        PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
+        PUBLIC "SHELL: -s TOTAL_STACK=16mb"
+        PUBLIC "SHELL: -s INITIAL_MEMORY=64mb"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
         PUBLIC "SHELL: --post-js post.js"
@@ -257,8 +257,8 @@ if(BUILD_RUNTIME_NODE)
         PUBLIC "SHELL: -fwasm-exceptions"
         PUBLIC "SHELL: -s MAIN_MODULE=1"
         PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-        PUBLIC "SHELL: -s TOTAL_STACK=512mb"
-        PUBLIC "SHELL: -s INITIAL_MEMORY=1024mb"
+        PUBLIC "SHELL: -s TOTAL_STACK=16mb"
+        PUBLIC "SHELL: -s INITIAL_MEMORY=64mb"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
         PUBLIC "SHELL: --post-js post.js"

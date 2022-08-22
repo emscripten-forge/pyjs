@@ -10,8 +10,10 @@ Welcome to pyjs's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   _src/about
    _src/workflow
+   _src/faq
+   _src/related_projects
+
 
 Indices and tables
 ==================

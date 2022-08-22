@@ -113,8 +113,7 @@ print(numpy.zeros([10,20]))
 
 
 Within the python code called from JavaScript, one has access to the `pyjs` python module.
-This allows access to the JavaScript side from Python.
-
+This allows access to the JavaScript side from Python:
 
 ```python
 from pyjs.js import console

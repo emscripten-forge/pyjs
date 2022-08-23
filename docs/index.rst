@@ -8,9 +8,9 @@ This page is still under construction and will (hopefully) be extended soon!
    :caption: Contents:
 
    _src/usage
-   _src/faq
    _src/examples/index.rst
    _src/related_projects
+   _src/faq
 
 
 

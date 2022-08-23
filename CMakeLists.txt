@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.11.2 DESCRIPTION "pyjs")
+project(pyjs VERSION 0.12.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
@@ -47,7 +47,7 @@ ADD_CUSTOM_COMMAND(OUTPUT  ${CMAKE_BINARY_DIR}/pre.js
   DEPENDS ${CMAKE_SOURCE_DIR}/pre.js
 )
 ADD_CUSTOM_TARGET(CopyPreJs ALL
-   DEPENDS ${CMAKE_BINARY_DIR}/pre.js
+   DEPENDS ${CMAKE_BINARY_DIR}/pyjs_pre.js
 )
 
 
@@ -61,7 +61,8 @@ set(PYJS_HEADERS
     include/pyjs/export_js_proxy.hpp
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
-    pre.js
+    pyjs_pre.js
+    pyjs_post.js
 )
 
 set(PYCPPSOURCES "")
@@ -82,10 +83,10 @@ endif ()
 
 
 
-configure_file(pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pre.js  COPYONLY)
-configure_file(post.js ${CMAKE_CURRENT_BINARY_DIR}/post.js COPYONLY)
+configure_file(pyjs_pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js  COPYONLY)
+configure_file(pyjs_post.js ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js COPYONLY)
 
-set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pre.js")
+set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pyjs_pre.js --post-js pyjs_post.js")
 
 add_library(pyjs STATIC
     src/export_js_module.cpp
@@ -190,8 +191,8 @@ if(BUILD_RUNTIME_BROWSER)
         PUBLIC "SHELL: -s INITIAL_MEMORY=64mb"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
-        PUBLIC "SHELL: --post-js post.js"
-        PUBLIC "SHELL: --pre-js pre.js"
+        PUBLIC "SHELL: --post-js pyjs_post.js"
+        PUBLIC "SHELL: --pre-js pyjs_pre.js"
         PUBLIC "SHELL: -flto"
         # PUBLIC "SHELL: -s WASM_BIGINT"
     )
@@ -261,8 +262,8 @@ if(BUILD_RUNTIME_NODE)
         PUBLIC "SHELL: -s INITIAL_MEMORY=64mb"
         PUBLIC "SHELL: -s FORCE_FILESYSTEM"
         PUBLIC "SHELL: -s LZ4=1"
-        PUBLIC "SHELL: --post-js post.js"
-        PUBLIC "SHELL: --pre-js pre.js"
+        PUBLIC "SHELL: --post-js pyjs_post.js"
+        PUBLIC "SHELL: --pre-js pyjs_pre.js"
         PUBLIC "SHELL: -flto"
         # PUBLIC "SHELL: -s WASM_BIGINT"
     )

@@ -1,4 +1,4 @@
-# Workflow
+# Usage
 
 This describes the overall workflow to setup an `emscripten-32` environment with `micromamba`, packing this environment with `empack` and use this environment with `pyjs`.
 

@@ -221,10 +221,11 @@ namespace pyjs
         {
             return py_1d_buffer_to_typed_array_t<uint32_t>(size, info.ptr, view, "Uint32Array");
         }
-        // else if(format == py::format_descriptor<uint64_t>::format()){
-        //     return py_1d_buffer_to_typed_array_t<uint64_t>(size, info.ptr, view,
-        //     "BigInt64Array");
-        // }
+        else if (format == py::format_descriptor<uint64_t>::format())
+        {
+            throw std::runtime_error(
+                "uint64_t is not yet supported in pyjs since the stack is not yet compiled with WasmBigInt support");
+        }
         else if (format == py::format_descriptor<int8_t>::format())
         {
             return py_1d_buffer_to_typed_array_t<int16_t>(size, info.ptr, view, "Int8Array");
@@ -237,14 +238,16 @@ namespace pyjs
         {
             return py_1d_buffer_to_typed_array_t<int32_t>(size, info.ptr, view, "Int32Array");
         }
-        // else if(format == py::format_descriptor<int64_t>::format()){
-        //     return py_1d_buffer_to_typed_array_t<int64_t>(size, info.ptr, view, "BigInt64Array");
-        // }
+        else if (format == py::format_descriptor<int64_t>::format())
+        {
+            throw std::runtime_error(
+                "int64_t is not yet supported in pyjs since the stack is not yet compiled with WasmBigInt support");
+        }
         else
         {
             std::stringstream s;
-            s << "unknown format: " << format
-              << "(note that uint64 / int64 is atm not yet supported)";
+            s << "pyjs error: an unknown format: occurred when converting np.ndarray to a JavaScript TypedArray: format="
+              << format;
             throw std::runtime_error(s.str());
         }
     }

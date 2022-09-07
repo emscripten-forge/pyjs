@@ -31,7 +31,7 @@ def start_server(work_dir, port):
         def log_message(self, fmt, *args):
             return
 
-    httpd = HTTPServer(("localhost", port), Handler)
+    httpd = HTTPServer(("127.0.0.1", port), Handler)
 
     thread = threading.Thread(target=httpd.serve_forever)
     thread.start()
@@ -41,14 +41,14 @@ def start_server(work_dir, port):
 @contextmanager
 def server_context(work_dir, port):
     thread, server = start_server(work_dir=work_dir, port=port)
-    yield server, f"http://localhost:{port}"
+    yield server, f"http://127.0.0.1:{port}"
     server.shutdown()
     thread.join()
 
 
-async def playwright_main(page_url, workdir, script_basename):
+async def playwright_main(page_url, workdir, script_basename, debug=False):
     async with async_playwright() as p:
-        if True:
+        if not debug:
             browser = await p.chromium.launch(headless=True)
         else:
             browser = await p.chromium.launch(headless=False, slow_mo=100000)
@@ -70,8 +70,8 @@ async def playwright_main(page_url, workdir, script_basename):
                  }}
 
                 var pyjs = await createModule({{print:print,error:print}})
-                var Module = pyjs
-                globalThis.Module = Module
+                var EmscriptenForgeModule = pyjs
+                globalThis.EmscriptenForgeModule = pyjs
 
                 await import('./python_data.js')
                 await import('./script_data.js')
@@ -96,15 +96,15 @@ async def playwright_main(page_url, workdir, script_basename):
 
 
 
-                //while(true)
-                //{{
-                //    await new Promise(resolve => setTimeout(resolve, 100));
-                //    const n_unfinished = pyjs.n_unfinished();
-                //    if(n_unfinished <= 0)
-                //    {{
-                //        break;
-                //    }}
-                //}}
+                while(true)
+                {{
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    const _async_done_ = pyjs.eval("_async_done_[0]", main_scope)
+                    if(_async_done_)
+                    {{
+                        break;
+                    }}
+                }}
 
                 msg = {{
                     return_code : r,
@@ -154,7 +154,7 @@ def pack_script(script_file):
         file=script_file,
         mount_path="/script",
         outname="script_data",
-        export_name="globalThis.Module",
+        export_name="globalThis.EmscriptenForgeModule",
         # silent=True,
     )
     # cmd = [f"empack pack file  {script_file}  '/script'  script"]

@@ -145,6 +145,7 @@ class WebLoop(asyncio.AbstractEventLoop):
         """
         if delay < 0:
             raise ValueError("Can't schedule in the past")
+
         self._n_unfinished += 1
         h = asyncio.Handle(callback, args, self, context=context)
 

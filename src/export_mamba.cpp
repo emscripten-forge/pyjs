@@ -8,10 +8,12 @@
 
 namespace py = pybind11;
 
+
 extern "C"
 {
 #include "solv/solver.h"
 #include "solv/transaction.h"
+#include "solv/solverdebug.h"
 #include "solv/repo_conda.h"
 #include "solv/conda.h"
 #include "solv/repo_solv.h"
@@ -51,9 +53,11 @@ namespace pyjs
 
         py::list remove_list;
         py::list install_list;
+        py::list ignore_list;
 
         res["REMOVE"] = remove_list;
         res["INSTALL"] = install_list;
+        res["IGNORE"] = ignore_list;
 
         auto as_tuple = [&pool](Solvable* s)
         {
@@ -99,6 +103,7 @@ namespace pyjs
                     break;
                 }
                 case SOLVER_TRANSACTION_IGNORE:
+                    ignore_list.append(as_tuple(s));
                     break;
                 default:
                     std::cout << "Some weird case not handled" << std::endl;
@@ -154,17 +159,31 @@ namespace pyjs
 
         solver_solve(s, &q);
 
-        bool success = solver_problem_count(s) == 0;
-        Transaction* trans = solver_create_transaction(s);
+        const int problem_count = solver_problem_count(s);
+        const bool success = problem_count == 0;
+        if (!success)
+        {
+            Id problem = 0;
+            int pcnt;
+            while ((problem = solver_next_problem(s, problem)) != 0)
+            {
+                solver_printcompleteprobleminfo(s, problem);
+            }
+            py::dict ret;
+            ret["ERROR"] = true;
+            return ret;
+        }
+        else
+        {
+            Transaction* trans = solver_create_transaction(s);
+            transaction_order(trans, 0);
+            py::dict res = transaction_to_py(trans);
 
-        transaction_order(trans, 0);
-
-        py::dict res = transaction_to_py(trans);
-
-        transaction_free(trans);
-        solver_free(s);
-        queue_free(&q);
-        return res;
+            transaction_free(trans);
+            solver_free(s);
+            queue_free(&q);
+            return res;
+        }
     }
 
 

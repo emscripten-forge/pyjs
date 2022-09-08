@@ -71,6 +71,22 @@ class PikoMamba:
             spec = f"{v['name']}={v['version']}={v['build']}"
             self.installed_specs.add(spec)
 
+        packages = dict()
+        for k, v in self.installed.items():
+
+            pkg_meta = os.path.join(meta, f"{k}.json")
+            with open(pkg_meta, "r") as f:
+                pkg_meta = json.load(f)
+            # print(pkg_meta)
+
+            packages[f"{k}.tar.bz2"] = pkg_meta
+
+        repodata = dict(packages=packages)
+        # print(repodata)
+        with open("/home/installed.json", "w") as f:
+            json.dump(repodata, f)
+        self.pool.load_repo("/home/installed.json", "installed")
+
     async def async_init(self, config):
 
         self.config = config
@@ -122,24 +138,35 @@ class PikoMamba:
         is_noarch = self.is_noarch(name, ver, build)
 
         pkg_base_url = f"{self.config['data_urls']['arch']}/{pkg_filename}"
-        js_url = f"{pkg_base_url}.js"
-        data_url = f"{pkg_base_url}.data"
+        json_info_url = f"{pkg_base_url}.json"
 
-        # todo, this might need to be changed for a non worker
-        pyjs.js.importScripts(js_url)
+        response = await pyjs.js.fetch(json_info_url)
+        urls = pyjs.to_py(await response.json())
+        for url in urls:
+            js_url = f"{self.config['data_urls']['arch']}/{url}"
+            pyjs.js.importScripts(js_url)
+        # json_info = json.loads(text)
+        # print(json_info)
+
+        # js_url = f"{pkg_base_url}.js"
+        # data_url = f"{pkg_base_url}.data"
+
+        # # todo, this might need to be changed for a non worker
+        # pyjs.js.importScripts(js_url)
 
     async def install_noarch(self, name, ver, build):
         pkg_filename = self.pkg_filename(name, ver, build)
         annaconda_url = f"https://anaconda.org/conda-forge/pycparser/{ver}/download/noarch/{pkg_filename}"
+        print("donwloading", annaconda_url)
+        if False:
+            response = await pyjs.js.fetch(annaconda_url)
+            array = await response.arrayBuffer()
+            nparray = pyjs.to_py(array)
 
-        response = await pyjs.js.fetch(annaconda_url)
-        array = await response.arrayBuffer()
-        nparray = pyjs.to_py(array)
-
-        f = io.BytesIO(nparray)
-        tar = tarfile.open(fileobj=f, mode="r:bz2")
-        tar.extractall(path=sysconfig.get_path("purelib"))
-        tar.close()
+            f = io.BytesIO(nparray)
+            tar = tarfile.open(fileobj=f, mode="r:bz2")
+            tar.extractall(path=sysconfig.get_path("purelib"))
+            tar.close()
 
     async def install(self, specs):
 
@@ -160,7 +187,8 @@ class PikoMamba:
                 # print("skip installed")
                 to_install.append((name, ver, build))
 
-        print("installing: ", to_install)
+        istr = "\n".join([str(e) for e in to_install])
+        print(f"installing:\n{istr}")
 
         # install all needed packages
         for (name, ver, build) in to_install:
@@ -172,7 +200,6 @@ class PikoMamba:
             is_noarch = self.is_noarch(name, ver, build)
 
             if is_noarch:
-                continue
                 await self.install_noarch(name, ver, build)
             else:
                 await self.install_arch(name, ver, build)
@@ -198,13 +225,16 @@ async def main_runner():
 
 async def prepare_mamba():
     root = "http://127.0.0.1:8000"
+
+    cdn_base = "https://cdn.jsdelivr.net/gh/DerThorsten/distribution@0.2.0"
+
     config = {
         "repodata": {
-            "arch": f"{root}/distribution/repodata/arch.zip",
-            "noarch": f"{root}/distribution/repodata/conda_forge_noarch_repodata.zip",
+            "arch": f"{cdn_base}/repodata/arch.zip",
+            "noarch": f"{cdn_base}/repodata/noarch.zip",
         },
         "data_urls": {
-            "arch": f"{root}/distribution",
+            "arch": f"{cdn_base}",
         },
     }
 
@@ -221,11 +251,11 @@ async def main():
     await prepare_mamba()
 
     # do the thing
-    await PikoMamba.instance().install(["regex"])
+    await PikoMamba.instance().install(["regex", "pandas", "scipy"])
+
+    # import scipy
 
     print(f"took {time.time()-t0 :.2f} sec")
-
-    import regex
 
 
 asyncio.ensure_future(main_runner())

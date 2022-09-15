@@ -74,7 +74,7 @@ jobs:
               --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
               --outname python_data \
               --config empack_config.yaml \
-              --export-name "globalThis.Module"
+              --export-name "globalThis.EmscriptenForgeModule"
 
 
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm

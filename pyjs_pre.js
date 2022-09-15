@@ -19,24 +19,9 @@ const _BOOL = "6"
 const _FUNCTION = "7"
 
 
-
-
-
-Module['dynamic_import'] = async function(import_str){
+Module['_async_import_javascript'] = async function(import_str){
 	return import(import_str);
 }
-
-// Module['parallel_fetch_with_progress'] = async function(urls){
-
-// 	let n_urls = urls.length;
-// 	let repsonses_promises = urls.map(url => fetch(url));
-// 	let responses = await Promise.all(repsonses_promises);
-// 	let buffers_promises = responses.map(response => response.arrayBuffer());
-// 	let buffers = await Promise.all(buffers_promises);
-// 	return buffers;
-// }
-
-
 
 Module['make_proxy'] = function(py_object) {
 	// return py_object;

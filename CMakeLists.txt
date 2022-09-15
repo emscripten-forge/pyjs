@@ -5,7 +5,6 @@ option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
 option(WITH_NODE_TESTS "With node tests" ON)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
 
 
 ##########################################################
@@ -83,9 +82,6 @@ if (NOT TARGET pybind11::headers)
 endif ()
 
 
-
-find_package(LibSolv REQUIRED)
-
 configure_file(pyjs_pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js  COPYONLY)
 configure_file(pyjs_post.js ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js COPYONLY)
 
@@ -123,14 +119,13 @@ set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
 )
 
-target_link_libraries(pyjs PRIVATE pybind11::pybind11 ${LibSolv_LIBRARIES})
+target_link_libraries(pyjs PRIVATE pybind11::pybind11)
 target_compile_options(pyjs PRIVATE -fPIC)
 
 target_include_directories(pyjs
                            PRIVATE
                            ${CMAKE_SOURCE_DIR}/include
                            ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes
-                           ${LibSolv_INCLUDE_DIRS}
 )
 
 

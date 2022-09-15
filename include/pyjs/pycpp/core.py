@@ -40,6 +40,10 @@ def new(cls_, *args):
     return _module._new(cls_, *args)
 
 
+def async_import_javascript(path):
+    return _module._async_import_javascript(path)
+
+
 def type_str(x):
     return internal.type_str(x)
 

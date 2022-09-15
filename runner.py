@@ -7,8 +7,7 @@ from pathlib import Path
 
 import typer
 
-from runner_tools.runners_utils import (
-    find_free_port,
+from runner_tools.runners_utils import (  # find_free_port,
     pack_script,
     patch_emscripten_generated_js,
     playwright_main,
@@ -28,7 +27,7 @@ app.add_typer(run_app, name="run")
 
 
 @run_app.command()
-def script(script_file: Path, port: int, debug: bool = False):
+def script(script_file: Path, port: int, debug: bool = False, async_main: bool = False):
 
     if not os.path.isabs(script_file):
         script_file = os.path.abspath(script_file)
@@ -57,6 +56,7 @@ def script(script_file: Path, port: int, debug: bool = False):
                 script_basename=script_basename,
                 workdir="/script",
                 debug=debug,
+                async_main=async_main,
             )
         )
     sys.exit(ret)

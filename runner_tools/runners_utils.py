@@ -46,7 +46,9 @@ def server_context(work_dir, port):
     thread.join()
 
 
-async def playwright_main(page_url, workdir, script_basename, debug=False):
+async def playwright_main(
+    page_url, workdir, script_basename, debug=False, async_main=False
+):
     async with async_playwright() as p:
         if not debug:
             browser = await p.chromium.launch(headless=True)
@@ -96,15 +98,34 @@ async def playwright_main(page_url, workdir, script_basename, debug=False):
                 }}
 
 
+                if({int(async_main)}){{
 
-                while(true)
-                {{
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    const _async_done_ = pyjs.eval("_async_done_[0]", main_scope)
-                    if(_async_done_)
+
+                    pyjs.exec(`
+import asyncio
+_async_done_ = [False]
+async def main_runner():
+    try:
+        await main()
+    except Exception as e:
+        print(e)
+    finally:
+        global _async_done_
+        _async_done_[0] = True
+asyncio.ensure_future(main_runner())
+                    `,main_scope)
+
+                    while(true)
                     {{
-                        break;
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        const _async_done_ = pyjs.eval("_async_done_[0]", main_scope)
+                        if(_async_done_)
+                        {{
+                            break;
+                        }}
                     }}
+
+
                 }}
 
                 msg = {{

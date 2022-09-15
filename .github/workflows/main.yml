@@ -100,7 +100,7 @@ jobs:
       - name: Run Tests
         run: |
           micromamba activate pyjs-wasm
-          python runner.py run script test_pyjs.py
+          python runner.py run script test_pyjs.py 8002
   test-node:
 
     runs-on: ubuntu-latest

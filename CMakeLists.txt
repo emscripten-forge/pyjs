@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(pyjs VERSION 0.12.1 DESCRIPTION "pyjs")
+project(pyjs VERSION 0.13.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
@@ -17,7 +17,6 @@ set(PYCPPSCRIPTS
     error_handling.py
     extend_js_val.py
     webloop.py
-    mamba.py
 )
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
@@ -97,7 +96,6 @@ add_library(pyjs STATIC
     src/export_js_proxy.cpp
     src/export_py_object.cpp
     src/convert.cpp
-    src/export_mamba.cpp
     src/export_pyjs_module.cpp
     ${PYCPPSOURCES}
 )
@@ -143,7 +141,10 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
 )
 
-
+set_target_properties(pyjs
+    PROPERTIES
+    CXX_STANDARD 17
+)
 # TODO MAKE LOOP
 
 if(BUILD_RUNTIME_BROWSER)

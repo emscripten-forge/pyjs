@@ -74,7 +74,7 @@ jobs:
               --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
               --outname python_data \
               --config empack_config.yaml \
-              --export-name "globalThis.Module"
+              --export-name "globalThis.EmscriptenForgeModule"
 
 
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
@@ -100,7 +100,7 @@ jobs:
       - name: Run Tests
         run: |
           micromamba activate pyjs-wasm
-          python runner.py run script test_pyjs.py
+          python runner.py run script test_pyjs.py 8002
   test-node:
 
     runs-on: ubuntu-latest

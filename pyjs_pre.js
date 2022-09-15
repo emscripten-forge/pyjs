@@ -19,12 +19,9 @@ const _BOOL = "6"
 const _FUNCTION = "7"
 
 
-
-
-Module['py_apply'] = function(py_object, args, kwargs) {
-
+Module['_async_import_javascript'] = async function(import_str){
+	return import(import_str);
 }
-
 
 Module['make_proxy'] = function(py_object) {
 	// return py_object;

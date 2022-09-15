@@ -8,20 +8,25 @@
 #include <filesystem>
 
 #include <pyjs/export_js_proxy.hpp>
+#include <pyjs/export_pyjs_module.hpp>
 
 // python
-#include <pycpp_includes/core.py.hpp>
-#include <pycpp_includes/extend_js_val.py.hpp>
-#include <pycpp_includes/convert.py.hpp>
-#include <pycpp_includes/webloop.py.hpp>
-#include <pycpp_includes/error_handling.py.hpp>
 
 namespace py = pybind11;
 namespace em = emscripten;
 
 
+void pyjs_core_pseudo_init(py::module_&);
+void pyjs_extend_js_val_pseudo_init(py::module_&);
+void pyjs_error_handling_pseudo_init(py::module_&);
+void pyjs_convert_pseudo_init(py::module_&);
+void pyjs_webloop_pseudo_init(py::module_&);
+
+
 namespace pyjs
 {
+    void export_mamba(py::module_ & m);
+
     void export_pyjs_module(py::module_& pyjs_module)
     {
         export_js_proxy(pyjs_module);
@@ -38,5 +43,7 @@ namespace pyjs
             std::cout << "error: " << e.what() << "\n";
             throw e;
         }
+        // std::cout<<"exportt!!!\n";
+
     }
 }

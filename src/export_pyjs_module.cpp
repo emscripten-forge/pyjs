@@ -43,7 +43,5 @@ namespace pyjs
             std::cout << "error: " << e.what() << "\n";
             throw e;
         }
-        // std::cout<<"exportt!!!\n";
-
     }
 }

@@ -22,7 +22,6 @@ namespace pyjs
         JS_FUNCTION = '7'
     };
 
-
     em::val implicit_conversion(py::object & py_ret);
 
 

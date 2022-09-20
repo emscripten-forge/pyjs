@@ -62,7 +62,6 @@ add_custom_target(merge_pyjs ALL
     )
 
 
-# pyjs_pre.js/pyjs_post.js will always be rebuilt because it depends on always_rebuild
 add_custom_command(OUTPUT "pyjs_pre.js"
     COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/merge_js.py ${PREJS_FILES} pyjs_pre.js
     DEPENDS ${PREJS_FILES}
@@ -71,15 +70,6 @@ add_custom_command(OUTPUT "pyjs_pre.js"
 add_custom_command(OUTPUT "pyjs_post.js"
     COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/merge_js.py ${POSTJS_FILES} pyjs_post.js
     DEPENDS  ${POSTJS_FILES})
-
-# Dummy output which is never actually produced. Anything that depends on
-# this will always be rebuilt.
-add_custom_command(OUTPUT always_rebuild COMMAND cmake -E echo)
-
-
-
-
-
 
 
 

@@ -13,6 +13,7 @@ option(WITH_NODE_TESTS "With node tests" ON)
 ##########################################################
 set(PYCPPSCRIPTS
     convert.py
+    convert_py_to_js.py
     core.py
     error_handling.py
     extend_js_val.py

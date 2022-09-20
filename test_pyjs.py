@@ -9,6 +9,10 @@ import pytest
 import pyjs
 
 
+def to_js_to_py(x):
+    return pyjs.to_py(pyjs.to_js(x))
+
+
 def nullary(body):
     return pyjs.js.Function(body)()
 
@@ -192,6 +196,11 @@ def test_to_py(test_input, expected_type, expected_value, comperator):
     py_val = pyjs.to_py(ensure_js(test_input))
     assert isinstance(py_val, expected_type)
     assert comperator(py_val, expected_value)
+
+
+@pytest.mark.parametrize("test_input", [1, 2, 3, [1, 2, 3], {1: [1, 2], "two": {}}])
+def test_roundtrip(test_input):
+    assert to_js_to_py(test_input) == test_input
 
 
 @pytest.mark.parametrize(

@@ -70,6 +70,34 @@ def object_converter(js_val, depth, cache, converter_options):
     return ret_dict
 
 
+def map_converter(js_val, depth, cache, converter_options):
+
+    ret_dict, found_in_cache = cache.get(js_val, {})
+    if found_in_cache:
+        return ret_dict
+
+    keys = js.Array["from"](js_val.keys())
+    values = js.Array["from"](js_val.values())
+    size = internal.length(keys)
+
+    for i in range(size):
+
+        js_key = keys[i]
+        js_val = values[i]
+
+        py_val = to_py(
+            js_val, depth=depth + 1, cache=cache, converter_options=converter_options
+        )
+
+        py_key = to_py(
+            js_key, depth=depth + 1, cache=cache, converter_options=converter_options
+        )
+
+        ret_dict[py_key] = py_val
+
+    return ret_dict
+
+
 def set_converter(js_val, depth, cache, converter_options):
     pyset, found_in_cache = cache.get(js_val, set())
     if found_in_cache:
@@ -109,6 +137,7 @@ basic_to_py_converters = {
     "Object": object_converter,
     "Array": array_converter,
     "Set": set_converter,
+    "Map": map_converter,
     "7": lambda x, d, c, opts: x,
     "Promise": lambda x, d, c, opts: x._to_future(),
     # error classes

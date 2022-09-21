@@ -313,7 +313,6 @@ if(BUILD_RUNTIME_NODE)
         # PUBLIC "SHELL: -s WASM_BIGINT"
     )
 
-    add_dependencies(pyjs_runtime_node CopyPreJs)
 
 
 

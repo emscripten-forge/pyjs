@@ -13,6 +13,7 @@ option(WITH_NODE_TESTS "With node tests" ON)
 ##########################################################
 set(PYCPPSCRIPTS
     convert.py
+    convert_py_to_js.py
     core.py
     error_handling.py
     extend_js_val.py
@@ -31,25 +32,62 @@ endforeach()
 
 
 
-
-
-    # add_custom_target( copy_pre_js
-    #                     DEPENDS ${CMAKE_SOURCE_DIR}/pre.js
-    #                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    #                    ${CMAKE_SOURCE_DIR}/pre.js
-    #                    ${CMAKE_BINARY_DIR}/pre.js
-    #                     COMMENT "Copying 'pre.js' library to bin")
-
-
-ADD_CUSTOM_COMMAND(OUTPUT  ${CMAKE_BINARY_DIR}/pre.js
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                       ${CMAKE_SOURCE_DIR}/pre.js
-                       ${CMAKE_BINARY_DIR}/pre.js
-  DEPENDS ${CMAKE_SOURCE_DIR}/pre.js
+##########################################################
+# generate prejs and postjs
+##########################################################
+set(PREJS_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/constants.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/get_type_string.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/wrap_result.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/apply.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/get_set_attr.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/promise.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/create_once_callable.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/shortcuts.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/operators.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/platform.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/wait_for_dependencies.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/init.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/cleanup.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/make_proxy.js
 )
-ADD_CUSTOM_TARGET(CopyPreJs ALL
-   DEPENDS ${CMAKE_BINARY_DIR}/pyjs_pre.js
+set(POSTJS_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/post_js/fixes.js
 )
+
+
+add_custom_target(merge_pyjs ALL
+    DEPENDS
+        "pyjs_pre.js"
+        "pyjs_post.js"
+    )
+
+
+add_custom_command(OUTPUT "pyjs_pre.js"
+    COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/merge_js.py ${PREJS_FILES} pyjs_pre.js
+    DEPENDS ${PREJS_FILES}
+)
+
+add_custom_command(OUTPUT "pyjs_post.js"
+    COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/merge_js.py ${POSTJS_FILES} pyjs_post.js
+    DEPENDS  ${POSTJS_FILES})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -62,8 +100,8 @@ set(PYJS_HEADERS
     include/pyjs/export_js_proxy.hpp
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
-    pyjs_pre.js
-    pyjs_post.js
+    ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js
+    ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js
 )
 
 set(PYCPPSOURCES "")
@@ -83,8 +121,8 @@ if (NOT TARGET pybind11::headers)
 endif ()
 
 
-configure_file(pyjs_pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js  COPYONLY)
-configure_file(pyjs_post.js ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js COPYONLY)
+# configure_file(pyjs_pre.js  ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js  COPYONLY)
+#configure_file(pyjs_post.js ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js COPYONLY)
 
 set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pyjs_pre.js --post-js pyjs_post.js")
 
@@ -118,7 +156,10 @@ target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
 set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
+    # DEPENDS "pyjs_pre.js" "pyjs_post.js"
 )
+
+add_dependencies(pyjs merge_pyjs)
 
 target_link_libraries(pyjs PRIVATE pybind11::pybind11)
 target_compile_options(pyjs PRIVATE -fPIC)
@@ -272,7 +313,6 @@ if(BUILD_RUNTIME_NODE)
         # PUBLIC "SHELL: -s WASM_BIGINT"
     )
 
-    add_dependencies(pyjs_runtime_node CopyPreJs)
 
 
 

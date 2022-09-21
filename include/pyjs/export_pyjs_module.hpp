@@ -24,8 +24,5 @@ void pyjs_mamba_pseudo_init(py::module_ & );
 
 namespace pyjs
 {
-
-
-
     void export_pyjs_module(py::module_& pyjs_module);
 }

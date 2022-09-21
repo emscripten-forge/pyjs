@@ -9,6 +9,10 @@ import pytest
 import pyjs
 
 
+def to_js_to_py(x):
+    return pyjs.to_py(pyjs.to_js(x))
+
+
 def nullary(body):
     return pyjs.js.Function(body)()
 
@@ -113,6 +117,7 @@ def test_interal_type_str():
     [
         # special items
         ("undefined", NoneType, None, (lambda x, should_val: x is None)),
+        ("null", NoneType, None, (lambda x, should_val: x is None)),
         # basic items
         ("42", int, 42, operator.eq),
         ("-42", int, -42, operator.eq),
@@ -126,6 +131,13 @@ def test_interal_type_str():
         ('"null"', str, "null", operator.eq),
         # set
         ("new Set([1,2,5])", set, set([1, 2, 5]), operator.eq),
+        # map
+        (
+            "new Map([[1, 'one'],[2, 'two']])",
+            dict,
+            {1: "one", 2: "two"},
+            operator.eq,
+        ),
         # arrays
         (
             "new Uint8Array([1,2,3])",
@@ -192,6 +204,52 @@ def test_to_py(test_input, expected_type, expected_value, comperator):
     py_val = pyjs.to_py(ensure_js(test_input))
     assert isinstance(py_val, expected_type)
     assert comperator(py_val, expected_value)
+
+
+@pytest.mark.parametrize(
+    "test_input",
+    [
+        True,
+        False,
+        None,
+        1,
+        1.0,
+        "fubar",
+        set([1, 2, 3]),
+        [1, 2, 3],
+        {1: [1, 2], "two": {1: [1, 2, "three"]}},
+    ],
+)
+def test_roundtrip_py_js_py(test_input):
+    if test_input is not None:
+        assert to_js_to_py(test_input) == test_input
+    else:
+        assert to_js_to_py(test_input) is None
+
+
+def test_map_to_py():
+    js_map = pyjs.js.Function("return new Map([[1, 'one'],[2, 'two']])")()
+    py_map = pyjs.to_py(js_map)
+    len(py_map) == 2
+    assert 1 in py_map
+    assert 2 in py_map
+    assert py_map[1] == "one"
+    assert py_map[2] == "two"
+
+
+def test_to_js_dict():
+    pydict = {1: "a"}
+    jsmap = pyjs.to_js(pydict)
+    assert jsmap.keys().next().value == 1
+    assert jsmap.values().next().value == "a"
+
+    assert jsmap.get(1) == "a"
+
+
+def test_to_js_none():
+
+    jsval = pyjs.to_js(None)
+    assert pyjs._module._is_undefined(jsval)
 
 
 @pytest.mark.parametrize(

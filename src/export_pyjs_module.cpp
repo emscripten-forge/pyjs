@@ -15,13 +15,12 @@
 namespace py = pybind11;
 namespace em = emscripten;
 
-
 void pyjs_core_pseudo_init(py::module_&);
 void pyjs_extend_js_val_pseudo_init(py::module_&);
 void pyjs_error_handling_pseudo_init(py::module_&);
 void pyjs_convert_pseudo_init(py::module_&);
+void pyjs_convert_py_to_js_pseudo_init(py::module_&);
 void pyjs_webloop_pseudo_init(py::module_&);
-
 
 namespace pyjs
 {
@@ -36,6 +35,7 @@ namespace pyjs
             pyjs_extend_js_val_pseudo_init(pyjs_module);
             pyjs_error_handling_pseudo_init(pyjs_module);
             pyjs_convert_pseudo_init(pyjs_module);
+            pyjs_convert_py_to_js_pseudo_init(pyjs_module);
             pyjs_webloop_pseudo_init(pyjs_module);
         }
         catch (py::error_already_set& e)
@@ -43,7 +43,5 @@ namespace pyjs
             std::cout << "error: " << e.what() << "\n";
             throw e;
         }
-        // std::cout<<"exportt!!!\n";
-
     }
 }

@@ -104,11 +104,13 @@ async def playwright_main(
                     pyjs.exec(`
 import asyncio
 _async_done_ = [False]
+_ret_code = [0]
 async def main_runner():
     try:
-        await main()
+        _ret_code[0] = await main()
     except Exception as e:
-        print(e)
+        _ret_code[0] = 1
+        print("EXCEPTION",e)
     finally:
         global _async_done_
         _async_done_[0] = True
@@ -124,6 +126,7 @@ asyncio.ensure_future(main_runner())
                             break;
                         }}
                     }}
+                    r = r || pyjs.eval("_ret_code[0]", main_scope)
 
 
                 }}

@@ -5,43 +5,48 @@
 #include <sstream>
 #include <pyjs/convert.hpp>
 
+#include <iostream>
+
 namespace py = pybind11;
 namespace em = emscripten;
 
 namespace pyjs
 {
-    em::val implicit_conversion(py::object& py_ret)
+    std::pair<em::val,bool> implicit_py_to_js_conversion(py::object& py_ret)
     {
-        py::module_ pyjs = py::module_::import("pyjs");
-        const std::string info = pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
+        // py::module_ pyjs = py::module_::import("pyjs_utils");
+        // const std::string info = pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
+
+        const std::string info = py_ret.get_type().attr("__name__").str();
+        // std::cout<<"type_str "<<info<<"\n";
         if (info == "int")
         {
-            return em::val(py_ret.cast<int>());
+            return std::make_pair(em::val(py_ret.cast<int>()),false);
         }
         else if (info == "str")
         {
-            return em::val(py_ret.cast<std::string>());
+            return std::make_pair(em::val(py_ret.cast<std::string>()),false);
         }
         else if (info == "bool")
         {
-            return em::val(py_ret.cast<bool>());
+            return std::make_pair(em::val(py_ret.cast<bool>()),false);
         }
-        else if (info == "double")
+        else if (info == "double" || info == "float")
         {
-            return em::val(py_ret.cast<double>());
+            return std::make_pair(em::val(py_ret.cast<double>()),false);
         }
-        else if (info == "None")
+        else if (info == "NoneType")
         {
-            return em::val::undefined();
+            return std::make_pair(em::val::undefined(),false);
         }
         else if (info == "JsValue")
         {
-            return py_ret.cast<em::val>();
+            return std::make_pair(py_ret.cast<em::val>(),false);
         }
         else
         {
             // return em::val(py_ret);
-            return em::val::module_property("make_proxy")(em::val(py_ret));
+            return std::make_pair(em::val::module_property("make_proxy")(em::val(py_ret)),true);
         }
     }
 
@@ -185,6 +190,8 @@ namespace pyjs
         {
             throw std::runtime_error("Incompatible buffer dimension!");
         }
+
+
 
         // sizeof one element in bytes
         const auto itemsize = info.itemsize;

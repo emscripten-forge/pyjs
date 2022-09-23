@@ -12,6 +12,15 @@ class JsInfo(object):
 # _PYJS_PROHIBITED_KEYS = set([_PYJS_JS_INFO_KEY, _PYJS_IPYMAGIC_KEY])
 
 
+def _to_string(val):
+    if _module._is_undefined(val):
+        return "undefined"
+    elif _module._is_null(val):
+        return "null"
+    else:
+        return val.toString()
+
+
 def extend_val():
     def __val_call(self, *args):
         return apply(self, args=args)
@@ -46,8 +55,8 @@ def extend_val():
     JsValue.__call__ = __val_call
 
     JsValue._asstr_unsafe = lambda self: internal.to_string(self)
-    JsValue.__str__ = lambda self: self.toString()
-    JsValue.__repr__ = lambda self: self.toString()
+    JsValue.__str__ = lambda self: _to_string(self)
+    JsValue.__repr__ = lambda self: _to_string(self)
     JsValue.__len__ = lambda self: internal.module_property("__len__")(self)
     JsValue.__contains__ = lambda self, q: internal.module_property("__contains__")(
         self, q

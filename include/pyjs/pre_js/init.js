@@ -2,18 +2,19 @@ Module["_is_initialized"] = false
 
 Module['init'] = async function() {
 
-
     // return empty promise when already initialized
     if(Module["_is_initialized"])
     {
+        console.log("INIT ALREADY DONE")
+
         return Promise.resolve();
     }
-
     var p = await Module['_wait_run_dependencies']();
 
     Module["_interpreter"] = new Module["_Interpreter"]()
     var default_scope = Module["main_scope"]()
     Module["default_scope"] = default_scope
+
 
 
 
@@ -117,8 +118,19 @@ Module['init'] = async function() {
             return ret['ret']
         }
     };
+    Module['exec'](`
+import asyncio
+def _add_resolve_done_callback(future, resolve, reject):
+    ensured_future = asyncio.ensure_future(future)
 
-    Module._add_resolve_done_callback = Module.eval("pyjs._add_resolve_done_callback")
+    def done(f):
+        try:
+            resolve(f.result())
+        except Exception as err:
+            reject(repr(err))
 
+    ensured_future.add_done_callback(done)
+    `)
+    Module._add_resolve_done_callback = Module.eval("_add_resolve_done_callback")
     return p
 }

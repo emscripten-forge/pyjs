@@ -32,10 +32,6 @@ js = sys.modules["pyjs.js"]
 _module = sys.modules["pyjs._module"]
 
 
-# def new(cls, *args):
-#     return internal.val_new(cls, *args)
-
-
 def new(cls_, *args):
     return _module._new(cls_, *args)
 
@@ -50,7 +46,7 @@ def type_str(x):
 
 def create_callable(py_function):
     _js_py_object = js_py_object(py_function)
-    return _js_py_object["__call__"].bind(_js_py_object), _js_py_object
+    return _js_py_object["py_call"].bind(_js_py_object), _js_py_object
 
 
 @contextlib.contextmanager
@@ -62,7 +58,6 @@ def callable_context(py_function):
 
 def create_once_callable(py_function):
     js_py_function = JsValue(py_function)
-    # js_py_function = js_py_object(py_function)
     once_callable = _module._create_once_callable(js_py_function)
     return once_callable
 
@@ -77,7 +72,11 @@ def ensure_js_val(arg):
 def _make_js_args(args):
     js_array_args = js_array()
     for arg in args:
-        js_arg = ensure_js_val(arg)
+        # TODO THIS MIGHT CREATE PROXIES
+        # print("DO IMPLICIT CONVERSION")
+        js_arg, is_proxy = internal.implicit_py_to_js_conversion(arg)
+        # js_arg = ensure_js_val(arg)
+        # print("PUSH BACK")
         internal.val_call(js_array_args, "push", js_arg)
     return js_array_args
 
@@ -85,6 +84,7 @@ def _make_js_args(args):
 def apply(js_function, args):
     js_array_args = _make_js_args(args)
     ret, meta = internal.apply_try_catch(js_function, js_array_args)
+    # TODO DELETE PROXYIES!
     return ret
 
 

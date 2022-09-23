@@ -49,6 +49,7 @@ def server_context(work_dir, port):
 async def playwright_main(
     page_url, workdir, script_basename, debug=False, async_main=False
 ):
+    print(f"{async_main=}")
     async with async_playwright() as p:
         if not debug:
             browser = await p.chromium.launch(headless=True)
@@ -174,10 +175,10 @@ asyncio.ensure_future(main_runner())
     return return_code
 
 
-def pack_script(script_file):
-    empack.file_packager.pack_file(
-        file=script_file,
-        mount_path="/script",
+def pack_directory(directory, mount_path):
+    empack.file_packager.pack_directory(
+        directory=directory,
+        mount_path=mount_path,
         outname="script_data",
         export_name="globalThis.EmscriptenForgeModule",
         # silent=True,

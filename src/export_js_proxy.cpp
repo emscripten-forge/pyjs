@@ -16,11 +16,12 @@ namespace em = emscripten;
 
 namespace pyjs
 {
-    inline py::object wrap_result(em::val wrapped_return_value, const bool has_err)
+    inline py::object wrap_result(const py::module_& pyjs, em::val wrapped_return_value, const bool has_err)
     {
         if (has_err)
         {
-            py::module pyjs = py::module::import("pyjs");
+            //py::module pyjs = py::module::import("pyjs");
+
             pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
         }
         const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
@@ -38,20 +39,20 @@ namespace pyjs
         }
     }
 
-    inline py::object wrap_result(em::val wrapped_return_value)
+    inline py::object wrap_result(const py::module_& m, em::val wrapped_return_value)
     {
         const bool has_err = wrapped_return_value["has_err"].as<bool>();
-        return wrap_result(wrapped_return_value, has_err);
+        return wrap_result(m, wrapped_return_value, has_err);
     }
 
 
-    inline void wrap_void(em::val wrapped_return_value)
+    inline void wrap_void(const py::module_& pyjs, em::val wrapped_return_value)
     {
         const bool has_err = wrapped_return_value["has_err"].as<bool>();
 
         if (has_err)
         {
-            py::module pyjs = py::module::import("pyjs");
+            //py::module pyjs = py::module::import("pyjs");
             pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
         }
     }
@@ -106,19 +107,19 @@ namespace pyjs
 
 
         m_internal.def("apply_try_catch",
-                       [](em::val* js_function, em::val* args) -> py::object {
-                           return wrap_result(
+                       [m](em::val* js_function, em::val* args) -> py::object {
+                           return wrap_result(m,
                                em::val::module_property("_apply_try_catch")(*js_function, *args));
                        });
 
         m_internal.def("japply_try_catch",
-                       [](em::val* js_function, em::val* jargs) -> py::object {
-                           return wrap_result(
+                       [m](em::val* js_function, em::val* jargs) -> py::object {
+                           return wrap_result(m,
                                em::val::module_property("_japply_try_catch")(*js_function, *jargs));
                        });
 
         m_internal.def("gapply_try_catch",
-                       [](em::val* js_function, em::val* jargs, bool jin, bool jout) -> py::object
+                       [m](em::val* js_function, em::val* jargs, bool jin, bool jout) -> py::object
                        {
                            em::val wrapped_return_value = em::val::module_property(
                                "_gapply_try_catch")(*js_function, *jargs, jin, jout);
@@ -135,20 +136,20 @@ namespace pyjs
                            }
                            else
                            {
-                               return wrap_result(wrapped_return_value, has_err);
+                               return wrap_result(m, wrapped_return_value, has_err);
                            }
                        });
 
         m_internal.def(
             "getattr_try_catch",
-            [](em::val* obj, em::val* key) -> py::object
-            { return wrap_result(em::val::module_property("_getattr_try_catch")(*obj, *key)); });
+            [m](em::val* obj, em::val* key) -> py::object
+            { return wrap_result(m, em::val::module_property("_getattr_try_catch")(*obj, *key)); });
 
 
         m_internal.def(
             "setattr_try_catch",
-            [](em::val* obj, em::val* key, em::val* value)
-            { wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value)); });
+            [m](em::val* obj, em::val* key, em::val* value)
+            { wrap_void(m, em::val::module_property("_setattr_try_catch")(*obj, *key, *value)); });
 
 
 
@@ -195,6 +196,7 @@ namespace pyjs
 
         m_internal.def("val_bind",
                        [](em::val* v, em::val arg1) { return v->call<em::val>("bind", arg1); });
+
 
         // m_internal.def("val_new",[](em::val  v){
         //     return  v.new_();
@@ -307,12 +309,14 @@ namespace pyjs
             .def("__getattr__", &getattr)
             .def("__getitem__", &getattr)
             .def("__setattr__",
-                 [](em::val* obj, em::val* key, em::val* value)
-                 { wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value)); })
+                 [m](em::val* obj, em::val* key, em::val* value)
+                 { wrap_void(m, em::val::module_property("_setattr_try_catch")(*obj, *key, *value)); })
             .def("__setitem__",
-                 [](em::val* obj, em::val* key, em::val* value) {
-                     wrap_void(em::val::module_property("_setattr_try_catch")(*obj, *key, *value));
+                 [m](em::val* obj, em::val* key, em::val* value) {
+                     wrap_void(m, em::val::module_property("_setattr_try_catch")(*obj, *key, *value));
                  });
+
+        m_internal.def("implicit_py_to_js_conversion",&implicit_py_to_js_conversion);
 
         py::implicitly_convertible<std::string, em::val>();
         py::implicitly_convertible<float, em::val>();

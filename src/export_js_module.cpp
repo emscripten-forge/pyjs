@@ -82,7 +82,9 @@ namespace pyjs
         {
             py::object py_ret = py::eval(code, scope);
             ret.set("has_err",em::val(false));
-            ret.set("ret",implicit_conversion(py_ret));
+            auto [jsval, is_proxy] = implicit_py_to_js_conversion(py_ret);
+            ret.set("ret",jsval);
+            ret.set("is_proxy",is_proxy);
             return ret;
         }
         catch (py::error_already_set& e)
@@ -154,7 +156,7 @@ namespace pyjs
         em::function("main_scope",em::select_overload<py::object()>(
             []()->py::object{
                 auto scope = py::module_::import("__main__").attr("__dict__");
-                py::exec("import pyjs;import asyncio", scope);
+                //py::exec("import pyjs;import asyncio", scope);
                 return scope;
             }
         ));

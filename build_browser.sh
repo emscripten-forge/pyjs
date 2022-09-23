@@ -14,7 +14,7 @@ if true; then
         -c https://repo.mamba.pm/emscripten-forge \
         -c https://repo.mamba.pm/conda-forge \
         --yes \
-        python pybind11 nlohmann_json pybind11_json numpy  bzip2 sqlite zlib libffi pydantic pytest pytest-asyncio
+        python pybind11 nlohmann_json pybind11_json numpy  bzip2 sqlite zlib libffi pydantic pytest pytest-asyncio anyio
 
 
 

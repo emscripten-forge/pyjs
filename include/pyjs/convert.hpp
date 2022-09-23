@@ -22,7 +22,7 @@ namespace pyjs
         JS_FUNCTION = '7'
     };
 
-    em::val implicit_conversion(py::object & py_ret);
+    std::pair<em::val,bool> implicit_py_to_js_conversion(py::object & py_ret);
 
 
     bool instanceof (em::val instance, const std::string& cls_name);

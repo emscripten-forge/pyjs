@@ -10,7 +10,7 @@ Module['_create_once_callable'] = function(py_object) {
         already_called = true;
 
         // make the call
-        ret = py_object.__call__(...args);
+        ret = py_object.py_call(...args);
 
         // delete
         py_object.delete()

@@ -1,9 +1,16 @@
 import pyjs
 import time
 from atests import *
+from js_tests import main as js_main
 
 
 async def main():
+
+    # run js tests
+    retcode = await js_main()
+    if retcode != 0:
+        return retcode
+
     import inspect
     import traceback
 

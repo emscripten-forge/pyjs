@@ -14,14 +14,13 @@
 namespace py = pybind11;
 namespace em = emscripten;
 
+
 namespace pyjs
 {
     inline py::object wrap_result(const py::module_& pyjs, em::val wrapped_return_value, const bool has_err)
     {
         if (has_err)
         {
-            //py::module pyjs = py::module::import("pyjs");
-
             pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
         }
         const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
@@ -29,7 +28,7 @@ namespace pyjs
         if (has_ret)
         {
             py::tuple ret_tuple = py::make_tuple(
-                implicit_to_py(wrapped_return_value["ret"], type_string), type_string);
+                implicit_js_to_py(wrapped_return_value["ret"], type_string), type_string);
             return ret_tuple;
         }
         else
@@ -82,7 +81,7 @@ namespace pyjs
             ss << "has no attribute/key ";
             throw pybind11::attribute_error(ss.str());
         }
-        return implicit_to_py(wrapped_return_value["ret"], type_string);
+        return implicit_js_to_py(wrapped_return_value["ret"], type_string);
     }
 
     void export_js_proxy(py::module_& m)
@@ -95,7 +94,7 @@ namespace pyjs
                            em::val v = em::val::global(arg.c_str());
                            const std::string type_string
                                = em::val::module_property("_get_type_string")(v).as<std::string>();
-                           return implicit_to_py(v, type_string);
+                           return implicit_js_to_py(v, type_string);
                        });
 
         m_internal.def("module_property",
@@ -107,15 +106,15 @@ namespace pyjs
 
 
         m_internal.def("apply_try_catch",
-                       [m](em::val* js_function, em::val* args) -> py::object {
+                       [m](em::val* js_function, em::val* args, em::val* is_generated_proxy) -> py::object {
                            return wrap_result(m,
-                               em::val::module_property("_apply_try_catch")(*js_function, *args));
+                               em::val::module_property("_apply_try_catch")(*js_function, *args, *is_generated_proxy));
                        });
 
         m_internal.def("japply_try_catch",
-                       [m](em::val* js_function, em::val* jargs) -> py::object {
+                       [m](em::val* js_function, em::val* jargs, em::val* is_generated_proxy) -> py::object {
                            return wrap_result(m,
-                               em::val::module_property("_japply_try_catch")(*js_function, *jargs));
+                               em::val::module_property("_japply_try_catch")(*js_function, *jargs,*is_generated_proxy));
                        });
 
         m_internal.def("gapply_try_catch",
@@ -217,20 +216,7 @@ namespace pyjs
         m_internal.def("as_py_object",
                        [](em::val* v) -> py::object { return v->as<py::object>(); });
 
-        // type queries
-        m_internal.def("console_log",
-                       [](em::val val1) { em::val::global("console").call<void>("log", val1); });
-        m_internal.def("console_log",
-                       [](em::val val1, em::val val2)
-                       { em::val::global("console").call<void>("log", val1, val2); });
-        m_internal.def("console_log",
-                       [](em::val val1, em::val val2, em::val val3)
-                       { em::val::global("console").call<void>("log", val1, val2, val3); });
-        m_internal.def("console_log",
-                       [](em::val val1, em::val val2, em::val val3, em::val val4)
-                       { em::val::global("console").call<void>("log", val1, val2, val3, val4); });
-
-
+    
         m_internal.def(
             "get_type_string",
             [](em::val* val) -> std::string
@@ -316,7 +302,7 @@ namespace pyjs
                      wrap_void(m, em::val::module_property("_setattr_try_catch")(*obj, *key, *value));
                  });
 
-        m_internal.def("implicit_py_to_js_conversion",&implicit_py_to_js_conversion);
+        m_internal.def("implicit_py_to_js",&implicit_py_to_js);
 
         py::implicitly_convertible<std::string, em::val>();
         py::implicitly_convertible<float, em::val>();

@@ -433,7 +433,7 @@ def test_cyclic_obj():
     assert id(py_obj["b"][2]) == id(py_obj)
 
 
-def test_implicit_to_py_conversion():
+def test_implicit_js_to_py_conversion():
     pass
 
 

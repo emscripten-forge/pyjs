@@ -22,3 +22,16 @@ Module['_set_promise_then_catch'] = function(promise, py_object_then, py_object_
     }
     promise.then(callable_then).catch(callable_catch)
 }
+
+Module['_future_to_promise'] = function(py_future){
+    let p  = new Promise(function(resolve, reject) {
+        Module._add_resolve_done_callback.py_call(py_future, resolve, reject)
+    });
+
+    p.then(function(value) {
+        py_future.delete()
+      }, function(reason) {
+        py_future.delete()
+    });
+    return p;
+}

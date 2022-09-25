@@ -1,4 +1,5 @@
 import pyjs
+from pathlib import Path
 
 
 async def test_stuff():
@@ -27,3 +28,29 @@ async def test_callbacks_in_async():
     result = await async_js_function(js_func, 42)
     assert result == 42 * 2 * 2 + 42
     cleanup.delete()
+
+
+async def test_callbacks_in_async():
+
+    async_js_function = pyjs.js.Function(
+        """
+        return async function(py_dict){
+            return py_dict.get('value')
+        }
+    """
+    )()
+
+    pyval = {"value": 42}
+    result = await async_js_function(pyval)
+    assert result == 42
+
+
+async def trigger_js_tests():
+
+    js_test_path = Path(__file__).parents[1] / "jtests" / "test_main.js"
+    with open(js_test_path) as f:
+        content = f.read()
+    js_tests_async_main = pyjs.js.Function(content)()
+
+    js_tests_return_code = await js_tests_async_main()
+    assert js_tests_return_code == 0

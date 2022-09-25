@@ -1,5 +1,3 @@
-# import js
-
 # and object holding a javascript
 class JsHolder(object):
     def __init__(self, js_proxy):

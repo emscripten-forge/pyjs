@@ -76,6 +76,7 @@ async def playwright_main(
                 var pyjs = await createModule({{print:print,error:print}})
                 var EmscriptenForgeModule = pyjs
                 globalThis.EmscriptenForgeModule = pyjs
+                globalThis.pyjs = pyjs
 
                 await import('./python_data.js')
                 await import('./script_data.js')

@@ -121,9 +121,9 @@ test.serial('test-getitem',async function (t) {
     pyjs.exec("import numpy\nimport pyjs", main_scope)
     var arr = pyjs.eval("numpy.ones([64, 48])", main_scope)
     var shape = arr.shape
-    var s0 = shape.py_getitem(0)
+    var s0 = shape.get(0)
     t.is(s0,64)
-    var s1 = shape.py_getitem(1)
+    var s1 = shape.get(1)
     t.is(s1,48)
     shape.delete()
     arr.delete()
@@ -145,10 +145,10 @@ class Foo(object):
 
     pyjs.exec(py_code, main_scope)
     var foo = pyjs.eval("Foo()", main_scope)
-    t.is(foo.py_getitem(0,1),0)
-    t.is(foo.py_getitem(1,0),0)
-    t.is(foo.py_getitem(0,0),1)
-    t.is(foo.py_getitem(1,1),1)
+    t.is(foo.get(0,1),0)
+    t.is(foo.get(1,0),0)
+    t.is(foo.get(0,0),1)
+    t.is(foo.get(1,1),1)
     foo.delete()
 });
 

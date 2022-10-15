@@ -175,9 +175,20 @@ namespace pyjs
                       em::select_overload<void(py::object&)>(
                           [](py::object& pyobject)
                           {
+                              try
                               {
                                   py::gil_scoped_acquire acquire;
                                   pyobject();
+                              }
+                              catch (py::error_already_set& e)
+                              {
+                                std::cout << "unhanded error: " << e.what() << "\n";
+                              }
+                              catch( const std::exception &e) { 
+                                std::cout << "unhanded error: " << e.what() << "\n";
+                              }
+                              catch(...){
+                                std::cout<<"catched something...\n";
                               }
                           }))
 

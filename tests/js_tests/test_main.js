@@ -1,7 +1,7 @@
 
 let pyjs = null
 tests = {}
-
+ntests = {}
 
 function assert_eq(a,b){
     if (a !== b){
@@ -45,7 +45,6 @@ function assert_undefined(a){
     }
 }
 
-
 tests.test_eval_fundamentals = async function(){
 
     // string
@@ -76,7 +75,6 @@ tests.test_eval_fundamentals = async function(){
     assert_undefined(none);
 }
 
-
 tests.test_eval_nested = async function(){
     assert_deep_json_eq(pyjs.to_js(pyjs.eval("[False,1,[1,2,'three']]")),[false,1,[1,2,'three']])
     assert_deep_json_eq(Object.fromEntries(pyjs.to_js(pyjs.eval("{'k':[1,2,3]}"))),{'k':[1,2,3]})
@@ -87,8 +85,8 @@ tests.test_import_pyjs = async function(){
 }
 
 tests.test_eval_exec = async function(){
-    let res = pyjs.exec_eval(`
-import pyjs
+    let res = pyjs.exec_eval(
+`import pyjs
 def fubar():
     return  42
 fubar()
@@ -123,7 +121,7 @@ async function async_main(pyjs_module){
     var name;
     for (name in tests) {
 
-        console.error("tests `" + name + "`:");
+        console.log("tests `" + name + "`:");
         try{
             await tests[name]()
         }

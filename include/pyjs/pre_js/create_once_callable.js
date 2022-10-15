@@ -15,8 +15,6 @@ Module['_create_once_callable'] = function(py_object) {
         // delete
         py_object.delete()
 
-        console.log("return")
-
         return ret;
     }
     return once_callable

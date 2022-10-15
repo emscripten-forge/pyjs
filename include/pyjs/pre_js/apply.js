@@ -22,7 +22,7 @@ Module['_apply_try_catch'] = function(obj, args, is_generated_proxy) {
                 {
                     if(is_generated_proxy[i]){
                         console.log("delete generated proxy in future",i)
-                        is_generated_proxy[i].delete();
+                        args[i].delete();
                     }
                 }
             });
@@ -32,7 +32,7 @@ Module['_apply_try_catch'] = function(obj, args, is_generated_proxy) {
             {
                 if(is_generated_proxy[i]){
                     console.log("delete generated proxy",i)
-                    is_generated_proxy[i].delete();
+                    args[i].delete();
                 }
             }
         }

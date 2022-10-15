@@ -57,6 +57,18 @@ def callable_context(py_function):
     handle.delete()
 
 
+class AsOnceCallableMixin(object):
+    def __init__(self):
+        self._once_callable = create_once_callable(self)
+
+    def as_once_callable(self):
+        return self._once_callable
+
+
+def promise(py_resolve_reject):
+    return js.Promise.new(create_once_callable(py_resolve_reject))
+
+
 def create_once_callable(py_function):
     js_py_function = JsValue(py_function)
     once_callable = _module._create_once_callable(js_py_function)

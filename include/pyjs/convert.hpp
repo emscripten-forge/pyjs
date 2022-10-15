@@ -24,7 +24,6 @@ namespace pyjs
 
     std::pair<em::val,bool> implicit_py_to_js(py::object & py_ret);
 
-
     bool instanceof (em::val instance, const std::string& cls_name);
 
     template <class T>

@@ -21,7 +21,6 @@ Module['_apply_try_catch'] = function(obj, args, is_generated_proxy) {
                 for(let i=0; i<is_generated_proxy.length; ++i)
                 {
                     if(is_generated_proxy[i]){
-                        console.log("delete generated proxy in future",i)
                         args[i].delete();
                     }
                 }
@@ -31,7 +30,6 @@ Module['_apply_try_catch'] = function(obj, args, is_generated_proxy) {
             for(let i=0; i<is_generated_proxy.length; ++i)
             {
                 if(is_generated_proxy[i]){
-                    console.log("delete generated proxy",i)
                     args[i].delete();
                 }
             }

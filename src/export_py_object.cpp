@@ -20,6 +20,7 @@ namespace pyjs
         return ret;
     }
 
+
     em::val raw_apply(py::object& self,
                       em::val args,
                       em::val args_types,
@@ -34,14 +35,14 @@ namespace pyjs
         py::dict py_kwargs;
         for (std::size_t i = 0; i < n_args; ++i)
         {
-            py::object py_arg = implicit_to_py(args[i], args_types[i].as<std::string>());
+            py::object py_arg = implicit_js_to_py(args[i], args_types[i].as<std::string>());
             py_args.append(py_arg);
         }
 
         for (std::size_t i = 0; i < n_kwargs; ++i)
         {
             py::object py_kwarg_val
-                = implicit_to_py(kwargs_values[i], kwargs_values_types[i].as<std::string>());
+                = implicit_js_to_py(kwargs_values[i], kwargs_values_types[i].as<std::string>());
             const std::string key = kwargs_keys[i].as<std::string>();
             py_kwargs[py::cast(key)] = py_kwarg_val;
         }
@@ -51,7 +52,11 @@ namespace pyjs
             em::val ret = em::val::object();
             py::object py_ret = self(*py_args, **py_kwargs);
             ret.set("has_err", em::val(false));
-            ret.set("ret", implicit_conversion(py_ret));
+
+            auto [jsval, is_proxy] = implicit_py_to_js(py_ret);
+
+            ret.set("ret", jsval);
+            ret.set("is_proxy", is_proxy);
             return ret;
         }
         catch (py::error_already_set& e)
@@ -88,7 +93,7 @@ namespace pyjs
                         for (std::size_t i = 0; i < n_keys; ++i)
                         {
                             py::object py_arg
-                                = implicit_to_py(args[i], arg_types[i].as<std::string>());
+                                = implicit_js_to_py(args[i], arg_types[i].as<std::string>());
                             py_args.append(py_arg);
                         }
 
@@ -99,18 +104,24 @@ namespace pyjs
                             if (n_keys == 0)
                             {
                                 py::object py_ret = pyobject.attr("__getitem__")();
-                                ret.set("ret", implicit_conversion(py_ret));
+                                auto [jsval, is_proxy] = implicit_py_to_js(py_ret);
+                                ret.set("ret", jsval);
+                                ret.set("is_proxy", is_proxy);
                             }
                             if (n_keys == 1)
                             {
                                 py::object py_ret = pyobject.attr("__getitem__")(py_args[0]);
-                                ret.set("ret", implicit_conversion(py_ret));
+                                auto [jsval, is_proxy] = implicit_py_to_js(py_ret);
+                                ret.set("ret", jsval);
+                                ret.set("is_proxy", is_proxy);
                             }
                             else
                             {
                                 py::tuple tuple_args(py_args);
                                 py::object py_ret = pyobject.attr("__getitem__")(tuple_args);
-                                ret.set("ret", implicit_conversion(py_ret));
+                                auto [jsval, is_proxy] = implicit_py_to_js(py_ret);
+                                ret.set("ret", jsval);
+                                ret.set("is_proxy", is_proxy);
                             }
                             return ret;
                         }
@@ -164,9 +175,20 @@ namespace pyjs
                       em::select_overload<void(py::object&)>(
                           [](py::object& pyobject)
                           {
+                              try
                               {
                                   py::gil_scoped_acquire acquire;
                                   pyobject();
+                              }
+                              catch (py::error_already_set& e)
+                              {
+                                std::cout << "unhanded error: " << e.what() << "\n";
+                              }
+                              catch( const std::exception &e) { 
+                                std::cout << "unhanded error: " << e.what() << "\n";
+                              }
+                              catch(...){
+                                std::cout<<"catched something...\n";
                               }
                           }))
 
@@ -176,19 +198,19 @@ namespace pyjs
                           {
                               {
                                   py::gil_scoped_acquire acquire;
-                                  pyobject(val);
+                                  pyobject(implicit_js_to_py(val));
                               }
                           }))
 
-            .function("__usafe_void_val_val__",
-                      em::select_overload<void(py::object&, em::val, em::val)>(
-                          [](py::object& pyobject, em::val val1, em::val val2)
-                          {
-                              {
-                                  py::gil_scoped_acquire acquire;
-                                  pyobject(val1, val2);
-                              }
-                          }))
+            // .function("__usafe_void_val_val__",
+            //           em::select_overload<void(py::object&, em::val, em::val)>(
+            //               [](py::object& pyobject, em::val val1, em::val val2)
+            //               {
+            //                   {
+            //                       py::gil_scoped_acquire acquire;
+            //                       pyobject(val1, val2);
+            //                   }
+            //               }))
 
             .function("_raw_getattr",
                       em::select_overload<em::val(py::object&, const std::string&)>(
@@ -199,7 +221,9 @@ namespace pyjs
                               {
                                   py::object py_ret = pyobject.attr(attr_name.c_str());
                                   ret.set("has_err", em::val(false));
-                                  ret.set("ret", implicit_conversion(py_ret));
+                                  auto [jsval, is_proxy] = implicit_py_to_js(py_ret);
+                                  ret.set("ret", jsval);
+                                  ret.set("is_proxy",is_proxy);
                                   return ret;
                               }
                               catch (py::error_already_set& e)

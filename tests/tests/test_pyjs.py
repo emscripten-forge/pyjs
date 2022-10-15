@@ -2,49 +2,13 @@ import json
 import operator
 import os
 from types import NoneType
-
+import asyncio
 import numpy
 import pytest
 
+from .conftest import *
+
 import pyjs
-
-
-def to_js_to_py(x):
-    return pyjs.to_py(pyjs.to_js(x))
-
-
-def nullary(body):
-    return pyjs.js.Function(body)()
-
-
-def eval_jsfunc(body):
-    return pyjs.js.Function("return " + body)()
-
-
-def ensure_js(val):
-    if not isinstance(val, pyjs.JsValue):
-        if not isinstance(val, str):
-            return pyjs.JsValue(val)
-        else:
-            return eval_jsfunc(val)
-    else:
-        return val
-
-
-def array_eq(x, should):
-    return x.dtype == should.dtype and numpy.array_equal(x, should)
-
-
-def array_feq(x, should):
-    return x.dtype == should.dtype and numpy.allclose(x, should)
-
-
-def nested_eq(x, should):
-    # stupid low effort impls
-
-    x_string = json.dumps(x, sort_keys=True, indent=2)
-    should_string = json.dumps(should, sort_keys=True, indent=2)
-    return x_string == should_string
 
 
 def test_js_submodule():
@@ -254,11 +218,34 @@ def test_to_js_none():
 
 @pytest.mark.parametrize(
     "test_input,expected_output",
-    [("42", "42"), ("{}", "[object Object]"), ("[1, 2, 3]", "1,2,3")],
+    [
+        (lambda: "42", "42"),
+        (lambda: "{}", "[object Object]"),
+        (lambda: "[1, 2, 3]", "1,2,3"),
+        (lambda: pyjs.js_null(), "null"),
+        (lambda: pyjs.js_undefined(), "undefined"),
+    ],
 )
 def test_to_str(test_input, expected_output):
-    as_str = str(ensure_js(test_input))
+
+    j_test_input = ensure_js(test_input())
+    as_str = str(j_test_input)
+    assert isinstance(as_str, str)
     assert as_str == expected_output
+
+
+def test_print_js_null():
+    assert str(ensure_js(pyjs.js_null())) == "null"
+    assert pyjs.js_null().__str__() == "null"
+    assert pyjs.js_null().__repr__() == "null"
+    assert isinstance(pyjs.js_null(), pyjs.JsValue)
+
+
+def test_print_js_undefined():
+    assert str(ensure_js(pyjs.js_undefined())) == "undefined"
+    assert pyjs.js_undefined().__str__() == "undefined"
+    assert pyjs.js_undefined().__repr__() == "undefined"
+    assert isinstance(pyjs.js_undefined(), pyjs.JsValue)
 
 
 @pytest.mark.parametrize(
@@ -446,7 +433,7 @@ def test_cyclic_obj():
     assert id(py_obj["b"][2]) == id(py_obj)
 
 
-def test_implicit_to_py_conversion():
+def test_implicit_js_to_py_conversion():
     pass
 
 
@@ -550,21 +537,5 @@ def test_int_container():
     """
     )
     js_obj = jsf()
-    print("the obj", js_obj)
     py_obj = pyjs.to_py(js_obj)
     assert py_obj
-
-
-if __name__ == "__main__":
-    import pyjs
-
-    # start the tests
-    os.environ["NO_COLOR"] = "1"
-
-    specific_test = None
-    args = ["-s", "/script/test_pyjs.py"]
-    if specific_test is not None:
-        args += ["-k", str(specific_test)]
-    retcode = pytest.main(args)
-    if retcode != 0:
-        raise RuntimeError(f"pytest failed with return code: {retcode}")

@@ -8,7 +8,6 @@
   </head>
   <body>
     <!-- page content -->
-    <script type="application/javascript" src="pyjs_main.js"></script>
     <script type="application/javascript">
 
       globalThis.done = false
@@ -31,15 +30,16 @@
               globalThis.done = true
               globalThis.worker.terminate();
           }
+          globalThis.worker.onerror = e => {
+              resolve(e.data)
+              globalThis.done = true
+              globalThis.worker.terminate();
+          }
           // worker.onerror = e => (reject(e.message), worker.terminate());
           // worker.postMessage(args);
 
         });
-
-
-        // console.log("waiting for promise")
         globalThis.test_output = await promise
-        // console.log("DONE AWAITING DONE")
         globalThis.done = true
      })()
 

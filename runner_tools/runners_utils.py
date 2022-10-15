@@ -4,9 +4,24 @@ import socket
 import threading
 from contextlib import closing, contextmanager
 from http.server import HTTPServer
-
+import shutil
 import empack
 from playwright.async_api import async_playwright
+import tempfile
+import subprocess
+from pathlib import Path
+import sys
+
+
+THIS_DIR = os.path.dirname(os.path.realpath(__file__))
+
+
+def copy_page_content(work_dir):
+
+    shutil.copy(os.path.join(THIS_DIR, "runner_main.html"), work_dir)
+    shutil.copy(os.path.join(THIS_DIR, "runner_worker.html"), work_dir)
+    shutil.copy(os.path.join(THIS_DIR, "utils.js"), work_dir)
+    shutil.copy(os.path.join(THIS_DIR, "worker.js"), work_dir)
 
 
 @contextmanager
@@ -46,14 +61,14 @@ def server_context(work_dir, port):
     thread.join()
 
 
-async def playwright_main(
-    page_url, workdir, script_basename, debug=False, async_main=False
+async def playwright_run_in_worker_thread(
+    page_url, workdir, script_basename, debug=False, async_main=False, slow_mo=100000
 ):
     async with async_playwright() as p:
         if not debug:
             browser = await p.chromium.launch(headless=True)
         else:
-            browser = await p.chromium.launch(headless=False, slow_mo=100000)
+            browser = await p.chromium.launch(headless=False, slow_mo=slow_mo)
         page = await browser.new_page()
 
         # n min = n_min * 60 * 1000 ms
@@ -64,79 +79,30 @@ async def playwright_main(
             test_output = await worker.evaluate_handle(
                 f"""async () =>
             {{
-                 const sink = (text) =>{{}}
-                 var outputString = ""
-                 const print = (text) => {{
-                   console.log(text)
-                   outputString += text;
-                   outputString += "\\n";
-                 }}
 
-                var pyjs = await createModule({{print:print,error:print}})
-                var EmscriptenForgeModule = pyjs
-                globalThis.EmscriptenForgeModule = pyjs
-
-                await import('./python_data.js')
-                await import('./script_data.js')
-
-                await pyjs.init()
+                importScripts("./utils.js")
 
 
-                var main_scope = pyjs.main_scope()
-
-
-                var r = 0;
-                try{{
-                    pyjs.exec("import os", main_scope)
-                    pyjs.exec("os.chdir('{workdir}')", main_scope)
-                    var script_path = "{os.path.join(workdir, script_basename)}";
-                    pyjs.eval_file(script_path, main_scope);
-                }} catch(e)
-                {{
-                    console.error(e);
-                    r = 1;
+                var collected_prints = ""
+                const print = (text) => {{
+                    console.log(text)
+                    collected_prints += text;
+                    collected_prints += "\\n";
                 }}
 
 
+                var pyjs = await make_pyjs(print, print);
+
+                var r = eval_main_script(pyjs, "{workdir}","{os.path.join(workdir, script_basename)}");
                 if({int(async_main)}){{
-
-
-                    pyjs.exec(`
-import asyncio
-_async_done_ = [False]
-_ret_code = [0]
-async def main_runner():
-    try:
-        _ret_code[0] = await main()
-    except Exception as e:
-        _ret_code[0] = 1
-        print("EXCEPTION",e)
-    finally:
-        global _async_done_
-        _async_done_[0] = True
-asyncio.ensure_future(main_runner())
-                    `,main_scope)
-
-                    while(true)
-                    {{
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                        const _async_done_ = pyjs.eval("_async_done_[0]", main_scope)
-                        if(_async_done_)
-                        {{
-                            break;
-                        }}
-                    }}
-                    r = r || pyjs.eval("_ret_code[0]", main_scope)
-
-
+                    r = r || await run_async_python_main(pyjs);
                 }}
 
                 msg = {{
                     return_code : r,
-                    collected_prints : outputString
+                    collected_prints : collected_prints
                 }}
                 self.postMessage(msg)
-                main_scope.delete()
                 return r
             }}"""
             )
@@ -174,16 +140,96 @@ asyncio.ensure_future(main_runner())
     return return_code
 
 
-def pack_script(script_file):
-    empack.file_packager.pack_file(
-        file=script_file,
-        mount_path="/script",
+async def playwright_run_in_main_thread(
+    page_url, workdir, script_basename, debug=False, async_main=False, slow_mo=3000
+):
+    async with async_playwright() as p:
+        if not debug:
+            browser = await p.chromium.launch(headless=True)
+        else:
+            browser = await p.chromium.launch(headless=False, slow_mo=slow_mo)
+        page = await browser.new_page()
+
+        # n min = n_min * 60 * 1000 ms
+        n_min = 4
+        page.set_default_timeout(n_min * 60 * 1000)
+
+        async def handle_console(msg):
+            txt = str(msg)
+            if (
+                txt.startswith("warning: Browser does not support creating object URLs")
+                or txt.startswith("Failed to load resource:")
+                or txt.startswith("Could not find platform dependent libraries")
+                or txt.startswith("Consider setting $PYTHONHOME")
+            ):
+                pass
+            else:
+                print(txt)
+
+        with open(os.path.join(THIS_DIR, "utils.js")) as f:
+            content = f.read()
+            await page.evaluate(
+                f"""async () => {{
+              {content}
+            }}"""
+            )
+
+        page.on("console", handle_console)
+        await page.goto(page_url)
+        status = await page.evaluate(
+            f"""async () => {{
+
+                //return 0;
+                var collected_prints = ""
+                const print = (text) => {{
+                    console.log(text)
+                    collected_prints += text;
+                    collected_prints += "\\n";
+                }}
+                var pyjs = await globalThis.make_pyjs(print, print);
+                var r = globalThis.eval_main_script(pyjs, "{workdir}","{os.path.join(workdir, script_basename)}");
+                if({int(async_main)}){{
+                    r = r || await run_async_python_main(pyjs);
+                }}
+                return r;
+            }}"""
+        )
+        return_code = int(status)
+    return return_code
+
+
+def node_run(workdir, script_basename, async_main=False):
+    main = Path(THIS_DIR) / "node_main.js"
+    cmd = [
+        "node",
+        "--no-experimental-fetch",
+        main,
+        os.getcwd(),
+        workdir,
+        script_basename,
+    ]
+
+    returncode = subprocess.run(cmd).returncode
+    if returncode != 0:
+        sys.exit(returncode)
+
+
+def global_object_name(node):
+    if node:
+        return "global"
+    else:
+        return "globalThis"
+
+
+def pack_directory(directory, mount_path, node=False):
+
+    empack.file_packager.pack_directory(
+        directory=directory,
+        mount_path=mount_path,
         outname="script_data",
-        export_name="globalThis.EmscriptenForgeModule",
-        # silent=True,
+        export_name=f"{global_object_name(node=node)}.EmscriptenForgeModule",
+        silent=True,
     )
-    # cmd = [f"empack pack file  {script_file}  '/script'  script"]
-    # ret = subprocess.run(cmd, shell=True)
 
 
 def patch_emscripten_generated_js(filename):

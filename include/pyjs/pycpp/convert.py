@@ -211,41 +211,6 @@ def error_to_py_and_raise(err):
     raise error_to_py(err)
 
 
-def py_to_js_array_converter(val, depth, cache, converter_options):
-    pass
-
-
-def implicit_convert_info(val):
-    if val is None:
-        return "None"
-    elif isinstance(val, int):
-        return "int"
-    elif isinstance(val, int):
-        return "int"
-    elif isinstance(val, float):
-        return "double"
-    elif isinstance(val, str):
-        return "str"
-    elif isinstance(val, bool):
-        return "bool"
-    elif isinstance(val, JsValue):
-        return "JsValue"
-    else:
-        return "object"
-
-
-def _add_resolve_done_callback(future, resolve, reject):
-    ensured_future = asyncio.ensure_future(future)
-
-    def done(f):
-        try:
-            resolve(f.result())
-        except Exception as err:
-            reject(repr(err))
-
-    ensured_future.add_done_callback(done)
-
-
 def buffer_to_js_typed_array(buffer, view=False):
     return internal.py_1d_buffer_to_typed_array(buffer, bool(view))
 

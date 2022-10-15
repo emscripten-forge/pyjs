@@ -121,9 +121,9 @@ test.serial('test-getitem',async function (t) {
     pyjs.exec("import numpy\nimport pyjs", main_scope)
     var arr = pyjs.eval("numpy.ones([64, 48])", main_scope)
     var shape = arr.shape
-    var s0 = shape.py_getitem(0)
+    var s0 = shape.get(0)
     t.is(s0,64)
-    var s1 = shape.py_getitem(1)
+    var s1 = shape.get(1)
     t.is(s1,48)
     shape.delete()
     arr.delete()
@@ -145,10 +145,10 @@ class Foo(object):
 
     pyjs.exec(py_code, main_scope)
     var foo = pyjs.eval("Foo()", main_scope)
-    t.is(foo.py_getitem(0,1),0)
-    t.is(foo.py_getitem(1,0),0)
-    t.is(foo.py_getitem(0,0),1)
-    t.is(foo.py_getitem(1,1),1)
+    t.is(foo.get(0,1),0)
+    t.is(foo.get(1,0),0)
+    t.is(foo.get(0,0),1)
+    t.is(foo.get(1,1),1)
     foo.delete()
 });
 
@@ -164,43 +164,6 @@ assert asyncio is not None
     t.pass()
 });
 
-
-
-test.serial('test-async-manual',async function (t) {
-
-    var py_code = `
-async def afunc(arg0, arg1):
-    await asyncio.sleep(1)
-    return arg0 + arg1
-    `;
-
-
-    pyjs.exec(py_code, main_scope)
-    var afunc = pyjs.eval("afunc", main_scope)
-    var afut0 = afunc.py_call(13,17)
-    var fensure_future = pyjs.eval("asyncio.ensure_future", main_scope)
-    var afut1 = fensure_future.py_call(afut0)
-    // afuture = pyjs.eval("asyncio.ensure_future(afunc())", main_scope)
-    var add_done_cb = pyjs.eval("pyjs._add_resolve_done_callback", main_scope)
-
-
-    p  = new Promise(function(resolve, reject) {
-
-
-        add_done_cb.py_call(afut1, resolve, reject)
-    })
-
-    p.then(function(value) {
-       afut1.delete()
-      }, function(reason) {
-
-       afut1.delete()
-    });
-    var res = await p
-
-
-    t.is(res, 30)
-});
 
 
 test.serial('test-async',async function (t) {

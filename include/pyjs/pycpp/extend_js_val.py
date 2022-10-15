@@ -1,20 +1,14 @@
 import asyncio
 
 
-# JsValue *can* hold this as a property
-class JsInfo(object):
-    def __init__(self, parent=None):
-        self._pyjs_parent = parent
-
-
-# _PYJS_JS_INFO_KEY  = '_pyjs_info'
-# _PYJS_IPYMAGIC_KEY =  "_ipython_canary_method_should_not_exist_"
-# _PYJS_PROHIBITED_KEYS = set([_PYJS_JS_INFO_KEY, _PYJS_IPYMAGIC_KEY])
-
-
 def extend_val():
-    def __val_call(self, *args):
-        return apply(self, args=args)
+    def _to_string(val):
+        if _module._is_undefined(val):
+            return "undefined"
+        elif _module._is_null(val):
+            return "null"
+        else:
+            return val.toString()
 
     def val_next(self):
         res = self.next()
@@ -43,11 +37,11 @@ def extend_val():
         _module._set_promise_then_catch(self, JsValue(binded_then), JsValue(_catch))
         return future
 
-    JsValue.__call__ = __val_call
+    JsValue.__call__ = lambda self, *args: apply(self, args=args)
 
     JsValue._asstr_unsafe = lambda self: internal.to_string(self)
-    JsValue.__str__ = lambda self: self.toString()
-    JsValue.__repr__ = lambda self: self.toString()
+    JsValue.__str__ = lambda self: _to_string(self)
+    JsValue.__repr__ = lambda self: _to_string(self)
     JsValue.__len__ = lambda self: internal.module_property("__len__")(self)
     JsValue.__contains__ = lambda self, q: internal.module_property("__contains__")(
         self, q

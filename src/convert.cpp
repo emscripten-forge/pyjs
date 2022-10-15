@@ -10,39 +10,101 @@ namespace em = emscripten;
 
 namespace pyjs
 {
-    em::val implicit_conversion(py::object& py_ret)
+    std::pair<em::val,bool> implicit_py_to_js(py::object& py_ret)
     {
-        py::module_ pyjs = py::module_::import("pyjs");
-        const std::string info = pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
+        // py::module_ pyjs = py::module_::import("pyjs_utils");
+        // const std::string info = pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
+
+        const std::string info = py_ret.get_type().attr("__name__").str();
+        
         if (info == "int")
         {
-            return em::val(py_ret.cast<int>());
+            return std::make_pair(em::val(py_ret.cast<int>()),false);
         }
         else if (info == "str")
         {
-            return em::val(py_ret.cast<std::string>());
+            return std::make_pair(em::val(py_ret.cast<std::string>()),false);
         }
         else if (info == "bool")
         {
-            return em::val(py_ret.cast<bool>());
+            return std::make_pair(em::val(py_ret.cast<bool>()),false);
         }
-        else if (info == "double")
+        else if (info == "double" || info == "float")
         {
-            return em::val(py_ret.cast<double>());
+            return std::make_pair(em::val(py_ret.cast<double>()),false);
         }
-        else if (info == "None")
+        else if (info == "NoneType")
         {
-            return em::val::undefined();
+            return std::make_pair(em::val::undefined(),false);
         }
         else if (info == "JsValue")
         {
-            return py_ret.cast<em::val>();
+            return std::make_pair(py_ret.cast<em::val>(),false);
+        }
+        else if(info == "Task" || info == "coroutine")
+        {
+            return std::make_pair(em::val::module_property("_future_to_promise")(em::val(py_ret)),false);
         }
         else
         {
-            // return em::val(py_ret);
-            return em::val::module_property("make_proxy")(em::val(py_ret));
+            return std::make_pair(em::val::module_property("make_proxy")(em::val(py_ret)),true);
         }
+    }
+
+    py::object implicit_js_to_py(em::val val, const std::string& type_string)
+    {
+        if (type_string.size() == 1)
+        {
+            const char s = type_string[0];
+            switch (s)
+            {
+                case static_cast<char>(JsType::JS_NULL):
+                {
+                    return py::none();
+                }
+                case static_cast<char>(JsType::JS_UNDEFINED):
+                {
+                    return py::none();
+                }
+                // 2 is object
+                case static_cast<char>(JsType::JS_STR):
+                {
+                    return py::cast(val.as<std::string>());
+                }
+                case static_cast<char>(JsType::JS_INT):
+                {
+                    const auto double_number = val.as<double>();
+                    const auto rounded_double_number = std::round(double_number);
+                    return py::cast(int(rounded_double_number));
+                }
+                case static_cast<char>(JsType::JS_FLOAT):
+                {
+                    return py::cast(val.as<double>());
+                }
+                case static_cast<char>(JsType::JS_BOOL):
+                {
+                    return py::cast(val.as<bool>());
+                }
+                default:
+                {
+                    return py::cast(val);
+                }
+            }
+        }
+        else if (type_string == "pyobject")
+        {
+            return val.as<py::object>();
+        }
+        else
+        {
+            return py::cast(val);
+        }
+    }
+
+    py::object implicit_js_to_py(em::val val)
+    {
+        const auto type_string = em::val::module_property("_get_type_string")(val).as<std::string>();
+        return implicit_js_to_py(val, type_string);
     }
 
 
@@ -105,55 +167,6 @@ namespace pyjs
         }
     }
 
-    py::object implicit_to_py(em::val val, const std::string& type_string)
-    {
-        if (type_string.size() == 1)
-        {
-            const char s = type_string[0];
-            switch (s)
-            {
-                case static_cast<char>(JsType::JS_NULL):
-                {
-                    return py::none();
-                }
-                case static_cast<char>(JsType::JS_UNDEFINED):
-                {
-                    return py::none();
-                }
-                // 2 is object
-                case static_cast<char>(JsType::JS_STR):
-                {
-                    return py::cast(val.as<std::string>());
-                }
-                case static_cast<char>(JsType::JS_INT):
-                {
-                    const auto double_number = val.as<double>();
-                    const auto rounded_double_number = std::round(double_number);
-                    return py::cast(int(rounded_double_number));
-                }
-                case static_cast<char>(JsType::JS_FLOAT):
-                {
-                    return py::cast(val.as<double>());
-                }
-                case static_cast<char>(JsType::JS_BOOL):
-                {
-                    return py::cast(val.as<bool>());
-                }
-                default:
-                {
-                    return py::cast(val);
-                }
-            }
-        }
-        else if (type_string == "pyobject")
-        {
-            return val.as<py::object>();
-        }
-        else
-        {
-            return py::cast(val);
-        }
-    }
 
 
     template <class T>
@@ -185,6 +198,8 @@ namespace pyjs
         {
             throw std::runtime_error("Incompatible buffer dimension!");
         }
+
+
 
         // sizeof one element in bytes
         const auto itemsize = info.itemsize;

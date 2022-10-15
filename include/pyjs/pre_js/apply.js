@@ -1,7 +1,40 @@
 
-Module['_apply_try_catch'] = function(obj, args) {
+function isPromise(p) {
+  if (
+    p !== null &&
+    typeof p === 'object' &&
+    typeof p.then === 'function' &&
+    typeof p.catch === 'function'
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+
+Module['_apply_try_catch'] = function(obj, args, is_generated_proxy) {
     try {
-        return _wrap_return_value(obj(...args));
+        let res = obj(...args);
+        if(isPromise(res)){
+            res.then((value) => {
+                for(let i=0; i<is_generated_proxy.length; ++i)
+                {
+                    if(is_generated_proxy[i]){
+                        args[i].delete();
+                    }
+                }
+            });
+        }
+        else{
+            for(let i=0; i<is_generated_proxy.length; ++i)
+            {
+                if(is_generated_proxy[i]){
+                    args[i].delete();
+                }
+            }
+        }
+        return _wrap_return_value(res);
     } catch (e) {
         return _wrap_catched_error(e);
     }
@@ -9,7 +42,7 @@ Module['_apply_try_catch'] = function(obj, args) {
 
 
 
-Module['_gapply_try_catch'] = function(obj, args, jin, jout) {
+Module['_gapply_try_catch'] = function(obj, args, is_generated_proxy, jin, jout) {
     try {
         if (jin) {
             args = JSON.parse(args)

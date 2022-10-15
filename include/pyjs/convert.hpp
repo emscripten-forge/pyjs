@@ -22,8 +22,7 @@ namespace pyjs
         JS_FUNCTION = '7'
     };
 
-    em::val implicit_conversion(py::object & py_ret);
-
+    std::pair<em::val,bool> implicit_py_to_js(py::object & py_ret);
 
     bool instanceof (em::val instance, const std::string& cls_name);
 
@@ -61,8 +60,8 @@ namespace pyjs
 
 
     py::object typed_array_to_numpy_array(em::val js_array);
-
-    py::object implicit_to_py(em::val val, const std::string& type_string);
+    py::object implicit_js_to_py(em::val val);
+    py::object implicit_js_to_py(em::val val, const std::string& type_string);
 
 
     em::val py_1d_buffer_to_typed_array(py::buffer buffer, bool view);

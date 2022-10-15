@@ -24,8 +24,6 @@ void pyjs_webloop_pseudo_init(py::module_&);
 
 namespace pyjs
 {
-    void export_mamba(py::module_ & m);
-
     void export_pyjs_module(py::module_& pyjs_module)
     {
         export_js_proxy(pyjs_module);

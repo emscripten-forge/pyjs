@@ -1,31 +1,40 @@
-Module["_is_initialized"] = false
+Module._is_initialized = false
 
 Module['init'] = async function() {
 
+    // list of python objects we need to delete when cleaning up
+    py_objects = []
+    Module._py_objects = py_objects
 
     // return empty promise when already initialized
     if(Module["_is_initialized"])
     {
+        console.log("INIT ALREADY DONE")
+
         return Promise.resolve();
     }
-
     var p = await Module['_wait_run_dependencies']();
 
     Module["_interpreter"] = new Module["_Interpreter"]()
     var default_scope = Module["main_scope"]()
-    Module["default_scope"] = default_scope
+    Module["default_scope"] = default_scope;
+
+    Module['_py_objects'].push(Module["default_scope"]);
+    Module['_py_objects'].push(Module["_interpreter"]);
 
 
 
-    Module['exec'] = function(code, scope=default_scope) {
-        let ret = Module._exec(code, scope)
+    Module['exec'] = function(code, globals=default_scope, locals=default_scope) {
+        let ret = Module._exec(code, globals, locals)
         if (ret.has_err) {
             throw ret
         }
     };
 
-    Module['eval'] = function(code, scope=default_scope) {
-        let ret = Module._eval(code, scope)
+
+
+    Module['eval'] = function(code, globals=default_scope, locals=default_scope) {
+        let ret = Module._eval(code, globals, locals)
         if (ret.has_err) {
             throw ret
         } else {
@@ -33,30 +42,11 @@ Module['init'] = async function() {
         }
     };
 
-    Module['eval_file'] = function(file, scope=default_scope) {
-        let ret = Module._eval_file(file, scope)
+    Module['eval_file'] = function(file, globals=default_scope, locals=default_scope) {
+        let ret = Module._eval_file(file, globals, locals)
         if (ret.has_err) {
             throw ret
         }
-    };
-
-    Module['pyobject'].prototype.py_call_async = function(...args) {
-        return this.py_apply_async(args)
-    };
-
-    Module['pyobject'].prototype.py_apply_async = function(args, kwargs) {
-        let py_future = this.py_apply(args, kwargs)
-
-        let p  = new Promise(function(resolve, reject) {
-            Module._add_resolve_done_callback.py_call(py_future, resolve, reject)
-        });
-
-        p.then(function(value) {
-            py_future.delete()
-          }, function(reason) {
-            py_future.delete()
-        });
-        return p;
     };
 
     Module['pyobject'].prototype._getattr = function(attr_name) {
@@ -106,7 +96,12 @@ Module['init'] = async function() {
         }
     };
 
-    Module['pyobject'].prototype.py_getitem = function(...keys) {
+
+
+
+
+
+    Module['pyobject'].prototype.get = function(...keys) {
 
 
         let types = keys.map(Module['_get_type_string'])
@@ -118,7 +113,52 @@ Module['init'] = async function() {
         }
     };
 
-    Module._add_resolve_done_callback = Module.eval("pyjs._add_resolve_done_callback")
+    // make the python pyjs module easy available
+    Module.exec("import pyjs");
+    Module.py_pyjs = Module.eval("pyjs")
+    py_objects.push(Module.py_pyjs);   
 
+
+    // execute a script and return the value of the last expression
+    Module._py_exec_eval = pyjs.eval("pyjs.exec_eval")
+    py_objects.push(Module._py_exec_eval)
+    Module.exec_eval = function(script, globals=default_scope, locals=default_scope){
+        return Module._py_exec_eval.py_call(script, globals, locals)
+    }
+
+    // ansync execute a script and return the value of the last expression
+    Module._py_async_exec_eval = pyjs.eval("pyjs.async_exec_eval")
+    py_objects.push(Module._py_async_exec_eval)
+    Module.async_exec_eval = async function(script, globals=default_scope, locals=default_scope){
+        return await Module._py_async_exec_eval.py_call(script, globals, locals)
+    }
+
+    Module._add_resolve_done_callback  = Module.exec_eval(`
+import asyncio
+def _add_resolve_done_callback(future, resolve, reject):
+    ensured_future = asyncio.ensure_future(future)
+    def done(f):
+        try:
+            resolve(f.result())
+        except Exception as err:
+            reject(repr(err))
+
+    ensured_future.add_done_callback(done)
+_add_resolve_done_callback
+    `)
+    py_objects.push(Module._add_resolve_done_callback);
+
+
+
+    Module._py_to_js = pyjs.eval("pyjs.to_js")
+    py_objects.push(Module._py_to_js);
+
+    Module["to_js"] = function(obj){
+        return Module._py_to_js.py_call(obj)
+    }
+
+    Module._is_initialized = true
     return p
+
+
 }

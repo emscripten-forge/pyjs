@@ -16,13 +16,15 @@ from runner_tools.runners_utils import (  # find_free_port,
     restore_cwd,
     server_context,
     copy_page_content,
+    node_run,
 )
 import runner_tools
 
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 BLD_DIR = os.path.join(THIS_DIR, "build")
-PYJS_MAIN_JS_FILENAME = os.path.join(BLD_DIR, "pyjs_runtime_browser.js")
+PYJS_BROWSER_MAIN_JS_FILENAME = os.path.join(BLD_DIR, "pyjs_runtime_browser.js")
+PYJS_NODE_MAIN_JS_FILENAME = os.path.join(BLD_DIR, "pyjs_runtime_node.js")
 
 app = typer.Typer()
 run_app = typer.Typer()
@@ -79,6 +81,12 @@ def script(
         "-w",
         help="run code in a worker thread",
     ),
+    node: bool = typer.Option(  # noqa: B008
+        False,
+        "--node",
+        "-w",
+        help="run code in a node, if true, worker argument is ignored",
+    ),
 ):
     directory = Path(directory).resolve()
     # for script_file in script_files:
@@ -89,7 +97,10 @@ def script(
     # port = find_free_port()
 
     # patching
-    patch_emscripten_generated_js(PYJS_MAIN_JS_FILENAME)
+    if node:
+        patch_emscripten_generated_js(PYJS_NODE_MAIN_JS_FILENAME)
+    else:
+        patch_emscripten_generated_js(PYJS_BROWSER_MAIN_JS_FILENAME)
 
     # copy .htm and .js file(s) to work_dir
     copy_page_content(work_dir=BLD_DIR)
@@ -98,36 +109,46 @@ def script(
     with restore_cwd():
         # with contextlib.redirect_stdout(None):
         os.chdir(BLD_DIR)
-        pack_directory(directory, mount_path)
+        pack_directory(directory, mount_path, node=node)
 
-    with server_context(work_dir=BLD_DIR, port=port) as (server, url):
+    if node:
+        with restore_cwd():
 
-        if worker:
-            page_url = f"{url}/runner_worker.html"
-            ret = asyncio.run(
-                playwright_run_in_worker_thread(
-                    page_url=page_url,
-                    script_basename=main_script_basename,
-                    workdir=mount_path,
-                    debug=debug,
-                    async_main=async_main,
-                    slow_mo=slow_mo,
-                )
+            os.chdir(BLD_DIR)
+            node_run(
+                script_basename=main_script_basename,
+                workdir=mount_path,
+                async_main=async_main,
             )
-        else:
-            page_url = f"{url}/runner_main.html"
-            ret = asyncio.run(
-                playwright_run_in_main_thread(
-                    page_url=page_url,
-                    script_basename=main_script_basename,
-                    workdir=mount_path,
-                    debug=debug,
-                    async_main=async_main,
-                    slow_mo=slow_mo,
+    else:
+        with server_context(work_dir=BLD_DIR, port=port) as (server, url):
+
+            if worker:
+                page_url = f"{url}/runner_worker.html"
+                ret = asyncio.run(
+                    playwright_run_in_worker_thread(
+                        page_url=page_url,
+                        script_basename=main_script_basename,
+                        workdir=mount_path,
+                        debug=debug,
+                        async_main=async_main,
+                        slow_mo=slow_mo,
+                    )
                 )
-            )
-        if ret != 0:
-            os._exit(ret)
+            else:
+                page_url = f"{url}/runner_main.html"
+                ret = asyncio.run(
+                    playwright_run_in_main_thread(
+                        page_url=page_url,
+                        script_basename=main_script_basename,
+                        workdir=mount_path,
+                        debug=debug,
+                        async_main=async_main,
+                        slow_mo=slow_mo,
+                    )
+                )
+            if ret != 0:
+                os._exit(ret)
 
 
 if __name__ == "__main__":

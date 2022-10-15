@@ -10,7 +10,6 @@ function assert_eq(a,b){
 }
 
 function assert_deep_json_eq(a,b){
-
     const replacer = (key, value) =>
     value instanceof Object && !(value instanceof Array) ? 
         Object.keys(value)

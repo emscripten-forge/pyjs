@@ -7,6 +7,11 @@ from http.server import HTTPServer
 import shutil
 import empack
 from playwright.async_api import async_playwright
+import tempfile
+import subprocess
+from pathlib import Path
+import sys
+
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -193,16 +198,38 @@ async def playwright_run_in_main_thread(
     return return_code
 
 
-def pack_directory(directory, mount_path):
+def node_run(workdir, script_basename, async_main=False):
+    main = Path(THIS_DIR) / "node_main.js"
+    cmd = [
+        "node",
+        "--no-experimental-fetch",
+        main,
+        os.getcwd(),
+        workdir,
+        script_basename,
+    ]
+
+    returncode = subprocess.run(cmd).returncode
+    if returncode != 0:
+        sys.exit(returncode)
+
+
+def global_object_name(node):
+    if node:
+        return "global"
+    else:
+        return "globalThis"
+
+
+def pack_directory(directory, mount_path, node=False):
+
     empack.file_packager.pack_directory(
         directory=directory,
         mount_path=mount_path,
         outname="script_data",
-        export_name="globalThis.EmscriptenForgeModule",
+        export_name=f"{global_object_name(node=node)}.EmscriptenForgeModule",
         silent=True,
     )
-    # cmd = [f"empack pack file  {script_file}  '/script'  script"]
-    # ret = subprocess.run(cmd, shell=True)
 
 
 def patch_emscripten_generated_js(filename):

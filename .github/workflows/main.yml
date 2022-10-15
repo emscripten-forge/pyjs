@@ -100,12 +100,15 @@ jobs:
 
           popd
 
-      - name: Run Tests
+      - name: Run Tests 
         run: |
           micromamba activate pyjs-wasm
           python runner.py run script -d tests -m /tests -q main.py -p 8002 --async-main          
 
-
+      - name: Run Tests Worker
+        run: |
+          micromamba activate pyjs-wasm
+          python runner.py run script -d tests -m /tests -q main.py -p 8003 --async-main --worker
 
   test-node:
 
@@ -136,7 +139,7 @@ jobs:
           micromamba activate pyjs-wasm
           emsdk install ${{matrix.emsdk_ver}}
 
-      - name: Build and run node-tests
+      - name: Build node-tests
         run: |
           micromamba activate pyjs-wasm
 
@@ -165,9 +168,9 @@ jobs:
           # pack the environment in a js/data file
           empack pack env \
               --env-prefix $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm \
-              --outname python_data \
+              --outname python_data_node \
               --config empack_config.yaml \
-              --export-name "global.Module"
+              --export-name "global.EmscriptenForgeModule"
 
 
 
@@ -187,9 +190,13 @@ jobs:
 
           make -j2
           make install
-          npm install
-          $MAMBA_ROOT_PREFIX/envs/pyjs-wasm/bin/node --no-experimental-fetch ../node_modules/.bin/ava test.cjs
 
 
 
           popd
+
+
+      - name: Run Tests 
+        run: |
+          micromamba activate pyjs-wasm
+          python runner.py run script -d tests -m /tests -q main.py -p 8003 --async-main  --node

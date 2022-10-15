@@ -142,6 +142,7 @@ jobs:
       - name: Build node-tests
         run: |
           micromamba activate pyjs-wasm
+          python -m pip install git+https://github.com/emscripten-forge/empack@main              --no-deps --ignore-installed
 
           emsdk activate ${{matrix.emsdk_ver}}
           source $CONDA_EMSDK_DIR/emsdk_env.sh

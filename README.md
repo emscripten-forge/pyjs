@@ -1,5 +1,5 @@
 # pyjs
-[![CI](https://github.com/DerThorsten/pyjs/actions/workflows/main.yml/badge.svg)](https://github.com/DerThorsten/pyjs/actions/workflows/main.yml)
+[![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml)
 
 ## What is pyjs
 

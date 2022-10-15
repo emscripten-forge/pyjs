@@ -68,7 +68,7 @@ add_custom_command(OUTPUT "pyjs_pre.js"
         ${CMAKE_SOURCE_DIR}/build_utils/merge_js.py 
         ${PREJS_FILES} 
         pyjs_pre.js  
-        ${CMAKE_CURRENT_BINARY_DIR}/js_timestamp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/js_timestamp.cpp
     DEPENDS ${PREJS_FILES}
 )
 
@@ -77,7 +77,7 @@ add_custom_command(OUTPUT "pyjs_post.js"
         ${CMAKE_SOURCE_DIR}/build_utils/merge_js.py 
         ${POSTJS_FILES} 
         pyjs_post.js
-        ${CMAKE_CURRENT_BINARY_DIR}/js_timestamp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/js_timestamp.cpp
     DEPENDS  ${POSTJS_FILES})
 
 
@@ -122,7 +122,7 @@ add_library(pyjs STATIC
     src/export_py_object.cpp
     src/convert.cpp
     src/export_pyjs_module.cpp
-    ${CMAKE_CURRENT_BINARY_DIR}/js_timestamp.cpp
+    src/js_timestamp.cpp
     ${PYCPPSOURCES}
 )
 

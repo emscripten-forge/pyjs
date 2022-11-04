@@ -103,7 +103,7 @@ jobs:
               --mount         $(pwd)/tests:tests \
               --script        main.py \
               --work-dir      /tests \
-              --pyjs_dir      $(pwd)/build \
+              --pyjs-dir      $(pwd)/build \
               --async-main           
 
       - name: Test in browser-worker
@@ -117,7 +117,7 @@ jobs:
               --mount         $(pwd)/tests:tests \
               --script        main.py \
               --work-dir      /tests \
-              --pyjs_dir      $(pwd)/build \
+              --pyjs-dir      $(pwd)/build \
               --async-main           
 
 
@@ -208,7 +208,7 @@ jobs:
               --mount         $(pwd)/tests:tests \
               --script        main.py \
               --work-dir      /tests \
-              --pyjs_dir      $(pwd)/build \
+              --pyjs-dir      $(pwd)/build \
               --node-binary   /home/runner/micromamba-root/envs/pyjs-wasm/bin/node \
               --async-main           
 

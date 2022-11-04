@@ -48,7 +48,7 @@ jobs:
         run: |
           micromamba activate pyjs-wasm
           emsdk install ${{matrix.emsdk_ver}}
-          pip install -e git://github.com/emscripten-forge/pyjs-code-runner.git@1.0.0
+          pip install git+https://github.com/emscripten-forge/pyjs-code-runner.git@1.0.0
 
       - name: Build pyjs
         run: |
@@ -154,7 +154,7 @@ jobs:
         run: |
           micromamba activate pyjs-wasm
           emsdk install ${{matrix.emsdk_ver}}
-          pip install -e git://github.com/emscripten-forge/pyjs-code-runner.git@1.0.0
+          pip install git+https://github.com/emscripten-forge/pyjs-code-runner.git@1.0.0
 
       - name: Build node-tests
         run: |

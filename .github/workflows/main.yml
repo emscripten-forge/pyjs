@@ -104,6 +104,7 @@ jobs:
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
+              --headless \
               --async-main           
 
       - name: Test in browser-worker
@@ -118,6 +119,7 @@ jobs:
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
+              --headless \
               --async-main           
 
 

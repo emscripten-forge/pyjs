@@ -230,6 +230,7 @@ if(BUILD_RUNTIME_BROWSER)
         PUBLIC "SHELL: --post-js pyjs_post.js"
         PUBLIC "SHELL: --pre-js pyjs_pre.js"
         PUBLIC "SHELL: -flto"
+        PUBLIC "SHELL: -lidbfs.js"
         # PUBLIC "SHELL: -s WASM_BIGINT"
     )
 

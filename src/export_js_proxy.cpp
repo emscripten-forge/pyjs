@@ -208,7 +208,7 @@ namespace pyjs
         m_internal.def("as_double", [](em::val* v) -> double { return v->as<double>(); });
         m_internal.def("as_float", [](em::val* v) -> float { return v->as<float>(); });
         m_internal.def("as_boolean", [](em::val* v) -> bool { return v->as<bool>(); });
-        m_internal.def("as_string", [](em::val* v) -> std::string { return v->as<std::string>(); });
+        m_internal.def("as_string", [](em::val* v) -> std::wstring { return v->as<std::wstring>(); });
 
         m_internal.def("as_numpy_array",
                        [](em::val* v) -> py::object { return typed_array_to_numpy_array(*v); });
@@ -276,13 +276,13 @@ namespace pyjs
 
 
         m_internal.def("to_string",
-                       [](em::val* v) -> std::string { return v->call<std::string>("toString"); });
+                       [](em::val* v) -> std::wstring { return v->call<std::wstring>("toString"); });
         // this class is heavy extended on the python side
         // py::class_<em::val>(m, "JsValue",  py::dynamic_attr())
         py::class_<em::val>(m, "JsValue")  //,  py::dynamic_attr())
 
-            .def(py::init([](std::string arg)
-                          { return std::unique_ptr<em::val>(new em::val(arg.c_str())); }))
+            .def(py::init([](std::wstring arg)
+                          { return std::unique_ptr<em::val>(new em::val(arg)); }))
             .def(py::init([](bool arg) { return std::unique_ptr<em::val>(new em::val(arg)); }))
 
             .def(py::init([](int arg) { return std::unique_ptr<em::val>(new em::val(arg)); }))
@@ -304,7 +304,7 @@ namespace pyjs
 
         m_internal.def("implicit_py_to_js",&implicit_py_to_js);
 
-        py::implicitly_convertible<std::string, em::val>();
+        py::implicitly_convertible<std::wstring, em::val>();
         py::implicitly_convertible<float, em::val>();
         py::implicitly_convertible<double, em::val>();
         py::implicitly_convertible<int, em::val>();

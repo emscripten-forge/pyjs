@@ -23,7 +23,7 @@ namespace pyjs
         }
         else if (info == "str")
         {
-            return std::make_pair(em::val(py_ret.cast<std::string>()),false);
+            return std::make_pair(em::val(py_ret.cast<std::wstring>()),false);
         }
         else if (info == "bool")
         {
@@ -69,7 +69,7 @@ namespace pyjs
                 // 2 is object
                 case static_cast<char>(JsType::JS_STR):
                 {
-                    return py::cast(val.as<std::string>());
+                    return py::cast(val.as<std::wstring>());
                 }
                 case static_cast<char>(JsType::JS_INT):
                 {

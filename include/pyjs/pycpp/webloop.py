@@ -40,6 +40,9 @@ class WebLoop(asyncio.AbstractEventLoop):
         self._set_timeout = js.setTimeout
         self._n_unfinished = 0
 
+        self._call_soon_timeout_id = None
+        self._call_soon_callbacks = []
+
     def get_debug(self):
         return False
 
@@ -99,6 +102,25 @@ class WebLoop(asyncio.AbstractEventLoop):
     # Scheduling methods: use browser.setTimeout to schedule tasks on the browser event loop.
     #
 
+    def _create_handle(
+        self, callback: Callable, args, context: contextvars.Context = None
+    ):
+        self._n_unfinished += 1
+        handle = asyncio.Handle(callback, args, self, context=context)
+
+        @contextlib.contextmanager
+        def decrementor():
+            yield
+            self._n_unfinished -= 1
+
+        def run_handle():
+            with decrementor():
+                if handle.cancelled():
+                    return
+                handle._run()
+
+        return handle, run_handle
+
     def call_soon(self, callback: Callable, *args, context: contextvars.Context = None):
         """Arrange for a callback to be called as soon as possible.
 
@@ -107,17 +129,41 @@ class WebLoop(asyncio.AbstractEventLoop):
 
         This schedules the callback on the browser event loop using ``setTimeout(callback, 0)``.
         """
-        delay = 0
-        return self.call_later(delay, callback, *args, context=context)
+
+        handle, run_handle = self._create_handle(callback, args, context)
+
+        if self._call_soon_timeout_id is None:
+            # instead of using `pyjs.create_once_callable` we
+            # use an internal optimized function, that does not allow for
+            # any arguments, does not return anything, and does assume
+            # that the function does not throw
+            once_callable = _module._create_once_callable_unsave_void_void(
+                JsValue(self._run_call_soon_callbacks)
+            )
+            self._call_soon_timeout_id = self._set_timeout(once_callable, 0)
+
+        self._call_soon_callbacks.append(run_handle)
+        return handle
+
+    def _run_call_soon_callbacks(self):
+        while self._call_soon_callbacks:
+            self._call_soon_callbacks, callbacks = [], self._call_soon_callbacks
+
+            for callback in callbacks:
+                callback()
+
+        self._call_soon_timeout_id = None
 
     def call_soon_threadsafe(
         self, callback: Callable, *args, context: contextvars.Context = None
     ):
         """Like ``call_soon()``, but thread-safe.
 
-        We have no threads so everything is "thread safe", and we just use ``call_soon``.
+        We have no threads so everything is "thread safe", and we just
+        use ``call_later`` with no delay.
         """
-        return self.call_soon(callback, *args, context=context)
+        delay = 0
+        return self.call_later(delay, callback, *args, context=context)
 
     def call_later(
         self,
@@ -146,19 +192,7 @@ class WebLoop(asyncio.AbstractEventLoop):
         if delay < 0:
             raise ValueError("Can't schedule in the past")
 
-        self._n_unfinished += 1
-        h = asyncio.Handle(callback, args, self, context=context)
-
-        @contextlib.contextmanager
-        def decrementor():
-            yield
-            self._n_unfinished -= 1
-
-        def run_handle():
-            with decrementor():
-                if h.cancelled():
-                    return
-                h._run()
+        handle, run_handle = self._create_handle(callback, args, context)
 
         # instead of using `pyjs.create_once_callable` we
         # use an internal optimized function, that does not allow for
@@ -168,7 +202,7 @@ class WebLoop(asyncio.AbstractEventLoop):
             JsValue(run_handle)
         )
         self._set_timeout(once_callable, delay * 1000)
-        return h
+        return handle
 
     def call_at(
         self,

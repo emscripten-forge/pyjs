@@ -3,7 +3,7 @@ Module._is_initialized = false
 Module['init'] = async function() {
 
     // list of python objects we need to delete when cleaning up
-    py_objects = []
+    let py_objects = []
     Module._py_objects = py_objects
 
     // return empty promise when already initialized
@@ -120,14 +120,14 @@ Module['init'] = async function() {
 
 
     // execute a script and return the value of the last expression
-    Module._py_exec_eval = pyjs.eval("pyjs.exec_eval")
+    Module._py_exec_eval = Module.eval("pyjs.exec_eval")
     py_objects.push(Module._py_exec_eval)
     Module.exec_eval = function(script, globals=default_scope, locals=default_scope){
         return Module._py_exec_eval.py_call(script, globals, locals)
     }
 
     // ansync execute a script and return the value of the last expression
-    Module._py_async_exec_eval = pyjs.eval("pyjs.async_exec_eval")
+    Module._py_async_exec_eval = Module.eval("pyjs.async_exec_eval")
     py_objects.push(Module._py_async_exec_eval)
     Module.async_exec_eval = async function(script, globals=default_scope, locals=default_scope){
         return await Module._py_async_exec_eval.py_call(script, globals, locals)
@@ -150,7 +150,7 @@ _add_resolve_done_callback
 
 
 
-    Module._py_to_js = pyjs.eval("pyjs.to_js")
+    Module._py_to_js = Module.eval("pyjs.to_js")
     py_objects.push(Module._py_to_js);
 
     Module["to_js"] = function(obj){

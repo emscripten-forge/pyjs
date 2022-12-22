@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.9)
 
-project(pyjs VERSION 0.17.0 DESCRIPTION "pyjs")
+project(pyjs VERSION 0.18.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
@@ -231,7 +231,7 @@ if(BUILD_RUNTIME_BROWSER)
         PUBLIC "SHELL: --pre-js pyjs_pre.js"
         PUBLIC "SHELL: -flto"
         PUBLIC "SHELL: -lidbfs.js"
-        # PUBLIC "SHELL: -s WASM_BIGINT"
+        PUBLIC "SHELL: -s WASM_BIGINT"
     )
 
 
@@ -302,7 +302,7 @@ if(BUILD_RUNTIME_NODE)
         PUBLIC "SHELL: --post-js pyjs_post.js"
         PUBLIC "SHELL: --pre-js pyjs_pre.js"
         PUBLIC "SHELL: -flto"
-        # PUBLIC "SHELL: -s WASM_BIGINT"
+        PUBLIC "SHELL: -s WASM_BIGINT"
     )
 
 

@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emsdk_ver: ["3.1.2"]
+        emsdk_ver: ["3.1.27"]
 
     steps:
       - uses: actions/checkout@v2
@@ -95,7 +95,7 @@ jobs:
       - name: Test in browser-main
         run: |
           micromamba activate pyjs-wasm
-        
+
 
           pyjs_code_runner run script \
               browser-main \
@@ -105,12 +105,12 @@ jobs:
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
               --headless \
-              --async-main           
+              --async-main
 
       - name: Test in browser-worker
         run: |
           micromamba activate pyjs-wasm
-        
+
 
           pyjs_code_runner run script \
               browser-worker \
@@ -120,7 +120,7 @@ jobs:
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
               --headless \
-              --async-main           
+              --async-main
 
 
   test-node:
@@ -130,7 +130,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emsdk_ver: ["3.1.2"]
+        emsdk_ver: ["3.1.27"]
 
     steps:
       - uses: actions/checkout@v2
@@ -203,7 +203,7 @@ jobs:
       - name: Test in nodejs
         run: |
           micromamba activate pyjs-wasm
-        
+
           pyjs_code_runner run script \
               node \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
@@ -212,5 +212,4 @@ jobs:
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
               --node-binary   /home/runner/micromamba-root/envs/pyjs-wasm/bin/node \
-              --async-main           
-
+              --async-main

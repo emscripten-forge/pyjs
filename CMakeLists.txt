@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.9)
 
-project(pyjs VERSION 0.18.0 DESCRIPTION "pyjs")
+project(pyjs VERSION 0.18.1 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(BUILD_RUNTIME_NODE "Build runtime" ON)
@@ -64,18 +64,18 @@ add_custom_target(merge_pyjs ALL
 
 
 add_custom_command(OUTPUT "pyjs_pre.js"
-    COMMAND $ENV{CONDA_PREFIX}/bin/python 
-        ${CMAKE_SOURCE_DIR}/build_utils/merge_js.py 
-        ${PREJS_FILES} 
-        pyjs_pre.js  
+    COMMAND $ENV{CONDA_PREFIX}/bin/python
+        ${CMAKE_SOURCE_DIR}/build_utils/merge_js.py
+        ${PREJS_FILES}
+        pyjs_pre.js
         ${CMAKE_CURRENT_SOURCE_DIR}/src/js_timestamp.cpp
     DEPENDS ${PREJS_FILES}
 )
 
 add_custom_command(OUTPUT "pyjs_post.js"
-    COMMAND $ENV{CONDA_PREFIX}/bin/python 
-        ${CMAKE_SOURCE_DIR}/build_utils/merge_js.py 
-        ${POSTJS_FILES} 
+    COMMAND $ENV{CONDA_PREFIX}/bin/python
+        ${CMAKE_SOURCE_DIR}/build_utils/merge_js.py
+        ${POSTJS_FILES}
         pyjs_post.js
         ${CMAKE_CURRENT_SOURCE_DIR}/src/js_timestamp.cpp
     DEPENDS  ${POSTJS_FILES})

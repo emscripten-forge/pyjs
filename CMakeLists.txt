@@ -156,11 +156,10 @@ target_link_libraries(pyjs PRIVATE pybind11::pybind11)
 target_compile_options(pyjs PRIVATE -fPIC)
 
 target_include_directories(pyjs
-                           PRIVATE
-                           ${CMAKE_SOURCE_DIR}/include
-                           ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes
+                           PUBLIC
+                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                            $<INSTALL_INTERFACE:include>  # <prefix>/include
 )
-
 
 SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a

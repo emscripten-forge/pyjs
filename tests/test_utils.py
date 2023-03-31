@@ -38,6 +38,12 @@ def ensure_js(val):
         return val
 
 
+def converting_array_eq(x, should):
+    return array_eq(numpy.array(x), should)
+
+def converting_array_feq(x, should):
+    return array_feq(numpy.array(x), should)
+
 def array_eq(x, should):
     return x.dtype == should.dtype and numpy.array_equal(x, should)
 

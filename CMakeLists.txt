@@ -18,6 +18,8 @@ set(PYCPPSCRIPTS
     error_handling.py
     extend_js_val.py
     webloop.py
+    fetch.py
+    load_pkg.py
 )
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
@@ -50,6 +52,9 @@ set(PREJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/init.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/cleanup.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/make_proxy.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/dynload.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/fetch.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/load_pkg.js
 )
 set(POSTJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/post_js/fixes.js

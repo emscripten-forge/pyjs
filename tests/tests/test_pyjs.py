@@ -3,7 +3,15 @@ import operator
 import os
 from types import NoneType
 import asyncio
-import numpy
+
+try:
+    import numpy
+    has_numpy = True
+except ImportError:
+    has_numpy = False
+
+
+
 import pytest
 
 from .conftest import *
@@ -76,32 +84,44 @@ def test_interal_type_str():
     assert pyjs.internal.get_type_string(pyjs.JsValue([1, 2, 3])) == "pyobject"
 
 
-@pytest.mark.parametrize(
-    "test_input,expected_type,expected_value,comperator",
-    [
-        # special items
-        ("undefined", NoneType, None, (lambda x, should_val: x is None)),
-        ("null", NoneType, None, (lambda x, should_val: x is None)),
-        # basic items
-        ("42", int, 42, operator.eq),
-        ("-42", int, -42, operator.eq),
-        ("17.5", float, 17.5, operator.eq),
-        ("false", bool, False, operator.eq),
-        ("true", bool, True, operator.eq),
-        # various strings
-        ('"42"', str, "42", operator.eq),
-        ('""', str, "", operator.eq),
-        ('"undefined"', str, "undefined", operator.eq),
-        ('"null"', str, "null", operator.eq),
-        # set
-        ("new Set([1,2,5])", set, set([1, 2, 5]), operator.eq),
-        # map
-        (
-            "new Map([[1, 'one'],[2, 'two']])",
-            dict,
-            {1: "one", 2: "two"},
-            operator.eq,
-        ),
+parameters = [
+    # special items
+    ("undefined", NoneType, None, (lambda x, should_val: x is None)),
+    ("null", NoneType, None, (lambda x, should_val: x is None)),
+    # basic items
+    ("42", int, 42, operator.eq),
+    ("-42", int, -42, operator.eq),
+    ("17.5", float, 17.5, operator.eq),
+    ("false", bool, False, operator.eq),
+    ("true", bool, True, operator.eq),
+    # various strings
+    ('"42"', str, "42", operator.eq),
+    ('""', str, "", operator.eq),
+    ('"undefined"', str, "undefined", operator.eq),
+    ('"null"', str, "null", operator.eq),
+    # set
+    ("new Set([1,2,5])", set, set([1, 2, 5]), operator.eq),
+    # map
+    (
+        "new Map([[1, 'one'],[2, 'two']])",
+        dict,
+        {1: "one", 2: "two"},
+        operator.eq,
+    ),
+    # functions
+    ("function(){}", pyjs.JsValue, None, (lambda x, y: True)),
+    # nested objects
+    ('[1,2,"three"]', list, [1, 2, "three"], nested_eq),
+    (
+        "{ foo : { bar:1 }, fobar: [1,1,2] }",
+        dict,
+        {"foo": {"bar": 1}, "fobar": [1, 1, 2]},
+        nested_eq,
+    ),
+]
+
+if has_numpy:
+    parameters += [
         # arrays
         (
             "new Uint8Array([1,2,3])",
@@ -109,60 +129,55 @@ def test_interal_type_str():
             numpy.array([1, 2, 3], dtype="uint8"),
             converting_array_eq,
         ),
-        # (
-        #     "new Int8Array([-1,2,-3])",
-        #     pyjs.TypedArrayBuffer,
-        #     numpy.array([-1, 2, -3], dtype="int8"),
-        #     converting_array_eq,
-        # ),
-        # (
-        #     "new Uint16Array([1,2,300])",
-        #     pyjs.TypedArrayBuffer,
-        #     numpy.array([1, 2, 300], dtype="uint16"),
-        #     converting_array_eq,
-        # ),
-        # (
-        #     "new Int16Array([-1,2,-300])",
-        #     pyjs.TypedArrayBuffer,
-        #     numpy.array([-1, 2, -300], dtype="int16"),
-        #     converting_array_eq,
-        # ),
-        # (
-        #     "new Uint32Array([1,2,300])",
-        #     pyjs.TypedArrayBuffer,
-        #     numpy.array([1, 2, 300], dtype="uint32"),
-        #     converting_array_eq,
-        # ),
-        # (
-        #     "new Int32Array([-1,2,-300])",
-        #     pyjs.TypedArrayBuffer,
-        #     numpy.array([-1, 2, -300], dtype="int32"),
-        #     converting_array_eq,
-        # ),
-        # # floating point arrays
-        # (
-        #     "new Float32Array([-10.5,0.0, 1.55])",
-        #     pyjs.TypedArrayBuffer,
-        #     numpy.array([-10.5, 0.0, 1.55], dtype="float32"),
-        #     converting_array_feq,
-        # ),
-        # (
-        #     "new Float64Array([-10.5,0.0, 1.55])",
-        #     pyjs.TypedArrayBuffer,
-        #     numpy.array([-10.5, 0.0, 1.55], dtype="float64"),
-        #     converting_array_feq,
-        # ),
-        # # functions
-        # ("function(){}", pyjs.JsValue, None, (lambda x, y: True)),
-        # # nested objects
-        # ('[1,2,"three"]', list, [1, 2, "three"], nested_eq),
-        # (
-        #     "{ foo : { bar:1 }, fobar: [1,1,2] }",
-        #     dict,
-        #     {"foo": {"bar": 1}, "fobar": [1, 1, 2]},
-        #     nested_eq,
-        # ),
-    ],
+        (
+            "new Int8Array([-1,2,-3])",
+            pyjs.TypedArrayBuffer,
+            numpy.array([-1, 2, -3], dtype="int8"),
+            converting_array_eq,
+        ),
+        (
+            "new Uint16Array([1,2,300])",
+            pyjs.TypedArrayBuffer,
+            numpy.array([1, 2, 300], dtype="uint16"),
+            converting_array_eq,
+        ),
+        (
+            "new Int16Array([-1,2,-300])",
+            pyjs.TypedArrayBuffer,
+            numpy.array([-1, 2, -300], dtype="int16"),
+            converting_array_eq,
+        ),
+        (
+            "new Uint32Array([1,2,300])",
+            pyjs.TypedArrayBuffer,
+            numpy.array([1, 2, 300], dtype="uint32"),
+            converting_array_eq,
+        ),
+        (
+            "new Int32Array([-1,2,-300])",
+            pyjs.TypedArrayBuffer,
+            numpy.array([-1, 2, -300], dtype="int32"),
+            converting_array_eq,
+        ),
+        # floating point arrays
+        (
+            "new Float32Array([-10.5,0.0, 1.55])",
+            pyjs.TypedArrayBuffer,
+            numpy.array([-10.5, 0.0, 1.55], dtype="float32"),
+            converting_array_feq,
+        ),
+        (
+            "new Float64Array([-10.5,0.0, 1.55])",
+            pyjs.TypedArrayBuffer,
+            numpy.array([-10.5, 0.0, 1.55], dtype="float64"),
+            converting_array_feq,
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    "test_input,expected_type,expected_value,comperator",
+    parameters
 )
 def test_to_py(test_input, expected_type, expected_value, comperator):
     py_val = pyjs.to_py(ensure_js(test_input))
@@ -370,20 +385,21 @@ def test_del_item():
     assert not js_set.has("four")
     assert len(js_set) == 2
 
+# skip test if has_numpy is False
+pytest.importorskip("numpy", reason="numpy not installed")
+def test_np_array():
+    view = pyjs.js.Function(
+        """
+        var buffer = new ArrayBuffer(8);
+        var view_c   = new Uint8Array(buffer);
+    for (let i = 0; i < view_c.length; i++) {
+            view_c[i] = i;
+        }
+        return new Uint8Array(buffer, 4,2);
+    """
+    )()
 
-# def test_np_array():
-#     view = pyjs.js.Function(
-#         """
-#         var buffer = new ArrayBuffer(8);
-#         var view_c   = new Uint8Array(buffer);
-#     for (let i = 0; i < view_c.length; i++) {
-#             view_c[i] = i;
-#         }
-#         return new Uint8Array(buffer, 4,2);
-#     """
-#     )()
-
-#     assert array_eq(numpy.array(pyjs.to_py(view), copy=True), numpy.array([4, 5], dtype="uint8"))
+    assert array_eq(numpy.array(pyjs.to_py(view), copy=True), numpy.array([4, 5], dtype="uint8"))
 
 
 def test_cyclic_array():

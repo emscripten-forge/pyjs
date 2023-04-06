@@ -2,10 +2,12 @@
 
 #include <pyjs/export_py_object.hpp>
 #include <pyjs/convert.hpp>
+#include <pyjs/untar.hpp>
+
 #include <pybind11/embed.h>
 #include <emscripten/bind.h>
-
 #include <pybind11/pybind11.h>
+
 
 namespace pyjs
 {
@@ -85,6 +87,8 @@ namespace pyjs
         em::function("_exec", &exec);
         em::function("_eval_file", &eval_file);
 
+
+        em::function("_untar", &untar);
 
         // py-object (proxy)
         export_py_object();

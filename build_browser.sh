@@ -10,6 +10,13 @@ cd $BUILD_DIR
 ENV_NAME=pyjs-browser
 ENV_MINIMAL_NAME=pyjs-minimal
 
+
+WORK_DIR=host_work_dir
+mkdir -p $WORK_DIR
+
+cp $(pwd)/../tests/test_data/* $WORK_DIR
+
+
 if false; then
     # install wasm env
     # rm -rf $MAMBA_ROOT_PREFIX/envs/pyjs-node-testsar
@@ -35,10 +42,10 @@ if false; then
 
 fi 
 
-if false; then
+if true; then
 
     # let cmake know where the env is
-    export PREFIX=$MAMBA_ROOT_PREFIX/envs/$ENV_MINIMAL_NAME
+    export PREFIX=$MAMBA_ROOT_PREFIX/envs/$ENV_NAME
     export CMAKE_PREFIX_PATH=$PREFIX
     export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
 
@@ -55,24 +62,3 @@ if false; then
 
 fi 
 
-# run in env with does not contain numpy
-pyjs_code_runner run script \
-        browser-main \
-        --conda-env     $MAMBA_ROOT_PREFIX/envs/$ENV_MINIMAL_NAME  \
-        --mount         $(pwd)/../tests:tests \
-        --script        main.py \
-        --work-dir      /tests \
-        --pyjs-dir      $(pwd)/../$BUILD_DIR \
-        --headless \
-        --async-main
-
-# run in env which contains numpy
-pyjs_code_runner run script \
-        browser-main \
-        --conda-env     $MAMBA_ROOT_PREFIX/envs/$ENV_NAME  \
-        --mount         $(pwd)/../tests:tests \
-        --script        main.py \
-        --work-dir      /tests \
-        --pyjs-dir      $(pwd)/../$BUILD_DIR \
-        --headless \
-        --async-main

@@ -385,21 +385,20 @@ def test_del_item():
     assert not js_set.has("four")
     assert len(js_set) == 2
 
-# skip test if has_numpy is False
-pytest.importorskip("numpy", reason="numpy not installed")
-def test_np_array():
-    view = pyjs.js.Function(
+if has_numpy:
+    def test_np_array():
+        view = pyjs.js.Function(
+            """
+            var buffer = new ArrayBuffer(8);
+            var view_c   = new Uint8Array(buffer);
+        for (let i = 0; i < view_c.length; i++) {
+                view_c[i] = i;
+            }
+            return new Uint8Array(buffer, 4,2);
         """
-        var buffer = new ArrayBuffer(8);
-        var view_c   = new Uint8Array(buffer);
-    for (let i = 0; i < view_c.length; i++) {
-            view_c[i] = i;
-        }
-        return new Uint8Array(buffer, 4,2);
-    """
-    )()
+        )()
 
-    assert array_eq(numpy.array(pyjs.to_py(view), copy=True), numpy.array([4, 5], dtype="uint8"))
+        assert array_eq(numpy.array(pyjs.to_py(view), copy=True), numpy.array([4, 5], dtype="uint8"))
 
 
 def test_cyclic_array():

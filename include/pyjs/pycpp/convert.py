@@ -198,7 +198,7 @@ def to_py(js_val, depth=0, cache=None, converter_options=None):
         js_val, depth, cache, converter_options
     )
 
-
+ 
 def error_to_py(err):
     default_converter = functools.partial(error_converter, error_cls=JsGenericError)
     converter_options = JsToPyConverterOptions(

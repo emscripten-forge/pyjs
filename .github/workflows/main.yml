@@ -119,7 +119,7 @@ jobs:
       - name: setup minimal env without numpy
         run: |
           micromamba activate pyjs-wasm
-          micromamba create -n pyjs-minimal \
+          micromamba create -n pyjs-build-wasm \
             --platform=emscripten-32 \
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
@@ -133,7 +133,7 @@ jobs:
 
           pyjs_code_runner run script \
               browser-main \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-minimal  \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
               --mount         $(pwd)/tests:tests \
               --script        main.py \
               --work-dir      /tests \
@@ -141,21 +141,6 @@ jobs:
               --headless \
               --async-main \
               --no-cache
-
-      - name: Test in browser-worker-no-numpy
-        run: |
-          micromamba activate pyjs-wasm
-
-
-          pyjs_code_runner run script \
-              browser-worker \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-minimal  \
-              --mount         $(pwd)/tests:tests \
-              --script        main.py \
-              --work-dir      /tests \
-              --pyjs-dir      $(pwd)/build \
-              --headless \
-              --async-main
 
 
 

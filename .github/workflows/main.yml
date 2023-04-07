@@ -33,7 +33,7 @@ jobs:
         with:
           environment-file: environment-dev.yml
           environment-name: pyjs-wasm
-          micromamba-version: "0.22.0"
+          micromamba-version: "1.4.1"
 
       - name: Install Playwright
         run: |
@@ -196,7 +196,7 @@ jobs:
         with:
           environment-file: environment-dev.yml
           environment-name: pyjs-wasm
-          micromamba-version: "0.22.0"
+          micromamba-version: "1.4.1"
 
 
 

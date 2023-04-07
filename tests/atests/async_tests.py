@@ -57,27 +57,3 @@ async def trigger_js_tests():
     js_tests_return_code = await js_tests_async_main()
     assert js_tests_return_code == 0
 
-
-
-if pyjs.IN_BROWSER:
-    async def test_parallel_fetch_bytes():
-        print("IN THAT TWEST")
-        url = "./sample.json.tar.bz2"
-        response = await pyjs.js.fetch(url)
-        assert bool(response.ok)
-        array_buffer = await response.arrayBuffer()
-        pyjs.js.console.log(array_buffer)
-        array = pyjs.to_py(array_buffer)
-        byteio = io.BytesIO(array)
-
-        tar = tarfile.open(fileobj=byteio, mode="r")
-        jfile = tar.extractfile("sample.json")
-        j = json.load(jfile)
-        assert j["hello"] == "world"
-    # async def test_parallel_fetch_tarfiles():
-
-    #     url = "./sample.json.tar.bz2"
-    #     tarfile = (await pyjs.parallel_fetch_tarfiles(url))[0]
-       
-    #     result = tarfile.extractfile("sample.json")
-    #     json.loads(result.read())

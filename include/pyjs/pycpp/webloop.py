@@ -1,6 +1,6 @@
 # webloop impl is from pyodide:
-# https://github.com/pyodide/pyodide/blob/main/src/py/pyodide/webloop.py
-
+# see webloop_LICENSE for license
+# and webloop_README for more info
 
 import asyncio
 import contextlib

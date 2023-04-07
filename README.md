@@ -7,4 +7,3 @@ pyjs is  modern [pybind11](https://github.com/pybind/pybind11) + emscripten [Emb
 Python <-> JavaScript foreign function interface (FFI) for wasm/emscripten compiled Python.
 
 The API is loosly based on the  FFI of [pyodide](https://pyodide.org/en/stable/usage/type-conversions.html).
-The webloop impl *is pyodides webloop impl

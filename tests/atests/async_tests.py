@@ -1,6 +1,8 @@
 import pyjs
 from pathlib import Path
-
+import json
+import io
+import tarfile 
 
 async def test_stuff():
     assert 2 == 2
@@ -54,3 +56,4 @@ async def trigger_js_tests():
 
     js_tests_return_code = await js_tests_async_main()
     assert js_tests_return_code == 0
+

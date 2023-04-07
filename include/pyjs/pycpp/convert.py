@@ -144,17 +144,17 @@ basic_to_py_converters = {
     # this is a bit ugly at since `as_numpy_array`
     # has to do the dispatching again
     "ArrayBuffer": lambda x, d, c, opts: to_py(new(js.Uint8Array, x), d, c, opts),
-    "Uint8Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "Int8Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "Uint16Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "Int16Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "Uint32Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "Int32Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "Float32Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "Float64Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "BigInt64Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "BigUint64Array": lambda x, d, c, opts: internal.as_numpy_array(x),
-    "Uint8ClampedArray": lambda x, d, c, opts: internal.as_numpy_array(x),
+    "Uint8Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "Int8Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "Uint16Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "Int16Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "Uint32Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "Int32Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "Float32Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "Float64Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "BigInt64Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "BigUint64Array": lambda x, d, c, opts: internal.as_buffer(x),
+    "Uint8ClampedArray": lambda x, d, c, opts: internal.as_buffer(x),
 }
 basic_to_py_converters = {**basic_to_py_converters, **error_to_py_converters}
 
@@ -198,7 +198,7 @@ def to_py(js_val, depth=0, cache=None, converter_options=None):
         js_val, depth, cache, converter_options
     )
 
-
+ 
 def error_to_py(err):
     default_converter = functools.partial(error_converter, error_cls=JsGenericError)
     converter_options = JsToPyConverterOptions(

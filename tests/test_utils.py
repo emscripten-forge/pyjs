@@ -1,6 +1,10 @@
 import pyjs
 import json
-import numpy
+try:
+    import numpy
+    has_numpy = True
+except ImportError:
+    has_numpy = False
 
 
 js_assert_eq = pyjs.js.Function(
@@ -37,13 +41,20 @@ def ensure_js(val):
     else:
         return val
 
+if has_numpy:
 
-def array_eq(x, should):
-    return x.dtype == should.dtype and numpy.array_equal(x, should)
+    def converting_array_eq(x, should):
+        return array_eq(numpy.array(x), should)
+
+    def converting_array_feq(x, should):
+        return array_feq(numpy.array(x), should)
+
+    def array_eq(x, should):
+        return x.dtype == should.dtype and numpy.array_equal(x, should)
 
 
-def array_feq(x, should):
-    return x.dtype == should.dtype and numpy.allclose(x, should)
+    def array_feq(x, should):
+        return x.dtype == should.dtype and numpy.allclose(x, should)
 
 
 def nested_eq(x, should):

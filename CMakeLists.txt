@@ -50,6 +50,9 @@ set(PREJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/init.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/cleanup.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/make_proxy.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/dynload/dynload.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/fetch.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/load_pkg.js
 )
 set(POSTJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/post_js/fixes.js
@@ -93,6 +96,8 @@ set(PYJS_HEADERS
     include/pyjs/export_js_proxy.hpp
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
+    include/pyjs/untar.hpp
+    include/pyjs/inflate.hpp
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js
 )
@@ -123,6 +128,8 @@ add_library(pyjs STATIC
     src/convert.cpp
     src/export_pyjs_module.cpp
     src/js_timestamp.cpp
+    src/inflate.cpp
+    src/untar.cpp
     ${PYCPPSOURCES}
 )
 

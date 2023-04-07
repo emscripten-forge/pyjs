@@ -33,7 +33,7 @@ jobs:
         with:
           environment-file: environment-dev.yml
           environment-name: pyjs-wasm
-          micromamba-version: "0.22.0"
+          micromamba-version: "1.4.1"
 
       - name: Install Playwright
         run: |
@@ -43,12 +43,6 @@ jobs:
         run: |
           micromamba activate pyjs-wasm
           emsdk install ${{matrix.emsdk_ver}}
-
-      - name: setup pyjs-code-runner
-        run: |
-          micromamba activate pyjs-wasm
-          emsdk install ${{matrix.emsdk_ver}}
-          pip install git+https://github.com/emscripten-forge/pyjs-code-runner.git@1.0.0
 
       - name: Build pyjs
         run: |
@@ -92,11 +86,11 @@ jobs:
 
           popd
 
+
+
       - name: Test in browser-main
         run: |
           micromamba activate pyjs-wasm
-
-
           pyjs_code_runner run script \
               browser-main \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
@@ -122,6 +116,34 @@ jobs:
               --headless \
               --async-main
 
+      - name: setup minimal env without numpy
+        run: |
+          micromamba activate pyjs-wasm
+          micromamba create -n pyjs-build-wasm \
+            --platform=emscripten-32 \
+            -c https://repo.mamba.pm/emscripten-forge \
+            -c https://repo.mamba.pm/conda-forge \
+            --yes \
+            python pytest
+
+      - name: Test in browser-main-no-numpy
+        run: |
+          micromamba activate pyjs-wasm
+
+
+          pyjs_code_runner run script \
+              browser-main \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
+              --mount         $(pwd)/tests:tests \
+              --script        main.py \
+              --work-dir      /tests \
+              --pyjs-dir      $(pwd)/build \
+              --headless \
+              --async-main \
+              --no-cache
+
+
+
 
   test-node:
 
@@ -143,20 +165,12 @@ jobs:
         with:
           environment-file: environment-dev.yml
           environment-name: pyjs-wasm
-          micromamba-version: "0.22.0"
-
-
+          micromamba-version: "1.4.1"
 
       - name: Setup emsdk
         run: |
           micromamba activate pyjs-wasm
           emsdk install ${{matrix.emsdk_ver}}
-
-      - name: setup pyjs-code-runner
-        run: |
-          micromamba activate pyjs-wasm
-          emsdk install ${{matrix.emsdk_ver}}
-          pip install git+https://github.com/emscripten-forge/pyjs-code-runner.git@1.0.0
 
       - name: Build node-tests
         run: |

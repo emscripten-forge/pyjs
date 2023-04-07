@@ -1,5 +1,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+
 #include <emscripten/val.h>
 #include <string>
 #include <sstream>
@@ -115,51 +116,79 @@ namespace pyjs
     };
 
 
-    py::object typed_array_to_numpy_array(em::val js_array)
+    TypedArrayBuffer::TypedArrayBuffer(
+       em::val js_array, const std::string & format_descriptor
+    )
+    :   m_size(js_array["length"].as<unsigned>()),
+        m_bytes_per_element(js_array["BYTES_PER_ELEMENT"].as<unsigned>()),
+        m_format_descriptor(format_descriptor),
+        m_data( new uint8_t[m_size * m_bytes_per_element] )
+    {   
+        em::val js_array_buffer = js_array["buffer"].as<em::val>();
+
+        const unsigned byte_offset = js_array["byteOffset"].as<em::val>().as<unsigned>();
+
+        // this is a uint8 view of the array
+        em::val js_uint8array = em::val::global("Uint8Array")
+                                    .new_(js_array_buffer, byte_offset, m_size * m_bytes_per_element);
+                                    
+        em::val  wasm_heap_allocated =  js_uint8array["constructor"].new_(
+            em::val::module_property("HEAPU8")["buffer"], 
+            reinterpret_cast<uintptr_t>(m_data),
+            m_size * m_bytes_per_element
+        );
+        wasm_heap_allocated.call<void>("set", js_uint8array);
+    }
+
+    TypedArrayBuffer::~TypedArrayBuffer(){
+        delete[] m_data;
+    }
+
+    TypedArrayBuffer* typed_array_to_buffer(em::val js_array)
     {
         if (instanceof (js_array, "Int8Array"))
         {
-            return typed_array_to_numpy_array_impl<int8_t>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<int8_t>::format());
         }
         else if (instanceof (js_array, "Uint8Array"))
         {
-            return typed_array_to_numpy_array_impl<uint8_t>(js_array);
+           return new TypedArrayBuffer(js_array, py::format_descriptor<uint8_t>::format());
         }
         else if (instanceof (js_array, "Uint8ClampedArray"))
         {
-            return typed_array_to_numpy_array_impl<uint8_t>(js_array);
+           return new TypedArrayBuffer(js_array, py::format_descriptor<uint8_t>::format());
         }
         else if (instanceof (js_array, "Int16Array"))
         {
-            return typed_array_to_numpy_array_impl<int16_t>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<int16_t>::format());
         }
         else if (instanceof (js_array, "Uint16Array"))
         {
-            return typed_array_to_numpy_array_impl<uint16_t>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<uint16_t>::format());
         }
         else if (instanceof (js_array, "Int32Array"))
         {
-            return typed_array_to_numpy_array_impl<int32_t>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<int32_t>::format());
         }
         else if (instanceof (js_array, "Uint32Array"))
         {
-            return typed_array_to_numpy_array_impl<uint32_t>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<uint32_t>::format());
         }
         else if (instanceof (js_array, "Float32Array"))
         {
-            return typed_array_to_numpy_array_impl<float>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<float>::format());
         }
         else if (instanceof (js_array, "Float64Array"))
         {
-            return typed_array_to_numpy_array_impl<double>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<double>::format());
         }
         else if (instanceof (js_array, "BigInt64Array"))
         {
-            return typed_array_to_numpy_array_impl<int64_t>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<int64_t>::format());
         }
         else if (instanceof (js_array, "BigUint64Array"))
         {
-            return typed_array_to_numpy_array_impl<uint64_t>(js_array);
+            return new TypedArrayBuffer(js_array, py::format_descriptor<uint64_t>::format());
         }
         else
         {

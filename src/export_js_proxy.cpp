@@ -209,9 +209,10 @@ namespace pyjs
         m_internal.def("as_float", [](em::val* v) -> float { return v->as<float>(); });
         m_internal.def("as_boolean", [](em::val* v) -> bool { return v->as<bool>(); });
         m_internal.def("as_string", [](em::val* v) -> std::wstring { return v->as<std::wstring>(); });
-
-        m_internal.def("as_numpy_array",
-                       [](em::val* v) -> py::object { return typed_array_to_numpy_array(*v); });
+        
+        // this function returns a new value so the return value policy needs to manage a new object
+        m_internal.def("as_buffer",
+                       [](em::val* v) -> TypedArrayBuffer* { return typed_array_to_buffer(*v); }, py::return_value_policy::take_ownership);
 
         m_internal.def("as_py_object",
                        [](em::val* v) -> py::object { return v->as<py::object>(); });
@@ -277,6 +278,15 @@ namespace pyjs
 
         m_internal.def("to_string",
                        [](em::val* v) -> std::wstring { return v->call<std::wstring>("toString"); });
+
+
+        py::class_<TypedArrayBuffer>(m, "TypedArrayBuffer", py::buffer_protocol())
+            .def_buffer([](TypedArrayBuffer& self) -> py::buffer_info
+            {
+                return py::buffer_info(self.m_data, self.m_bytes_per_element, self.m_format_descriptor,
+                                        1, {self.m_size}, {self.m_bytes_per_element});
+            });
+            
         // this class is heavy extended on the python side
         // py::class_<em::val>(m, "JsValue",  py::dynamic_attr())
         py::class_<em::val>(m, "JsValue")  //,  py::dynamic_attr())

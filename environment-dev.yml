@@ -12,3 +12,4 @@ dependencies:
   - microsoft::playwright
   - ninja
   - nodejs >= 18.7.0
+  - pyjs_code_runner == 1.1.0

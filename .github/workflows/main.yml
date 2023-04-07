@@ -92,6 +92,26 @@ jobs:
 
           popd
 
+
+      - name: setup minimal env without numpy
+        run: |
+          micromamba activate pyjs-wasm
+
+          python -m pip install git+https://github.com/emscripten-forge/empack@main   --no-deps --ignore-installed
+
+
+          emsdk activate ${{matrix.emsdk_ver}}
+          source $CONDA_EMSDK_DIR/emsdk_env.sh
+
+          micromamba create -n pyjs-minimal \
+            --platform=emscripten-32 \
+            -c https://repo.mamba.pm/emscripten-forge \
+            -c https://repo.mamba.pm/conda-forge \
+            --yes \
+            python pytest
+
+
+
       - name: Test in browser-main
         run: |
           micromamba activate pyjs-wasm
@@ -121,6 +141,39 @@ jobs:
               --pyjs-dir      $(pwd)/build \
               --headless \
               --async-main
+
+
+      - name: Test in browser-main-no-numpy
+        run: |
+          micromamba activate pyjs-wasm
+
+
+          pyjs_code_runner run script \
+              browser-main \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-minimal  \
+              --mount         $(pwd)/tests:tests \
+              --script        main.py \
+              --work-dir      /tests \
+              --pyjs-dir      $(pwd)/build \
+              --headless \
+              --async-main
+
+      - name: Test in browser-worker-no-numpy
+        run: |
+          micromamba activate pyjs-wasm
+
+
+          pyjs_code_runner run script \
+              browser-worker \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-minimal  \
+              --mount         $(pwd)/tests:tests \
+              --script        main.py \
+              --work-dir      /tests \
+              --pyjs-dir      $(pwd)/build \
+              --headless \
+              --async-main
+
+
 
 
   test-node:

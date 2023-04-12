@@ -1,4 +1,9 @@
 
+
+
+
+
+
 Module["_parallel_fetch_array_buffer"] = async function (urls){
     let promises = urls.map(url => fetch(url).then(response => response.arrayBuffer()));
     return await Promise.all(promises);

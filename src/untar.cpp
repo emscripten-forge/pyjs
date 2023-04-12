@@ -119,7 +119,7 @@ namespace pyjs
         char *pathname_in, int mode,  const char * root_dir
     )
     {
-
+        //std::cout << "Creating file " << pathname_in << " with mode " << mode << std::endl;
         const auto longlink_path = std::filesystem::path("@LongLink");
         
         std::string pathname(pathname_in);
@@ -146,7 +146,7 @@ namespace pyjs
             // ... and delete the @LongLink file
             std::filesystem::remove(longlink_path);
         }
-
+        //std::cout << "Creating file " << pathname << std::endl;
         FILE *f;
         f = fopen(pathname.c_str(), "wb+");
         if (f == NULL) {
@@ -211,16 +211,16 @@ namespace pyjs
             filesize = parseoct(buff + 124, 12);
             switch (buff[156]) {
             case '1':
-                //printf(" Ignoring hardlink %s\n", buff);
+                printf(" Ignoring hardlink %s\n", buff);
                 break;
             case '2':
-                //printf(" Ignoring symlink %s\n", buff);
+                printf(" Ignoring symlink %s\n", buff);
                 break;
             case '3':
-                //printf(" Ignoring character device %s\n", buff);
+                printf(" Ignoring character device %s\n", buff);
                 break;
             case '4':
-                //printf(" Ignoring block device %s\n", buff);
+                printf(" Ignoring block device %s\n", buff);
                 break;
             case '5':
                 //printf(" Extracting dir %s\n", buff);
@@ -228,11 +228,15 @@ namespace pyjs
                 filesize = 0;
                 break;
             case '6':
-                //printf(" Ignoring FIFO %s\n", buff);
+                printf(" Ignoring FIFO %s\n", buff);
                 break;
             default:
 
-                //std::cout<<"considering file: "<<buff<<std::endl;
+                std::filesystem::path so_path = root_dir / std::filesystem::path(buff);
+                
+
+
+                //std::cout<<"considering file: "<<so_path.string()<<std::endl;
                 // check if fname ends with .so
                 if(is_so_file(buff)){
                     // append to emscripten::val::array

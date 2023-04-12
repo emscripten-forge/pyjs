@@ -74,6 +74,10 @@ namespace pyjs
         }
     }
 
+    void set_env(const std::string & key, const std::string & value)
+    {
+        setenv(key.c_str(), value.c_str(), 1);
+    }
 
 
     void export_js_module()
@@ -89,6 +93,7 @@ namespace pyjs
 
 
         em::function("_untar", &untar);
+        em::function("setenv", &set_env);
 
         // py-object (proxy)
         export_py_object();

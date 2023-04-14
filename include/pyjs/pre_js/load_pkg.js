@@ -64,7 +64,7 @@ async function bootstrap_python(prefix, package_tarballs_root_url, python_packag
 
 
     const python_tarball_path = `/package_tarballs/${python_package.filename}`;
-    console.log(`writing python tarball to ${python_tarball_path} from ${byte_array.length} bytes`)
+    console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
     Module.FS.writeFile(python_tarball_path, byte_array);
     Module._untar(python_tarball_path, prefix);
     await Module.init(prefix);
@@ -102,11 +102,11 @@ async function fetchAndUntar
         package
     ) {
     let package_url = `${package_tarballs_root_url}/${package.filename}`
-    console.log(`fetching package from ${package_url}`)
+    console.log(`fetching pkg ${package.name} from ${package_url}`)
     let byte_array = await fetchByteArray(package_url)
     const tarball_path = `/package_tarballs/${package.filename}`;
-    //console.log(`writing tarball to ${tarball_path} from ${byte_array.length} bytes`)
     Module.FS.writeFile(tarball_path, byte_array);
+    console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
     await python_is_ready_promise;
     return untar_from_python(tarball_path);
 }

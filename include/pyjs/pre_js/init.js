@@ -2,7 +2,7 @@ Module._is_initialized = false
 
 
 
-Module['init'] = async function(prefix = "/") {
+Module['init'] = async function(prefix) {
 
     // list of python objects we need to delete when cleaning up
     let py_objects = []

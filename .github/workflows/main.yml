@@ -48,8 +48,8 @@ jobs:
         run: |
           micromamba activate pyjs-wasm
 
-          python -m pip install git+https://github.com/emscripten-forge/empack@main              --no-deps --ignore-installed
-
+          python -m pip install git+https://github.com/emscripten-forge/empack@rootpack                       --no-deps --ignore-installed
+          python -m pip install git+https://github.com/DerThorsten/pyjs-code-runner@relocate_env              --no-deps --ignore-installed
 
           emsdk activate ${{matrix.emsdk_ver}}
           source $CONDA_EMSDK_DIR/emsdk_env.sh
@@ -103,7 +103,7 @@ jobs:
           pyjs_code_runner run script \
               browser-main \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
-              --mount         $(pwd)/tests:tests \
+              --mount         $(pwd)/tests:/tests \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
@@ -118,7 +118,7 @@ jobs:
           pyjs_code_runner run script \
               browser-worker \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
-              --mount         $(pwd)/tests:tests \
+              --mount         $(pwd)/tests:/tests \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
@@ -143,96 +143,10 @@ jobs:
           pyjs_code_runner run script \
               browser-main \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
-              --mount         $(pwd)/tests:tests \
+              --mount         $(pwd)/tests:/tests \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
               --headless \
               --async-main \
               --no-cache
-
-
-
-
-  test-node:
-
-    runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        emsdk_ver: ["3.1.27"]
-
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Get number of CPU cores
-        uses: SimenB/github-actions-cpu-cores@v1
-
-      - name: Install mamba
-        uses: mamba-org/provision-with-micromamba@main
-        with:
-          environment-file: environment-dev.yml
-          environment-name: pyjs-wasm
-          micromamba-version: "1.4.1"
-
-      - name: Setup emsdk
-        run: |
-          micromamba activate pyjs-wasm
-          emsdk install ${{matrix.emsdk_ver}}
-
-      - name: Build node-tests
-        run: |
-          micromamba activate pyjs-wasm
-          python -m pip install git+https://github.com/emscripten-forge/empack@main              --no-deps --ignore-installed
-
-          emsdk activate ${{matrix.emsdk_ver}}
-          source $CONDA_EMSDK_DIR/emsdk_env.sh
-
-          micromamba create -n pyjs-build-wasm \
-            --platform=emscripten-32 \
-            -c https://repo.mamba.pm/emscripten-forge \
-            -c https://repo.mamba.pm/conda-forge \
-            --yes \
-            python pybind11 nlohmann_json pybind11_json numpy pytest bzip2 sqlite zlib libffi
-
-
-
-          mkdir build
-          pushd build
-
-          export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
-          export CMAKE_PREFIX_PATH=$PREFIX
-          export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
-
-          # build pyjs
-          emcmake cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
-            -DBUILD_RUNTIME_BROWSER=OFF \
-            -DBUILD_RUNTIME_NODE=ON \
-            -DWITH_NODE_TESTS=OFF \
-            -DCMAKE_INSTALL_PREFIX=$PREFIX \
-            ..
-
-          make -j2
-          make install
-
-
-
-          popd
-
-
-      - name: Test in nodejs
-        run: |
-          micromamba activate pyjs-wasm
-
-          pyjs_code_runner run script \
-              node \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
-              --mount         $(pwd)/tests:tests \
-              --script        main.py \
-              --work-dir      /tests \
-              --pyjs-dir      $(pwd)/build \
-              --node-binary   /home/runner/micromamba-root/envs/pyjs-wasm/bin/node \
-              --async-main

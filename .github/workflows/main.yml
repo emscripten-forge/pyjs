@@ -86,6 +86,15 @@ jobs:
 
           popd
 
+      - name: setup env with numpy
+        run: |
+          micromamba activate pyjs-wasm
+          micromamba create -n pyjs-build-wasm \
+            --platform=emscripten-32 \
+            -c https://repo.mamba.pm/emscripten-forge \
+            -c https://repo.mamba.pm/conda-forge \
+            --yes \
+            python pytest numpy
 
 
       - name: Test in browser-main

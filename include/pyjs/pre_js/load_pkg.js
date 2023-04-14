@@ -16,7 +16,8 @@ Module["mkdirs"] = function (dirname) {
    }
 }
 
-function untar(tarball_path){
+
+function untar_from_python(tarball_path, target_dir=""){
     let shared_libs = Module.exec_eval(`
 import tarfile
 import json
@@ -27,19 +28,22 @@ import shutil
 import os
 import sys
 
-
+target_dir = "${target_dir}"
+if target_dir == "":
+    target_dir = sys.prefix
 try:
     with tarfile.open("${tarball_path}") as tar:
         files = tar.getmembers()
         shared_libs = []
         for file in files:
             if file.name.endswith(".so"):
-                if sys.prefix == "/":
+            
+                if target_dir == "/":
                     shared_libs.append(f"/{file.name}")
                 else:
-                    shared_libs.append(f"{sys.prefix}/{file.name}")
+                    shared_libs.append(f"{target_dir}/{file.name}")
 
-        tar.extractall(sys.prefix)
+        tar.extractall(target_dir)
         s = json.dumps(shared_libs)
 except Exception as e:
     print("ERROR",e)
@@ -49,42 +53,22 @@ s
     return JSON.parse(shared_libs)
 }
 
-
-async function fetchByteArray(url){
-    let response = await fetch(url)
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    let arrayBuffer = await response.arrayBuffer()
-    let byte_array = new Uint8Array(arrayBuffer)
-    return byte_array
-}
-
-async function fetchJson(url){
-    let response = await fetch(url)
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    let json = await response.json()
-    return json
-}
+Module["_untar_from_python"] = untar_from_python
 
 async function bootstrap_python(prefix, package_tarballs_root_url, python_package){
     // fetch python package
     let python_package_url = `${package_tarballs_root_url}/${python_package.filename}`
+
+    console.log(`fetching python package from ${python_package_url}`)
     let byte_array = await fetchByteArray(python_package_url)
 
-    if(!Module.FS.isDir(`/package_tarballs`)){
-        Module.FS.mkdir(`/package_tarballs`);   
-    }
+   
     const python_tarball_path = `/package_tarballs/${python_package.filename}`;
+    console.log(`writing python tarball to ${python_tarball_path} from ${byte_array.length} bytes`)
     Module.FS.writeFile(python_tarball_path, byte_array);
     Module._untar(python_tarball_path, prefix);
-
     await Module.init(prefix);
 }
-
-
 
 
 function splitPackages(packages){
@@ -104,6 +88,28 @@ function splitPackages(packages){
 }
 
 
+function makeDirs(prefix){
+    if(!Module.FS.isDir(`/package_tarballs`)){
+        Module.FS.mkdir(`/package_tarballs`);   
+    }
+}
+
+
+async function fetchAndUntar
+(   
+    package_tarballs_root_url,
+    python_is_ready_promise,
+    package
+){
+    let package_url = `${package_tarballs_root_url}/${package.filename}`
+    console.log(`fetching package from ${package_url}`)
+    let byte_array = await fetchByteArray(package_url)
+    const tarball_path = `/package_tarballs/${package.filename}`;
+    //console.log(`writing tarball to ${tarball_path} from ${byte_array.length} bytes`)
+    Module.FS.writeFile(tarball_path, byte_array);
+    await python_is_ready_promise;
+    return untar_from_python(tarball_path);
+}
 
 
 Module["bootstrap_from_empack_packed_environment"] = async function
@@ -112,37 +118,26 @@ Module["bootstrap_from_empack_packed_environment"] = async function
     verbose=false
 ) {
     
+
+
+    
     // fetch json with list of all packages
     let empack_env_meta = await fetchJson(packages_json_url);
     let all_packages = empack_env_meta.packages;
     let prefix = empack_env_meta.prefix;
+    makeDirs(prefix);
+
     // enusre there is python and split it from the rest
-    
     let splitted= splitPackages(all_packages);
     let packages = splitted.packages;
     let python_package = splitted.python_package;
 
     // fetch init python itself
-    await bootstrap_python(prefix, package_tarballs_root_url, python_package);
+    let python_is_ready_promise =  bootstrap_python(prefix, package_tarballs_root_url, python_package);
 
     // create array with size 
-    let shared_libs = new Array(packages.length)
-    
-    // download all
-    let urls = packages.map(item => `${package_tarballs_root_url}/${item.filename}`)
-    let byte_arrays = await Promise.all(urls.map(url =>  fetchByteArray(url)))
+    let shared_libs = await Promise.all(packages.map(package => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, package)))
 
-    // write tarfiles to FS
-    for(let i=0;i<packages.length;i++){
-        let tarball_path = `/package_tarballs/${packages[i].filename}`;
-        Module.FS.writeFile(tarball_path, byte_arrays[i]);
-    }
-
-    // untar all
-    for(let i=0;i<packages.length;i++){
-        let tarball_path = `/package_tarballs/${packages[i].filename}`;
-        shared_libs[i] = untar(tarball_path)
-    }
     // instantiate all packages
     for(let i=0;i<packages.length;i++){ 
 

@@ -1,6 +1,27 @@
 
 
 
+async function fetchByteArray(url){
+    let response = await fetch(url)
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    let arrayBuffer = await response.arrayBuffer()
+    let byte_array = new Uint8Array(arrayBuffer)
+    return byte_array
+}
+
+Module["_fetch_byte_array"] = fetchByteArray;
+
+
+async function fetchJson(url){
+    let response = await fetch(url)
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    let json = await response.json()
+    return json
+}
 
 
 
@@ -101,58 +122,4 @@ Module["_parallel_fetch_arraybuffers_with_progress_bar"] = async function (urls,
         return fetch_arraybuffer_with_progress_bar(url,index, report_total_length,report_progress, report_finished)
     })
     return await Promise.all(futures);
-}
-
-
-Module["fetch_and_untar"] = async function(
-    urls,
-    filenames,
-    extract_to,
-    verbose=false,
-){
-    let log = function(...args){
-        if(verbose){
-            console.log(...args)
-        }
-    }
-
-    let progress_callback = undefined
-    if (verbose){
-        progress_callback = function(n_bytes, total_bytes, ...args){
-            console.log(`fetching ${n_bytes} of ${total_bytes} bytes`)
-        }
-    }
-
-    let shared_libs = new Array(urls.length)
-
-    let done_callback = async function(i, byte_array){
-        log("finished download",filenames[i])
-
-        // get dirname from filename
-        let dirname = filenames[i].split("/").slice(0,-1).join("/")
-        Module.mkdirs(dirname);
-
-        // get filename without directory
-        let filename = filenames[i].split("/").slice(-1)[0]
-        
-
-        log("writing",filenames[i])
-        Module.FS.writeFile(filenames[i], byte_array);
-
-        log("untar", filenames[i])
-        shared_libs[i] = Module._untar(filenames[i], extract_to[i]);
-    }
-
-    await Module._parallel_fetch_arraybuffers_with_progress_bar(urls,done_callback, progress_callback)
-
-
-    for(let i=0;i<urls.length;i++){
-        if(shared_libs[i].length > 0){
-            await Module._loadDynlibsFromPackage(
-                filenames[i],
-                false,
-                shared_libs[i]
-            )
-        }  
-    }
 }

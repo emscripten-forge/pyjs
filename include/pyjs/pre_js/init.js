@@ -1,6 +1,8 @@
 Module._is_initialized = false
 
-Module['init'] = async function() {
+
+
+Module['init'] = async function(prefix) {
 
     // list of python objects we need to delete when cleaning up
     let py_objects = []
@@ -9,11 +11,24 @@ Module['init'] = async function() {
     // return empty promise when already initialized
     if(Module["_is_initialized"])
     {
-        console.log("INIT ALREADY DONE")
-
         return Promise.resolve();
     }
     var p = await Module['_wait_run_dependencies']();
+    
+    if(prefix == "/"){
+        Module.setenv("PYTHONHOME", `/`);
+        Module.setenv("PYTHONPATH", `/lib/python3.10/site-packages:/usr/lib/python3.10`);
+        
+        var side_path = `/lib/python${python_version.major}.${python_version.minor}/site-packages`;
+    }
+    else{
+        Module.setenv("PYTHONHOME", prefix);
+        Module.setenv("PYTHONPATH", `${prefix}/lib/python3.10/site-packages:/usr/lib/python3.10`);
+        var side_path = `${prefix}/lib/python${python_version.major}.${python_version.minor}/site-packages`;
+    }
+    if(!Module.FS.isDir(side_path)){
+        Module.FS.mkdir(side_path);
+    }
 
     Module["_interpreter"] = new Module["_Interpreter"]()
     var default_scope = Module["main_scope"]()
@@ -113,6 +128,8 @@ Module['init'] = async function() {
         }
     };
 
+
+
     // make the python pyjs module easy available
     Module.exec("import pyjs");
     Module.py_pyjs = Module.eval("pyjs")
@@ -158,6 +175,17 @@ _add_resolve_done_callback
     }
 
     Module._is_initialized = true
+
+//     Module.exec(`
+// import sys
+// import sysconfig
+// side_path = "${side_path}"
+// from pathlib import Path
+// Path(side_path).mkdir(parents=True, exist_ok=True)
+// if True and side_path not in sys.path:
+//     sys.path.append(side_path)
+// `)
+
     return p
 
 

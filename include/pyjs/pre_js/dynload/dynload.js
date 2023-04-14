@@ -2,17 +2,13 @@ const python_version = {
     major: 3,
     minor: 10
 };
-const API = {
-    python_version: python_version,
-    defaultLdLibraryPath: ["/lib", "/usr/lib", "/usr/local/lib"],
-    sitepackages: `/lib/python${python_version.major}.${python_version.minor}/site-packages`,
-}
 
-const SHARED_LIB_LOCATIONS = new Set()
-// for each element in defaultLdLibraryPath
-for (const path of API.defaultLdLibraryPath) {
-    SHARED_LIB_LOCATIONS.add(path);
-}
+
+
+
+
+
+
 
 const memoize = (fn) => {
     let cache = {};
@@ -42,10 +38,15 @@ function createLock() {
     return acquireLock;
 }
 
-function isInSharedLibraryPath(libPath){
+function isInSharedLibraryPath(prefix, libPath){
     if (libPath.startsWith("/")){
         const dirname = libPath.substring(0, libPath.lastIndexOf("/"));
-        return SHARED_LIB_LOCATIONS.has(dirname);
+        if(prefix == "/"){
+            return (dirname == `$/lib`);
+        }
+        else{
+          return (dirname == `${prefix}/lib`);
+        }
     }
     else{
         return false;
@@ -54,14 +55,25 @@ function isInSharedLibraryPath(libPath){
 
 
 async function loadDynlibsFromPackage(
+    prefix,
     pkg_file_name,
     pkg_is_shared_library,
     dynlibPaths,
   ) {
 
+    // for(const path of dynlibPaths){
+    //     console.log(path);
+    // }
+
     // assume that shared libraries of a package are located in <package-name>.libs directory,
     // following the convention of auditwheel.
-    const auditWheelLibDir = `${API.sitepackages}/${
+    if(prefix == "/"){
+        var sitepackages = `/lib/python${python_version.major}.${python_version.minor}/site-packages`
+    }
+    else{
+        var sitepackages = `${prefix}/lib/python${python_version.major}.${python_version.minor}/site-packages`
+    }
+    const auditWheelLibDir = `${sitepackages}/${
         pkg_file_name.split("-")[0]
     }.libs`;
   
@@ -70,7 +82,7 @@ async function loadDynlibsFromPackage(
   
     const forceGlobal = !!pkg_is_shared_library;
     
-    //console.log("forceGlobal", forceGlobal,"pkg_is_shared_library", pkg_is_shared_library);
+
 
     let dynlibs = [];
   
@@ -92,7 +104,7 @@ async function loadDynlibsFromPackage(
         //console.log(`isInSharedLibraryPath ${path} ${isInSharedLibraryPath(path)}`);
         return {
           path: path,
-          global: global || !! pkg_is_shared_library || isInSharedLibraryPath(path) || path.startsWith(auditWheelLibDir),
+          global: global || !! pkg_is_shared_library || isInSharedLibraryPath(prefix, path) || path.startsWith(auditWheelLibDir),
         };
       });
     }
@@ -101,11 +113,12 @@ async function loadDynlibsFromPackage(
 
     for (const { path, global } of dynlibs) {
       //console.log(`loading dynlib  ${path} global ${global}`);
-      await loadDynlib(path, global, [auditWheelLibDir], readFileMemoized);
+      await loadDynlib(prefix, path, global, [auditWheelLibDir], readFileMemoized);
     }
   }
 
 function createDynlibFS(
+    prefix,
     lib,
     searchDirs,
     readFileFunc
@@ -113,7 +126,14 @@ function createDynlibFS(
     const dirname = lib.substring(0, lib.lastIndexOf("/"));
 
     let _searchDirs = searchDirs || [];
-    _searchDirs = _searchDirs.concat([dirname], API.defaultLdLibraryPath,);
+
+    if(prefix == "/"){
+        _searchDirs = _searchDirs.concat([dirname], [`/lib`]);
+    }
+    else{
+        _searchDirs = _searchDirs.concat([dirname], [`${prefix}/lib`]);
+    }
+
 
     const resolvePath = (path) => {
         //console.log("resolvePath", path);
@@ -126,6 +146,7 @@ function createDynlibFS(
             const fullPath = Module.PATH.join2(dir, path);
             //console.log("SERARCHING", fullPath);
             if (Module.FS.findObject(fullPath) !== null) {
+                //console.log("FOUND", fullPath);   
                 return fullPath;
             }
         }
@@ -184,18 +205,17 @@ function calculateGlobalLibs(
 // it.
 const acquireDynlibLock = createLock();
 
-async function loadDynlib(lib, global, searchDirs, readFileFunc) {
+async function loadDynlib(prefix, lib, global, searchDirs, readFileFunc) {
     if (searchDirs === undefined) {
         searchDirs = [];
     }
     const releaseDynlibLock = await acquireDynlibLock();
 
     try {
-        const fs = createDynlibFS(lib, searchDirs, readFileFunc);
+        const fs = createDynlibFS(prefix, lib, searchDirs, readFileFunc);
 
         const libName = Module.PATH.basename(lib);
-        //console.log("load lib", lib);
-        //console.log(`libName ${libName}`)
+        //console.log(`load ${lib}      (${libName}) `)
 
         await Module.loadDynamicLibrary(libName, {
             loadAsync: true,

@@ -99,12 +99,12 @@ async function fetchAndUntar
     (
         package_tarballs_root_url,
         python_is_ready_promise,
-        package
+        pkg
     ) {
-    let package_url = `${package_tarballs_root_url}/${package.filename}`
-    console.log(`fetching pkg ${package.name} from ${package_url}`)
+    let package_url = `${package_tarballs_root_url}/${pkg.filename}`
+    console.log(`fetching pkg ${pkg.name} from ${package_url}`)
     let byte_array = await fetchByteArray(package_url)
-    const tarball_path = `/package_tarballs/${package.filename}`;
+    const tarball_path = `/package_tarballs/${pkg.filename}`;
     Module.FS.writeFile(tarball_path, byte_array);
     console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
     await python_is_ready_promise;
@@ -131,7 +131,7 @@ Module["bootstrap_from_empack_packed_environment"] = async function
     let python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package);
 
     // create array with size 
-    let shared_libs = await Promise.all(packages.map(package => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, package)))
+    let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg)))
 
     // instantiate all packages
     for (let i = 0; i < packages.length; i++) {

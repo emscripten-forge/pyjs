@@ -580,6 +580,6 @@ def test_imports_sys():
 def test_webbrowser():
     from webbrowser import open, open_new, open_new_tab
 
-    open()
-    open_new()
-    open_new_tab()
+    open("google.com")
+    open_new("google.com")
+    open_new_tab("google.com")

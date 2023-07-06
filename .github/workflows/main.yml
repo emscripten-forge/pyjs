@@ -48,9 +48,6 @@ jobs:
         run: |
           micromamba activate pyjs-wasm
 
-          python -m pip install git+https://github.com/emscripten-forge/empack@rootpack                       --no-deps --ignore-installed
-          python -m pip install git+https://github.com/DerThorsten/pyjs-code-runner@relocate_env              --no-deps --ignore-installed
-
           emsdk activate ${{matrix.emsdk_ver}}
           source $CONDA_EMSDK_DIR/emsdk_env.sh
 

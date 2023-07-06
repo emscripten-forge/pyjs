@@ -8,8 +8,8 @@ dependencies:
   - yarn
   - click
   - emsdk >=3.1.11
-  - empack >=1.1.0
+  - empack >=3.0.1
   - microsoft::playwright
   - ninja
   - nodejs >= 18.7.0
-  - pyjs_code_runner == 1.1.0
+  - pyjs_code_runner >= 2.0.1

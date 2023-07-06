@@ -176,15 +176,22 @@ _add_resolve_done_callback
 
     Module._is_initialized = true
 
-//     Module.exec(`
-// import sys
-// import sysconfig
-// side_path = "${side_path}"
-// from pathlib import Path
-// Path(side_path).mkdir(parents=True, exist_ok=True)
-// if True and side_path not in sys.path:
-//     sys.path.append(side_path)
-// `)
+    // make sure time.sleep is working
+    Module.exec(`
+import time
+def _mock_time_sleep():
+    def sleep(seconds):
+        """Delay execution for a given number of seconds.  The argument may be
+        a floating point number for subsecond precision.
+        """
+        start = now = time.time()
+        while now - start < seconds:
+            now = time.time()
+
+    time.sleep = sleep
+_mock_time_sleep()
+del _mock_time_sleep
+`)
 
     return p
 

@@ -568,3 +568,18 @@ def test_sleep():
     # probably we can also do more precise tests
     # but lets keept it simple for now
     assert end - start < 2.1
+
+
+def test_imports_sys():
+    import termios
+    import fcntl
+    import pexpect
+    import resource
+
+
+def test_webbrowser():
+    from webbrowser import open, open_new, open_new_tab
+
+    open()
+    open_new()
+    open_new_tab()

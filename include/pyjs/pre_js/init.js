@@ -14,11 +14,11 @@ Module['init'] = async function(prefix) {
         return Promise.resolve();
     }
     var p = await Module['_wait_run_dependencies']();
-    
+
     if(prefix == "/"){
         Module.setenv("PYTHONHOME", `/`);
         Module.setenv("PYTHONPATH", `/lib/python3.10/site-packages:/usr/lib/python3.10`);
-        
+
         var side_path = `/lib/python${python_version.major}.${python_version.minor}/site-packages`;
     }
     else{
@@ -133,7 +133,7 @@ Module['init'] = async function(prefix) {
     // make the python pyjs module easy available
     Module.exec("import pyjs");
     Module.py_pyjs = Module.eval("pyjs")
-    py_objects.push(Module.py_pyjs);   
+    py_objects.push(Module.py_pyjs);
 
 
     // execute a script and return the value of the last expression
@@ -174,11 +174,18 @@ _add_resolve_done_callback
         return Module._py_to_js.py_call(obj)
     }
 
-    Module._is_initialized = true
+    Module._is_initialized = true;
 
-    // make sure time.sleep is working
+    // Mock some system libraries
     Module.exec(`
+import sys
+import types
 import time
+
+sys.modules["fcntl"] = types.ModuleType("fcntl")
+sys.modules["pexpect"] = types.ModuleType("pexpect")
+sys.modules["resource"] = types.ModuleType("resource")
+
 def _mock_time_sleep():
     def sleep(seconds):
         """Delay execution for a given number of seconds.  The argument may be
@@ -191,9 +198,31 @@ def _mock_time_sleep():
     time.sleep = sleep
 _mock_time_sleep()
 del _mock_time_sleep
-`)
 
-    return p
+def _mock_termios():
+    termios_mock = types.ModuleType("termios")
+    termios_mock.TCSAFLUSH = 2
+    sys.modules["termios"] = termios_mock
+_mock_termios()
+del _mock_termios
 
+def _mock_webbrowser():
+    def open(url, new=0, autoraise=True):
+        pass
+    def open_new(url):
+        return open(url, 1)
+    def open_new_tab(url):
+        return open(url, 2)
 
+    webbrowser_mock = types.ModuleType("webbrowser")
+    webbrowser_mock.open = open
+    webbrowser_mock.open_new = open_new
+    webbrowser_mock.open_new_tab = open_new_tab
+
+    sys.modules["webbrowser"] = webbrowser_mock
+_mock_webbrowser()
+del _mock_webbrowser
+`);
+
+    return p;
 }

@@ -39,11 +39,6 @@ jobs:
         run: |
           playwright install
 
-      - name: Setup emsdk
-        run: |
-          micromamba activate pyjs-wasm
-          emsdk install ${{matrix.emsdk_ver}}
-
       - name: Build pyjs
         run: |
           micromamba activate pyjs-wasm

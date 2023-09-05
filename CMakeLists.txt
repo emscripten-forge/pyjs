@@ -8,13 +8,6 @@ option(LINK_LIBEXPAT "Link libexpat" OFF)
 option(LINK_LIBMPDEC "Link libmpdec" OFF)
 
 
-
-message(STATUS "ENV VAR PYTHON_VERSION: $ENV{PYTHON_VERSION}")
-
-SET(PYTHON_VERSION 3.11.3)
-set(PYBIND11_PYTHON_VERSION 3.11.3)
-
-
 ##########################################################
 # embed python files in C++ headers
 ##########################################################

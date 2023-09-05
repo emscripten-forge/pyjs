@@ -4,6 +4,9 @@ project(pyjs VERSION 1.1.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(WITH_NODE_TESTS "With node tests" OFF)
+option(LINK_LIBEXPAT "Link libexpat" OFF)
+option(LINK_LIBMPDEC "Link libmpdec" OFF)
+
 
 
 message(STATUS "ENV VAR PYTHON_VERSION: $ENV{PYTHON_VERSION}")
@@ -177,9 +180,16 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libz.a
     ${CMAKE_INSTALL_PREFIX}/lib/libsqlite3.a
     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libexpat.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libmpdec.a
 )
+
+
+if (LINK_LIBEXPAT)
+    SET(PYTHON_UTIL_LIBS ${PYTHON_UTIL_LIBS} ${CMAKE_INSTALL_PREFIX}/lib/libexpat.a)
+endif()
+
+if (LINK_LIBMPDEC)
+    SET(PYTHON_UTIL_LIBS ${PYTHON_UTIL_LIBS} ${CMAKE_INSTALL_PREFIX}/lib/libmpdec.a)
+endif()
 
 set_target_properties(pyjs
     PROPERTIES

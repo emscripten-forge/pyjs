@@ -232,7 +232,7 @@ target_link_options(pyjs_runtime_browser
     PUBLIC -Wno-unused-command-line-argument
     PUBLIC "SHELL: --bind"
     PUBLIC "SHELL: -s MODULARIZE=1"
-    PUBLIC "SHELL: -s EXPORT_NAME=\"createPyjsModule\""
+    PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
     PUBLIC "SHELL: -s EXPORT_ES6=0"
     PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
     PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"

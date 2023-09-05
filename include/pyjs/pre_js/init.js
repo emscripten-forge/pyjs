@@ -2,7 +2,9 @@ Module._is_initialized = false
 
 
 
-Module['init'] = async function(prefix) {
+Module['init'] = async function(prefix, python_version) {
+
+    let version_str = `${python_version[0]}.${python_version[1]}`;
 
     // list of python objects we need to delete when cleaning up
     let py_objects = []
@@ -17,18 +19,22 @@ Module['init'] = async function(prefix) {
 
     if(prefix == "/"){
         Module.setenv("PYTHONHOME", `/`);
-        Module.setenv("PYTHONPATH", `/lib/python3.10/site-packages:/usr/lib/python3.10`);
+        Module.setenv("PYTHONPATH", `/lib/python${version_str}/site-packages:/usr/lib/python${version_str}`);
 
-        var side_path = `/lib/python${python_version.major}.${python_version.minor}/site-packages`;
+        var side_path = `/lib/python${version_str}/site-packages`;
     }
     else{
         Module.setenv("PYTHONHOME", prefix);
-        Module.setenv("PYTHONPATH", `${prefix}/lib/python3.10/site-packages:/usr/lib/python3.10`);
-        var side_path = `${prefix}/lib/python${python_version.major}.${python_version.minor}/site-packages`;
+        Module.setenv("PYTHONPATH", `${prefix}/lib/python${version_str}/site-packages:/usr/lib/python${version_str}`);
+        var side_path = `${prefix}/lib/python${version_str}/site-packages`;
     }
-    if(!Module.FS.isDir(side_path)){
+
+    console.log('Module  is', Module)
+    console.log('Module FS is', Module.FS)
+
+    //if(!Module.FS.isDir(side_path)){
         Module.FS.mkdir(side_path);
-    }
+   //}
 
     Module["_interpreter"] = new Module["_Interpreter"]()
     var default_scope = Module["main_scope"]()

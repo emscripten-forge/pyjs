@@ -67,65 +67,85 @@ async function bootstrap_python(prefix, package_tarballs_root_url, python_packag
     console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
     Module.FS.writeFile(python_tarball_path, byte_array);
     Module._untar(python_tarball_path, prefix);
-    await Module.init(prefix);
+
+
+    // split version string into major and minor and patch version
+    let version = python_package.version.split(".").map(x => parseInt(x));
+
+
+
+    await Module.init(prefix, version);
 }
 
 
-function splitPackages(packages) {
-    // find package with name "python" and remove it from the list
-    let python_package = undefined
-    for (let i = 0; i < packages.length; i++) {
-        if (packages[i].name == "python") {
-            python_package = packages[i]
-            packages.splice(i, 1)
-            break
-        }
-    }
-    if (python_package == undefined) {
-        throw new Error("no python package found in package.json")
-    }
-    return { python_package, packages }
-}
 
-
-function makeDirs(prefix) {
-    if (!Module.FS.isDir(`/package_tarballs`)) {
-        Module.FS.mkdir(`/package_tarballs`);
-    }
-}
-
-
-async function fetchAndUntar
-    (
-        package_tarballs_root_url,
-        python_is_ready_promise,
-        package
-    ) {
-    let package_url = `${package_tarballs_root_url}/${package.filename}`
-    console.log(`fetching pkg ${package.name} from ${package_url}`)
-    let byte_array = await fetchByteArray(package_url)
-    const tarball_path = `/package_tarballs/${package.filename}`;
-    Module.FS.writeFile(tarball_path, byte_array);
-    console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
-    await python_is_ready_promise;
-    return untar_from_python(tarball_path);
-}
 
 Module["bootstrap_from_empack_packed_environment"] = async function
-    (packages_json_url,
+    (   
+        packages_json_url,
         package_tarballs_root_url,
         verbose = false
     ) {
+
+
+
+
+    function splitPackages(packages) {
+        // find package with name "python" and remove it from the list
+        let python_package = undefined
+        for (let i = 0; i < packages.length; i++) {
+            if (packages[i].name == "python") {
+                python_package = packages[i]
+                packages.splice(i, 1)
+                break
+            }
+        }
+        if (python_package == undefined) {
+            throw new Error("no python package found in package.json")
+        }
+        return { python_package, packages }
+    }
+    
+    
+    function makeDirs() {
+        if (!Module.FS.isDir(`/package_tarballs`)) {
+            Module.FS.mkdir(`/package_tarballs`);
+        }
+    }
+    
+    
+    async function fetchAndUntar
+        (
+            package_tarballs_root_url,
+            python_is_ready_promise,
+            package
+        ) {
+        let package_url = `${package_tarballs_root_url}/${package.filename}`
+        console.log(`fetching pkg ${package.name} from ${package_url}`)
+        let byte_array = await fetchByteArray(package_url)
+        const tarball_path = `/package_tarballs/${package.filename}`;
+        Module.FS.writeFile(tarball_path, byte_array);
+        console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
+        await python_is_ready_promise;
+        return untar_from_python(tarball_path);
+    }
+
+
+
+
+
+
     // fetch json with list of all packages
     let empack_env_meta = await fetchJson(packages_json_url);
     let all_packages = empack_env_meta.packages;
     let prefix = empack_env_meta.prefix;
-    makeDirs(prefix);
+    makeDirs();
 
     // enusre there is python and split it from the rest
     let splitted = splitPackages(all_packages);
     let packages = splitted.packages;
     let python_package = splitted.python_package;
+    let python_version = python_package.version.split(".").map(x => parseInt(x));
 
     // fetch init python itself
     let python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package);
@@ -144,6 +164,7 @@ Module["bootstrap_from_empack_packed_environment"] = async function
             }
             await Module._loadDynlibsFromPackage(
                 prefix,
+                python_version,
                 packages[i].name,
                 false,
                 shared_libs[i]

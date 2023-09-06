@@ -1,15 +1,3 @@
-const python_version = {
-    major: 3,
-    minor: 10
-};
-
-
-
-
-
-
-
-
 const memoize = (fn) => {
     let cache = {};
     return (...args) => {
@@ -56,6 +44,7 @@ function isInSharedLibraryPath(prefix, libPath){
 
 async function loadDynlibsFromPackage(
     prefix,
+    python_version,
     pkg_file_name,
     pkg_is_shared_library,
     dynlibPaths,
@@ -68,10 +57,10 @@ async function loadDynlibsFromPackage(
     // assume that shared libraries of a package are located in <package-name>.libs directory,
     // following the convention of auditwheel.
     if(prefix == "/"){
-        var sitepackages = `/lib/python${python_version.major}.${python_version.minor}/site-packages`
+        var sitepackages = `/lib/python${python_version[0]}.${python_version[1]}/site-packages`
     }
     else{
-        var sitepackages = `${prefix}/lib/python${python_version.major}.${python_version.minor}/site-packages`
+        var sitepackages = `${prefix}/lib/python${python_version[0]}.${python_version[1]}/site-packages`
     }
     const auditWheelLibDir = `${sitepackages}/${
         pkg_file_name.split("-")[0]

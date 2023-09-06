@@ -32,9 +32,9 @@ Module['init'] = async function(prefix, python_version) {
     console.log('Module  is', Module)
     console.log('Module FS is', Module.FS)
 
-    //if(!Module.FS.isDir(side_path)){
+    if(!Module.FS.isDir(side_path)){
         Module.FS.mkdir(side_path);
-   //}
+    }
 
     Module["_interpreter"] = new Module["_Interpreter"]()
     var default_scope = Module["main_scope"]()

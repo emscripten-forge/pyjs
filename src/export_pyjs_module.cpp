@@ -38,10 +38,7 @@ namespace pyjs
             pyjs_webloop_pseudo_init(pyjs_module);
         }
         catch (py::error_already_set& e)
-        {
-            auto ee = std::filesystem::exists("");
-            printf("bool: %d\n", ee);
-            
+        {            
             std::cout << "error: " << e.what() << "\n";
             throw e;
         }

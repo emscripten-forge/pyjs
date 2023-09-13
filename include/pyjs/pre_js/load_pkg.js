@@ -28,6 +28,13 @@ import shutil
 import os
 import sys
 
+
+def check_wasm_magic_number(file_path: Path) -> bool:
+    WASM_BINARY_MAGIC = b"\\0asm"
+    with file_path.open(mode="rb") as file:
+        return file.read(4) == WASM_BINARY_MAGIC
+
+    
 target_dir = "${target_dir}"
 if target_dir == "":
     target_dir = sys.prefix
@@ -44,6 +51,11 @@ try:
                     shared_libs.append(f"{target_dir}/{file.name}")
 
         tar.extractall(target_dir)
+        for file in shared_libs:
+            if not check_wasm_magic_number(Path(file)):
+                print(f" {file} is not a wasm file")
+            else:
+                print(f" {file} is a wasm file")
         s = json.dumps(shared_libs)
 except Exception as e:
     print("ERROR",e)
@@ -84,7 +96,8 @@ Module["bootstrap_from_empack_packed_environment"] = async function
     (   
         packages_json_url,
         package_tarballs_root_url,
-        verbose = false
+        verbose = false,
+        skip_loading_shared_libs = true
     ) {
 
 
@@ -153,22 +166,24 @@ Module["bootstrap_from_empack_packed_environment"] = async function
     // create array with size 
     let shared_libs = await Promise.all(packages.map(package => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, package)))
 
-    // instantiate all packages
-    for (let i = 0; i < packages.length; i++) {
+    if(!skip_loading_shared_libs){
+        // instantiate all packages
+        for (let i = 0; i < packages.length; i++) {
 
-        // if we have any shared libraries, load them
-        if (shared_libs[i].length > 0) {
+            // if we have any shared libraries, load them
+            if (shared_libs[i].length > 0) {
 
-            for (let j = 0; j < shared_libs[i].length; j++) {
-                let sl = shared_libs[i][j];
+                for (let j = 0; j < shared_libs[i].length; j++) {
+                    let sl = shared_libs[i][j];
+                }
+                await Module._loadDynlibsFromPackage(
+                    prefix,
+                    python_version,
+                    packages[i].name,
+                    false,
+                    shared_libs[i]
+                )
             }
-            await Module._loadDynlibsFromPackage(
-                prefix,
-                python_version,
-                packages[i].name,
-                false,
-                shared_libs[i]
-            )
         }
     }
 }

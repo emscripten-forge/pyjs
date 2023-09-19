@@ -140,14 +140,16 @@ target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
         PUBLIC --std=c++17
         PUBLIC -Wno-deprecated
         PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -fexceptions"
     )
 
     target_link_options(pyjs
         PUBLIC --bind
         PUBLIC -Wno-unused-command-line-argument
         PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -fexceptions"
+        #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
+        #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
     )
 
 
@@ -213,7 +215,8 @@ target_compile_options(pyjs_runtime_browser
     PUBLIC -Wno-deprecated
     PUBLIC "SHELL: --bind"
     PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-    PUBLIC "SHELL: -fwasm-exceptions"
+    PUBLIC "SHELL: -fexceptions"
+    #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
     PUBLIC "SHELL: -s FORCE_FILESYSTEM"
     PUBLIC "SHELL: -s LZ4=1"
     PUBLIC "SHELL: -flto"
@@ -234,7 +237,8 @@ target_link_options(pyjs_runtime_browser
     PUBLIC "SHELL: -s EXIT_RUNTIME=1"
     PUBLIC "SHELL: -s WASM=1"
     PUBLIC "SHELL: -s USE_PTHREADS=0"
-    PUBLIC "SHELL: -fwasm-exceptions"
+    PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
+    PUBLIC "SHELL: -fexceptions"
     PUBLIC "SHELL: -s MAIN_MODULE=1"
     PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
     PUBLIC "SHELL: -s TOTAL_STACK=16mb"

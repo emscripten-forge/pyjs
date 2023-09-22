@@ -30,7 +30,7 @@ function isInSharedLibraryPath(prefix, libPath){
     if (libPath.startsWith("/")){
         const dirname = libPath.substring(0, libPath.lastIndexOf("/"));
         if(prefix == "/"){
-            return (dirname == `$/lib`);
+            return (dirname == `/lib`);
         }
         else{
           return (dirname == `${prefix}/lib`);
@@ -90,7 +90,6 @@ async function loadDynlibsFromPackage(
 
       dynlibs = dynlibPaths.map((path) => {
         const global = globalLibs.has(Module.PATH.basename(path));
-        //console.log(`isInSharedLibraryPath ${path} ${isInSharedLibraryPath(path)}`);
         return {
           path: path,
           global: global || !! pkg_is_shared_library || isInSharedLibraryPath(prefix, path) || path.startsWith(auditWheelLibDir),
@@ -101,7 +100,6 @@ async function loadDynlibsFromPackage(
     dynlibs.sort((lib1, lib2) => Number(lib2.global) - Number(lib1.global));
 
     for (const { path, global } of dynlibs) {
-      //console.log(`loading dynlib  ${path} global ${global}`);
       await loadDynlib(prefix, path, global, [auditWheelLibDir], readFileMemoized);
     }
   }

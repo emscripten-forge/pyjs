@@ -54,8 +54,6 @@ try:
         for file in shared_libs:
             if not check_wasm_magic_number(Path(file)):
                 print(f" {file} is not a wasm file")
-            else:
-                print(f" {file} is a wasm file")
         s = json.dumps(shared_libs)
 except Exception as e:
     print("ERROR",e)
@@ -97,7 +95,7 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         packages_json_url,
         package_tarballs_root_url,
         verbose = false,
-        skip_loading_shared_libs = true
+        skip_loading_shared_libs = false
     ) {
 
 

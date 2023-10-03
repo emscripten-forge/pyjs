@@ -2,7 +2,9 @@ Module._is_initialized = false
 
 
 
-Module['init'] = async function(prefix) {
+Module['init'] = async function(prefix, python_version) {
+
+    let version_str = `${python_version[0]}.${python_version[1]}`;
 
     // list of python objects we need to delete when cleaning up
     let py_objects = []
@@ -14,18 +16,22 @@ Module['init'] = async function(prefix) {
         return Promise.resolve();
     }
     var p = await Module['_wait_run_dependencies']();
-    
+
     if(prefix == "/"){
         Module.setenv("PYTHONHOME", `/`);
-        Module.setenv("PYTHONPATH", `/lib/python3.10/site-packages:/usr/lib/python3.10`);
-        
-        var side_path = `/lib/python${python_version.major}.${python_version.minor}/site-packages`;
+        Module.setenv("PYTHONPATH", `/lib/python${version_str}/site-packages:/usr/lib/python${version_str}`);
+
+        var side_path = `/lib/python${version_str}/site-packages`;
     }
     else{
         Module.setenv("PYTHONHOME", prefix);
-        Module.setenv("PYTHONPATH", `${prefix}/lib/python3.10/site-packages:/usr/lib/python3.10`);
-        var side_path = `${prefix}/lib/python${python_version.major}.${python_version.minor}/site-packages`;
+        Module.setenv("PYTHONPATH", `${prefix}/lib/python${version_str}/site-packages:/usr/lib/python${version_str}`);
+        var side_path = `${prefix}/lib/python${version_str}/site-packages`;
     }
+
+    console.log('Module  is', Module)
+    console.log('Module FS is', Module.FS)
+
     if(!Module.FS.isDir(side_path)){
         Module.FS.mkdir(side_path);
     }
@@ -133,7 +139,7 @@ Module['init'] = async function(prefix) {
     // make the python pyjs module easy available
     Module.exec("import pyjs");
     Module.py_pyjs = Module.eval("pyjs")
-    py_objects.push(Module.py_pyjs);   
+    py_objects.push(Module.py_pyjs);
 
 
     // execute a script and return the value of the last expression
@@ -174,19 +180,55 @@ _add_resolve_done_callback
         return Module._py_to_js.py_call(obj)
     }
 
-    Module._is_initialized = true
+    Module._is_initialized = true;
 
-//     Module.exec(`
-// import sys
-// import sysconfig
-// side_path = "${side_path}"
-// from pathlib import Path
-// Path(side_path).mkdir(parents=True, exist_ok=True)
-// if True and side_path not in sys.path:
-//     sys.path.append(side_path)
-// `)
+    // Mock some system libraries
+    Module.exec(`
+import sys
+import types
+import time
 
-    return p
+sys.modules["fcntl"] = types.ModuleType("fcntl")
+sys.modules["pexpect"] = types.ModuleType("pexpect")
+sys.modules["resource"] = types.ModuleType("resource")
 
+def _mock_time_sleep():
+    def sleep(seconds):
+        """Delay execution for a given number of seconds.  The argument may be
+        a floating point number for subsecond precision.
+        """
+        start = now = time.time()
+        while now - start < seconds:
+            now = time.time()
 
+    time.sleep = sleep
+_mock_time_sleep()
+del _mock_time_sleep
+
+def _mock_termios():
+    termios_mock = types.ModuleType("termios")
+    termios_mock.TCSAFLUSH = 2
+    sys.modules["termios"] = termios_mock
+_mock_termios()
+del _mock_termios
+
+def _mock_webbrowser():
+    def open(url, new=0, autoraise=True):
+        pass
+    def open_new(url):
+        return open(url, 1)
+    def open_new_tab(url):
+        return open(url, 2)
+
+    webbrowser_mock = types.ModuleType("webbrowser")
+    webbrowser_mock.open = open
+    webbrowser_mock.open_new = open_new
+    webbrowser_mock.open_new_tab = open_new_tab
+
+    sys.modules["webbrowser"] = webbrowser_mock
+_mock_webbrowser()
+del _mock_webbrowser
+`);
+
+    return p;
 }

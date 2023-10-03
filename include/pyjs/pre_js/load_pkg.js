@@ -28,6 +28,13 @@ import shutil
 import os
 import sys
 
+
+def check_wasm_magic_number(file_path: Path) -> bool:
+    WASM_BINARY_MAGIC = b"\\0asm"
+    with file_path.open(mode="rb") as file:
+        return file.read(4) == WASM_BINARY_MAGIC
+
+    
 target_dir = "${target_dir}"
 if target_dir == "":
     target_dir = sys.prefix
@@ -44,6 +51,9 @@ try:
                     shared_libs.append(f"{target_dir}/{file.name}")
 
         tar.extractall(target_dir)
+        for file in shared_libs:
+            if not check_wasm_magic_number(Path(file)):
+                print(f" {file} is not a wasm file")
         s = json.dumps(shared_libs)
 except Exception as e:
     print("ERROR",e)
@@ -67,65 +77,84 @@ async function bootstrap_python(prefix, package_tarballs_root_url, python_packag
     console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
     Module.FS.writeFile(python_tarball_path, byte_array);
     Module._untar(python_tarball_path, prefix);
-    await Module.init(prefix);
+
+
+    // split version string into major and minor and patch version
+    let version = python_package.version.split(".").map(x => parseInt(x));
+
+
+
+    await Module.init(prefix, version);
 }
 
-
-function splitPackages(packages) {
-    // find package with name "python" and remove it from the list
-    let python_package = undefined
-    for (let i = 0; i < packages.length; i++) {
-        if (packages[i].name == "python") {
-            python_package = packages[i]
-            packages.splice(i, 1)
-            break
-        }
-    }
-    if (python_package == undefined) {
-        throw new Error("no python package found in package.json")
-    }
-    return { python_package, packages }
-}
-
-
-function makeDirs(prefix) {
-    if (!Module.FS.isDir(`/package_tarballs`)) {
-        Module.FS.mkdir(`/package_tarballs`);
-    }
-}
-
-
-async function fetchAndUntar
-    (
-        package_tarballs_root_url,
-        python_is_ready_promise,
-        pkg
-    ) {
-    let package_url = `${package_tarballs_root_url}/${pkg.filename}`
-    console.log(`fetching pkg ${pkg.name} from ${package_url}`)
-    let byte_array = await fetchByteArray(package_url)
-    const tarball_path = `/package_tarballs/${pkg.filename}`;
-    Module.FS.writeFile(tarball_path, byte_array);
-    console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
-    await python_is_ready_promise;
-    return untar_from_python(tarball_path);
-}
 
 Module["bootstrap_from_empack_packed_environment"] = async function
-    (packages_json_url,
+    (   
+        packages_json_url,
         package_tarballs_root_url,
-        verbose = false
+        verbose = false,
+        skip_loading_shared_libs = false
     ) {
+
+
+
+
+    function splitPackages(packages) {
+        // find package with name "python" and remove it from the list
+        let python_package = undefined
+        for (let i = 0; i < packages.length; i++) {
+            if (packages[i].name == "python") {
+                python_package = packages[i]
+                packages.splice(i, 1)
+                break
+            }
+        }
+        if (python_package == undefined) {
+            throw new Error("no python package found in package.json")
+        }
+        return { python_package, packages }
+    }
+    
+    
+    function makeDirs() {
+        if (!Module.FS.isDir(`/package_tarballs`)) {
+            Module.FS.mkdir(`/package_tarballs`);
+        }
+    }
+    
+    
+    async function fetchAndUntar
+        (
+            package_tarballs_root_url,
+            python_is_ready_promise,
+            pkg
+        ) {
+        let package_url = `${package_tarballs_root_url}/${pkg.filename}`
+        console.log(`fetching pkg ${pkg.name} from ${package_url}`)
+        let byte_array = await fetchByteArray(package_url)
+        const tarball_path = `/package_tarballs/${pkg.filename}`;
+        Module.FS.writeFile(tarball_path, byte_array);
+        console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
+        await python_is_ready_promise;
+        return untar_from_python(tarball_path);
+    }
+
+
+
+
+
+
     // fetch json with list of all packages
     let empack_env_meta = await fetchJson(packages_json_url);
     let all_packages = empack_env_meta.packages;
     let prefix = empack_env_meta.prefix;
-    makeDirs(prefix);
+    makeDirs();
 
     // enusre there is python and split it from the rest
     let splitted = splitPackages(all_packages);
     let packages = splitted.packages;
     let python_package = splitted.python_package;
+    let python_version = python_package.version.split(".").map(x => parseInt(x));
 
     // fetch init python itself
     let python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package);
@@ -133,21 +162,24 @@ Module["bootstrap_from_empack_packed_environment"] = async function
     // create array with size 
     let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg)))
 
-    // instantiate all packages
-    for (let i = 0; i < packages.length; i++) {
+    if(!skip_loading_shared_libs){
+        // instantiate all packages
+        for (let i = 0; i < packages.length; i++) {
 
-        // if we have any shared libraries, load them
-        if (shared_libs[i].length > 0) {
+            // if we have any shared libraries, load them
+            if (shared_libs[i].length > 0) {
 
-            for (let j = 0; j < shared_libs[i].length; j++) {
-                let sl = shared_libs[i][j];
+                for (let j = 0; j < shared_libs[i].length; j++) {
+                    let sl = shared_libs[i][j];
+                }
+                await Module._loadDynlibsFromPackage(
+                    prefix,
+                    python_version,
+                    packages[i].name,
+                    false,
+                    shared_libs[i]
+                )
             }
-            await Module._loadDynlibsFromPackage(
-                prefix,
-                packages[i].name,
-                false,
-                shared_libs[i]
-            )
         }
     }
 }

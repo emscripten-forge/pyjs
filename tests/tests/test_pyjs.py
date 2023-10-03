@@ -554,3 +554,32 @@ def test_int_container():
     js_obj = jsf()
     py_obj = pyjs.to_py(js_obj)
     assert py_obj
+
+
+
+def test_sleep():
+    import time
+    start = time.time()
+    time.sleep(2)
+    end = time.time()
+
+    assert end - start >= 2
+
+    # probably we can also do more precise tests
+    # but lets keept it simple for now
+    assert end - start < 2.1
+
+
+def test_imports_sys():
+    import termios
+    import fcntl
+    import pexpect
+    import resource
+
+
+def test_webbrowser():
+    from webbrowser import open, open_new, open_new_tab
+
+    open("google.com")
+    open_new("google.com")
+    open_new_tab("google.com")

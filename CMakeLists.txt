@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.9)
 
-project(pyjs VERSION 1.0.0 DESCRIPTION "pyjs")
+project(pyjs VERSION 1.3.2 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
-option(BUILD_RUNTIME_NODE "Build runtime" ON)
-option(WITH_NODE_TESTS "With node tests" ON)
-
+option(WITH_NODE_TESTS "With node tests" OFF)
+option(LINK_LIBEXPAT "Link libexpat" OFF)
+option(LINK_LIBMPDEC "Link libmpdec" OFF)
 
 
 ##########################################################
@@ -140,14 +140,16 @@ target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
         PUBLIC --std=c++17
         PUBLIC -Wno-deprecated
         PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -fexceptions"
     )
 
     target_link_options(pyjs
         PUBLIC --bind
         PUBLIC -Wno-unused-command-line-argument
         PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -fwasm-exceptions"
+        PUBLIC "SHELL: -fexceptions"
+        #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
+        #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
     )
 
 
@@ -175,169 +177,91 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
 )
 
+
+if (LINK_LIBEXPAT)
+    SET(PYTHON_UTIL_LIBS ${PYTHON_UTIL_LIBS} ${CMAKE_INSTALL_PREFIX}/lib/libexpat.a)
+endif()
+
+if (LINK_LIBMPDEC)
+    SET(PYTHON_UTIL_LIBS ${PYTHON_UTIL_LIBS} ${CMAKE_INSTALL_PREFIX}/lib/libmpdec.a)
+endif()
+
 set_target_properties(pyjs
     PROPERTIES
     CXX_STANDARD 17
 )
-# TODO MAKE LOOP
-
-if(BUILD_RUNTIME_BROWSER)
-    add_executable(pyjs_runtime_browser src/runtime.cpp )
-    SET(ENVIRONMENT "web,worker")
-    target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
-
-    target_include_directories(pyjs_runtime_browser
-                           PRIVATE
-                           ${CMAKE_SOURCE_DIR}/include
-                           ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
-
-    set_target_properties(pyjs_runtime_browser
-        PROPERTIES
-            CXX_STANDARD 17
-    )
-    target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
-    target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
-    target_link_libraries(pyjs_runtime_browser PRIVATE pyjs)
-    target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
-
-    target_compile_options(pyjs_runtime_browser
-        PUBLIC --std=c++17
-        PUBLIC -Wno-deprecated
-        PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-        PUBLIC "SHELL: -fwasm-exceptions"
-        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-        PUBLIC "SHELL: -s LZ4=1"
-        PUBLIC "SHELL: -flto"
-        # PUBLIC "SHELL: -s WASM_BIGINT"
-    )
-
-    target_link_options(pyjs_runtime_browser
-        PUBLIC --bind
-        PUBLIC -Wno-unused-command-line-argument
-        PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -s MODULARIZE=1"
-        PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
-        PUBLIC "SHELL: -s EXPORT_ES6=0"
-        PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
-        PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
-        PUBLIC "SHELL: -s ASSERTIONS=0"
-        PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
-        PUBLIC "SHELL: -s EXIT_RUNTIME=1"
-        PUBLIC "SHELL: -s WASM=1"
-        PUBLIC "SHELL: -s USE_PTHREADS=0"
-        PUBLIC "SHELL: -fwasm-exceptions"
-        PUBLIC "SHELL: -s MAIN_MODULE=1"
-        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-        PUBLIC "SHELL: -s TOTAL_STACK=16mb"
-        PUBLIC "SHELL: -s INITIAL_MEMORY=64mb"
-        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-        PUBLIC "SHELL: -s LZ4=1"
-        PUBLIC "SHELL: --post-js pyjs_post.js"
-        PUBLIC "SHELL: --pre-js pyjs_pre.js"
-        PUBLIC "SHELL: -flto"
-        PUBLIC "SHELL: -lidbfs.js"
-        PUBLIC "SHELL: -s WASM_BIGINT"
-    )
 
 
-    install(TARGETS pyjs_runtime_browser
-            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
-    install(FILES
-            "$<TARGET_FILE_DIR:pyjs_runtime_browser>/pyjs_runtime_browser.wasm"
-            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+add_executable(pyjs_runtime_browser src/runtime.cpp )
+SET(ENVIRONMENT "web,worker")
+target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
 
-endif()
+target_include_directories(pyjs_runtime_browser
+                        PRIVATE
+                        ${CMAKE_SOURCE_DIR}/include
+                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
 
-if(BUILD_RUNTIME_NODE)
+set_target_properties(pyjs_runtime_browser
+    PROPERTIES
+        CXX_STANDARD 17
+)
+target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
+target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
+target_link_libraries(pyjs_runtime_browser PRIVATE pyjs)
+target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
+
+target_compile_options(pyjs_runtime_browser
+    PUBLIC --std=c++17
+    PUBLIC -Wno-deprecated
+    PUBLIC "SHELL: --bind"
+    PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
+    PUBLIC "SHELL: -fexceptions"
+    #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
+    PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+    PUBLIC "SHELL: -s LZ4=1"
+    PUBLIC "SHELL: -flto"
+    # PUBLIC "SHELL: -s WASM_BIGINT"
+)
+
+target_link_options(pyjs_runtime_browser
+    PUBLIC --bind
+    PUBLIC -Wno-unused-command-line-argument
+    PUBLIC "SHELL: --bind"
+    PUBLIC "SHELL: -s MODULARIZE=1"
+    PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
+    PUBLIC "SHELL: -s EXPORT_ES6=0"
+    PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
+    PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
+    PUBLIC "SHELL: -s ASSERTIONS=0"
+    PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
+    PUBLIC "SHELL: -s EXIT_RUNTIME=1"
+    PUBLIC "SHELL: -s WASM=1"
+    PUBLIC "SHELL: -s USE_PTHREADS=0"
+    PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
+    PUBLIC "SHELL: -fexceptions"
+    PUBLIC "SHELL: -s MAIN_MODULE=1"
+    PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
+    PUBLIC "SHELL: -s TOTAL_STACK=16mb"
+    PUBLIC "SHELL: -s INITIAL_MEMORY=64mb"
+    PUBLIC "SHELL: -s FORCE_FILESYSTEM"
+    PUBLIC "SHELL: -s LZ4=1"
+    PUBLIC "SHELL: --post-js pyjs_post.js"
+    PUBLIC "SHELL: --pre-js pyjs_pre.js"
+    PUBLIC "SHELL: -flto"
+    PUBLIC "SHELL: -lidbfs.js"
+    PUBLIC "SHELL: -s WASM_BIGINT"
+)
 
 
-
-    add_executable(pyjs_runtime_node src/runtime.cpp )
-    SET(ENVIRONMENT "node")
-    target_compile_definitions(pyjs_runtime_node PUBLIC -DPYTEST_DRIVER_NODE)
-    target_include_directories(pyjs_runtime_node
-                           PRIVATE
-                           ${CMAKE_SOURCE_DIR}/include
-                           ${CMAKE_CURRENT_BINARY_DIR})
+install(TARGETS pyjs_runtime_browser
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
+install(FILES
+        "$<TARGET_FILE_DIR:pyjs_runtime_browser>/pyjs_runtime_browser.wasm"
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
 
 
 
 
-    set_target_properties(pyjs_runtime_node
-        PROPERTIES
-            CXX_STANDARD 17
-    )
-    target_compile_definitions(pyjs_runtime_node PUBLIC -DPYJS_WEB)
-    target_compile_options(pyjs_runtime_node PRIVATE -fPIC)
-    target_link_libraries(pyjs_runtime_node PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed pyjs)
-
-    target_compile_options(pyjs_runtime_node
-        PUBLIC --std=c++17
-        PUBLIC -Wno-deprecated
-        PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-        PUBLIC "SHELL: -fwasm-exceptions"
-        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-        PUBLIC "SHELL: -s LZ4=1"
-        PUBLIC "SHELL: -flto"
-        # PUBLIC "SHELL: -s WASM_BIGINT"
-    )
-
-    target_link_options(pyjs_runtime_node
-        PUBLIC --bind
-        PUBLIC -Wno-unused-command-line-argument
-        PUBLIC "SHELL: --bind"
-        PUBLIC "SHELL: -s MODULARIZE=1"
-        PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
-        PUBLIC "SHELL: -s EXPORT_ES6=0"
-        PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
-        PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
-        PUBLIC "SHELL: -s ASSERTIONS=0"
-        PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
-        PUBLIC "SHELL: -s EXIT_RUNTIME=1"
-        PUBLIC "SHELL: -s WASM=1"
-        PUBLIC "SHELL: -s USE_PTHREADS=0"
-        PUBLIC "SHELL: -fwasm-exceptions"
-        PUBLIC "SHELL: -s MAIN_MODULE=1"
-        PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-        PUBLIC "SHELL: -s TOTAL_STACK=16mb"
-        PUBLIC "SHELL: -s INITIAL_MEMORY=64mb"
-        PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-        PUBLIC "SHELL: -s LZ4=1"
-        PUBLIC "SHELL: --post-js pyjs_post.js"
-        PUBLIC "SHELL: --pre-js pyjs_pre.js"
-        PUBLIC "SHELL: -flto"
-        PUBLIC "SHELL: -s WASM_BIGINT"
-    )
-
-
-
-
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/test.js.in ${CMAKE_CURRENT_BINARY_DIR}/test.cjs @ONLY)
-    if(WITH_NODE_TESTS)
-        execute_process(
-            COMMAND npm bin
-            OUTPUT_VARIABLE NODE_BIN_PATH
-        )
-        message(STATUS "NODEBINPATH  " ${NODE_BIN_PATH})
-        string(STRIP ${NODE_BIN_PATH} NODE_BIN_PATH)
-        message(STATUS "P" ${NODE_BIN_PATH}/ava )
-        add_custom_target(node_tests
-            COMMAND "${NODE_BIN_PATH}/ava" "--timeout=20s" "--node-arguments=\"--no-experimental-fetch\"" "" test.cjs
-            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            DEPENDS pyjs_runtime_node)
-    endif()
-
-
-    install(TARGETS pyjs_runtime_node
-            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
-    install(FILES
-            "$<TARGET_FILE_DIR:pyjs_runtime_node>/pyjs_runtime_node.wasm"
-            DESTINATION ${CMAKE_INSTALL_PREFIX}/lib_js/pyjs)
-
-
-endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)

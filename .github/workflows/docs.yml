@@ -13,7 +13,7 @@ defaults:
 
 jobs:
 
-  build_pyjs:
+  build_pyjs_docs:
 
     runs-on: ubuntu-latest
 
@@ -35,78 +35,43 @@ jobs:
           environment-file: environment-dev.yml
           environment-name: pyjs-wasm 
 
-      - name: Install Playwright
-        run: |
-          playwright install
-
-
-      - name: Setup emsdk
+      - name: build the docs
         shell: bash -el {0}
         run: |
-          ./emsdk/setup_emsdk.sh ${{ matrix.emsdk_ver }} $(pwd)/emsdk_install
+          ./build_docs.sh
+  
 
-      - name: create wasm build environment
-        run: |
-          micromamba activate pyjs-wasm
-
-
-
-          micromamba create -n pyjs-build-wasm \
-            --platform=emscripten-32 \
-            -c https://repo.mamba.pm/emscripten-forge \
-            -c https://repo.mamba.pm/conda-forge \
-            --yes \
-            python pybind11 nlohmann_json pybind11_json numpy \
-            bzip2 sqlite zlib libffi exceptiongroup \
-            xeus-python-shell
-
-      - name: Build pyjs
-        run: |
-
-          source $(pwd)/emsdk_install/emsdk_env.sh
-        
-          mkdir build
-          cd build
-
-          export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
-          export CMAKE_PREFIX_PATH=$PREFIX
-          export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
-
-          emcmake cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
-            -DBUILD_RUNTIME_BROWSER=ON \
-            -DBUILD_RUNTIME_NODE=OFF \
-            -DCMAKE_INSTALL_PREFIX=$PREFIX \
-            ..
-
-          make -j2
-          make install
-
-          
-      - name: Build xeus-python
-        run: |
-
-          source $(pwd)/emsdk_install/emsdk_env.sh
-        
-          git clone git@github.com:jupyter-xeus/xeus-python.git 
-          cd xeus-python
-          mkdir build
-          cd build
-
-          export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
-          export CMAKE_PREFIX_PATH=$PREFIX
-          export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX          
+      ################################################################
+      # upload to github pages
+      ################################################################
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: _output
 
 
-          # remove the fake python
-          rm -rf $PREFIX/bin/python*
-          rm -rf $PREFIX/bin/pip*
-          
-          emcmake cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
-            -DCMAKE_INSTALL_PREFIX=$PREFIX \
-            -DXPYT_EMSCRIPTEN_WASM_BUILD=ON\
-              ..
-          emmake make -j8 install
+
+  deploy:
+    # only run on main branch
+    if: github.ref == 'refs/heads/main' && github.repository == 'emscripten-forge/pyjs'
+
+    # Add a dependency to the build job
+    needs: build_pyjs_docs
+
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      contents: read   # to read the Pages artifact
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+
+    # Deploy to the github-pages environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    # Specify runner + deployment step
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v3 # or specific "vX.X.X" version tag for this action

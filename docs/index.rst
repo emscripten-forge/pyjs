@@ -7,10 +7,8 @@ This page is still under construction and will (hopefully) be extended soon!
    :maxdepth: 2
    :caption: Contents:
 
-   _src/usage
    auto_examples/index.rst
-   _src/related_projects
-   _src/faq
+
 
 
 

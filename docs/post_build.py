@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
     from pathlib import Path
 
-    this_dir = Path(__file__).parent
+    this_dir = Path(__file__)#.parent
     auto_examples_dir = this_dir / "auto_examples"
     build_dir_html = this_dir / "_build" / "html"
     lite_build_dir = build_dir_html / "lite"

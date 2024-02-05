@@ -28,13 +28,12 @@ jobs:
       - name: Get number of CPU cores
         uses: SimenB/github-actions-cpu-cores@v1
 
-      - name: Install mamba
-        uses: mamba-org/provision-with-micromamba@main
+      - name: Install micromamba
+        uses: mamba-org/setup-micromamba@v1
         with:
           environment-file: environment-dev.yml
-          environment-name: pyjs-wasm
-          micromamba-version: "1.4.1"
-
+          environment-name: pyjs-wasm 
+          
       - name: Install Playwright
         run: |
           playwright install

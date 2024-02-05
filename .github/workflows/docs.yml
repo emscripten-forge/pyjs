@@ -1,0 +1,117 @@
+name: docs
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+
+jobs:
+
+  build_pyjs:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        emsdk_ver: ["3.1.27"]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Get number of CPU cores
+        uses: SimenB/github-actions-cpu-cores@v1
+
+      - name: Install mamba
+        uses: mamba-org/provision-with-micromamba@main
+        with:
+          environment-file: environment-dev.yml
+          environment-name: pyjs-wasm
+          micromamba-version: "1.4.1"
+
+      - name: Install Playwright
+        run: |
+          playwright install
+
+      - name: Setup emsdk
+        run: |
+          micromamba activate pyjs-wasm
+          emsdk install ${{matrix.emsdk_ver}}
+
+      - name: create wasm build environment
+        run: |
+          micromamba activate pyjs-wasm
+
+
+
+          micromamba create -n pyjs-build-wasm \
+            --platform=emscripten-32 \
+            -c https://repo.mamba.pm/emscripten-forge \
+            -c https://repo.mamba.pm/conda-forge \
+            --yes \
+            python pybind11 nlohmann_json pybind11_json numpy \
+            bzip2 sqlite zlib libffi exceptiongroup \
+            xeus-python-shell
+
+      - name: Build pyjs
+        run: |
+    
+          emsdk activate ${{matrix.emsdk_ver}}
+          source $CONDA_EMSDK_DIR/emsdk_env.sh
+        
+          mkdir build
+          pushd build
+
+          export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
+          export CMAKE_PREFIX_PATH=$PREFIX
+          export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
+
+          emcmake cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
+            -DBUILD_RUNTIME_BROWSER=ON \
+            -DBUILD_RUNTIME_NODE=OFF \
+            -DCMAKE_INSTALL_PREFIX=$PREFIX \
+            ..
+
+          make -j2
+          make install
+          popd
+
+          
+      - name: Build xeus-python
+        run: |
+
+          emsdk activate ${{matrix.emsdk_ver}}
+          source $CONDA_EMSDK_DIR/emsdk_env.sh
+        
+          git clone git@github.com:jupyter-xeus/xeus-python.git 
+          pushd xeus-python
+          mkdir build
+          pushd build
+
+          export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
+          export CMAKE_PREFIX_PATH=$PREFIX
+          export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX          
+
+
+          # remove the fake python
+          rm -rf $PREFIX/bin/python*
+          rm -rf $PREFIX/bin/pip*
+          
+          emcmake cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
+            -DCMAKE_INSTALL_PREFIX=$PREFIX \
+            -DXPYT_EMSCRIPTEN_WASM_BUILD=ON\
+              ..
+          emmake make -j8 install
+
+          popd
+          popd

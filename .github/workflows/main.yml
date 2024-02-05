@@ -80,6 +80,9 @@ jobs:
 
           make install
 
+          # copy the whole prefix
+          cp -r $MABMA_ROOT_PREFIX/envs/pyjs-build-wasm $MAMBA_ROOT_PREFIX/envs/pyjs-wasm-copy
+          
 
           popd
 

@@ -8,9 +8,12 @@ This page is still under construction and will (hopefully) be extended soon!
    :caption: Contents:
 
    _src/usage
-   _src/examples/index.rst
+   auto_examples/index.rst
    _src/related_projects
    _src/faq
+
+
+
 
 
 
@@ -20,3 +23,7 @@ This page is still under construction and will (hopefully) be extended soon!
 .. * :ref:`genindex`
 .. * :ref:`modindex`
 .. * :ref:`search`
+
+
+
+

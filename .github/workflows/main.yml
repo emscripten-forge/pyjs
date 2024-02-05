@@ -40,16 +40,16 @@ jobs:
           playwright install
 
       - name: Setup emsdk
+        shell: bash -el {0}
         run: |
-          micromamba activate pyjs-wasm
-          emsdk install ${{matrix.emsdk_ver}}
+          ./emsdk/setup_emsdk.sh ${{ matrix.emsdk_ver }} $(pwd)/emsdk_install
 
       - name: Build pyjs
         run: |
           micromamba activate pyjs-wasm
 
           emsdk activate ${{matrix.emsdk_ver}}
-          source $CONDA_EMSDK_DIR/emsdk_env.sh
+          source $(pwd)/emsdk_install/emsdk_env.sh
 
           micromamba create -n pyjs-build-wasm \
             --platform=emscripten-32 \

@@ -39,10 +39,11 @@ jobs:
         run: |
           playwright install
 
+
       - name: Setup emsdk
+        shell: bash -el {0}
         run: |
-          micromamba activate pyjs-wasm
-          emsdk install ${{matrix.emsdk_ver}}
+          ./emsdk/setup_emsdk.sh ${{ matrix.emsdk_ver }} $(pwd)/emsdk_install
 
       - name: create wasm build environment
         run: |
@@ -61,9 +62,8 @@ jobs:
 
       - name: Build pyjs
         run: |
-    
-          emsdk activate ${{matrix.emsdk_ver}}
-          source $CONDA_EMSDK_DIR/emsdk_env.sh
+
+          source $(pwd)/emsdk_install/emsdk_env.sh
         
           mkdir build
           pushd build
@@ -88,8 +88,7 @@ jobs:
       - name: Build xeus-python
         run: |
 
-          emsdk activate ${{matrix.emsdk_ver}}
-          source $CONDA_EMSDK_DIR/emsdk_env.sh
+          source $(pwd)/emsdk_install/emsdk_env.sh
         
           git clone git@github.com:jupyter-xeus/xeus-python.git 
           pushd xeus-python

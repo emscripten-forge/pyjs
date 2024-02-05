@@ -25,9 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Get number of CPU cores
-        uses: SimenB/github-actions-cpu-cores@v1
-
       - name: Install micromamba
         uses: mamba-org/setup-micromamba@v1
         with:

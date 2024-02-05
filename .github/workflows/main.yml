@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emsdk_ver: ["3.1.27"]
+        emsdk_ver: ["3.1.45"]
 
     steps:
       - uses: actions/checkout@v2
@@ -33,7 +33,7 @@ jobs:
         with:
           environment-file: environment-dev.yml
           environment-name: pyjs-wasm 
-          
+
       - name: Install Playwright
         run: |
           playwright install

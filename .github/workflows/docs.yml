@@ -66,7 +66,7 @@ jobs:
           source $(pwd)/emsdk_install/emsdk_env.sh
         
           mkdir build
-          pushd build
+          cd build
 
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
           export CMAKE_PREFIX_PATH=$PREFIX
@@ -82,7 +82,6 @@ jobs:
 
           make -j2
           make install
-          popd
 
           
       - name: Build xeus-python
@@ -91,9 +90,9 @@ jobs:
           source $(pwd)/emsdk_install/emsdk_env.sh
         
           git clone git@github.com:jupyter-xeus/xeus-python.git 
-          pushd xeus-python
+          cd xeus-python
           mkdir build
-          pushd build
+          cd build
 
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
           export CMAKE_PREFIX_PATH=$PREFIX
@@ -111,6 +110,3 @@ jobs:
             -DXPYT_EMSCRIPTEN_WASM_BUILD=ON\
               ..
           emmake make -j8 install
-
-          popd
-          popd

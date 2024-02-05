@@ -69,7 +69,7 @@ fi
 # if there is no xeus-python dir, clone it
 if [ ! -d "$THIS_DIR/xeus-python" ]; then
     cd $THIS_DIR
-    git clone git@github.com:jupyter-xeus/xeus-python.git 
+    git clone https://github.com/jupyter-xeus/xeus-python/
 else
     echo "xeus-python dir already exists"
 fi
@@ -107,7 +107,7 @@ if [ ! -f "$PYJS_PROBE_FILE" ]; then
     emmake make -j8 install
 
     rm -rf $WASM_ENV_PREFIX/share/jupyter/kernels/xpython-raw
-    
+
 else
     echo "Skipping build xeus-python"
 fi

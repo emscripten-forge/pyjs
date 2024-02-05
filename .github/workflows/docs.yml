@@ -47,8 +47,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v2
         with:
-          path: _output
-
+          path: docs/_build/html
 
 
   deploy:

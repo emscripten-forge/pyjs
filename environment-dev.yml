@@ -13,3 +13,17 @@ dependencies:
   - nodejs >= 18.7.0
   - pyjs_code_runner >= 2.0.1
   - exceptiongroup
+
+  # documentation
+  - make
+  - sphinx
+  - sphinx_rtd_theme
+  - sphinx-gallery
+  - myst-parser
+  - empack >=3.2.0
+  - jupyter_server  # to enable contents
+  - jupyterlite
+  - jupyterlite-xeus
+  - jupyterlite-sphinx
+  - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
+

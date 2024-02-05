@@ -115,6 +115,8 @@ fi
 
 
 if true ; then
+
+    export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-wasm
     echo "Building docs"
 
     cd $THIS_DIR/docs

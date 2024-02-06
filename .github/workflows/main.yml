@@ -48,7 +48,7 @@ jobs:
           source $(pwd)/emsdk_install/emsdk_env.sh
 
           micromamba create -n pyjs-build-wasm \
-            --platform=emscripten-32 \
+            --platform=emscripten-wasm32 \
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \

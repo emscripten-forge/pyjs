@@ -13,7 +13,7 @@ def install_submodules():
             raise AttributeError(f"has no attribute {name}")
         return ret
 
-    js = sys.modules["pyjs.js"] = types.ModuleType("js")
+    js = sys.modules["js"] = sys.modules["pyjs.js"] = types.ModuleType("js")
     js.__getattr__ = _js_mod__getattr__
 
     def _module_mod__getattr__(name: str) -> Any:
@@ -24,6 +24,25 @@ def install_submodules():
 
     _module = sys.modules["pyjs._module"] = types.ModuleType("_module")
     _module.__getattr__ = _module_mod__getattr__
+
+    # Expose a small pyodide polyfill
+    def _pyodide__getattr__(name: str) -> Any:
+        if name == "to_js":
+            from pyjs import to_js
+            return to_js
+
+        raise AttributeError(
+            "This is not the real Pyodide. We are providing a small Pyodide polyfill for conveniance."
+            "If you are missing an important Pyodide feature, please open an issue in https://github.com/emscripten-forge/pyjs/issues"
+        )
+
+    pyodide = sys.modules["pyodide"] = types.ModuleType("pyodide")
+    pyodide.ffi = sys.modules["pyodide.ffi"] = types.ModuleType("ffi")
+    pyodide.ffi.JsException = RuntimeError
+    pyodide.ffi.JsArray = object
+    pyodide.ffi.JsProxy = object
+    pyodide.__getattr__ = _pyodide__getattr__
+    pyodide.ffi.__getattr__ = _pyodide__getattr__
 
 
 install_submodules()

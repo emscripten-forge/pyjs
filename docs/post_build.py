@@ -63,8 +63,9 @@ def fix_metadata(notebook_path):
     elif notebook_name.startswith("py_"):
         notebook["metadata"] = metadata_py
     else:
-        print(f"Notebook {notebook_path} does not start with js_ or py_")
+        return
     
+    print("fixing", notebook_path)
     with open(notebook_path, "w") as f:
         json.dump(notebook, f, indent=4)
 
@@ -72,6 +73,12 @@ def fix_all_notebooks(directory):
     # iterate over all notebooks (with pathlib)
     for item in Path(directory).iterdir():
         if item.is_file() and item.suffix == ".ipynb":
+            fix_metadata(item)
+
+def recusively_fix_all_notebooks(directory):
+    if directory.exists():
+        # iterate over all notebooks (with pathlib)
+        for item in Path(directory).rglob("*.ipynb"):
             fix_metadata(item)
 
 
@@ -117,15 +124,18 @@ if __name__ == "__main__":
 
     from pathlib import Path
 
-    this_dir = Path(__file__)#.parent
+    this_dir = Path(__file__).parent
     auto_examples_dir = this_dir / "auto_examples"
     build_dir_html = this_dir / "_build" / "html"
     lite_build_dir = build_dir_html / "lite"
 
+    _download_dir = build_dir_html /"_downloads"
+    recusively_fix_all_notebooks(this_dir)
+
     lite_auto_examples_dir = lite_build_dir / "files"/ "auto_examples"
 
-    fix_all_notebooks(lite_auto_examples_dir)
-    fix_all_notebooks(auto_examples_dir)
+    # fix_all_notebooks(lite_auto_examples_dir)
+    # fix_all_notebooks(auto_examples_dir)
 
     auto_example_build_dir = build_dir_html / "auto_examples"
 
@@ -136,7 +146,6 @@ if __name__ == "__main__":
         if item.is_file() and item.suffix == ".html":
             # only for js 
             if item.stem.startswith("js_"):
-                print("fixing html links")
                 fix_html_links(item)
 
 

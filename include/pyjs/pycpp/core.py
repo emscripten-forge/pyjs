@@ -29,7 +29,8 @@ def install_submodules():
 install_submodules()
 del install_submodules
 
-js = sys.modules["pyjs.js"]
+# Expose "pyjs.js" module as "js" as well
+js = sys.modules["js"] = sys.modules["pyjs.js"]
 _module = sys.modules["pyjs._module"]
 
 

@@ -1,5 +1,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/pytypes.h>
 
 #include <emscripten.h>
 #include <emscripten/val.h>
@@ -150,8 +151,6 @@ namespace pyjs
             [m](em::val* obj, em::val* key, em::val* value)
             { wrap_void(m, em::val::module_property("_setattr_try_catch")(*obj, *key, *value)); });
 
-
-
         m.def("js_int", [](const int v) { return em::val(v); });
 
         m.def("js_array", []() { return em::val::array(); });
@@ -165,7 +164,6 @@ namespace pyjs
                   py_object.inc_ref();
                   return em::val(std::move(cp));
               });
-
 
         m.def("instanceof",
               [](em::val* instance, em::val* cls)
@@ -209,7 +207,7 @@ namespace pyjs
         m_internal.def("as_float", [](em::val* v) -> float { return v->as<float>(); });
         m_internal.def("as_boolean", [](em::val* v) -> bool { return v->as<bool>(); });
         m_internal.def("as_string", [](em::val* v) -> std::wstring { return v->as<std::wstring>(); });
-        
+
         // this function returns a new value so the return value policy needs to manage a new object
         m_internal.def("as_buffer",
                        [](em::val* v) -> TypedArrayBuffer* { return typed_array_to_buffer(*v); }, py::return_value_policy::take_ownership);
@@ -217,7 +215,7 @@ namespace pyjs
         m_internal.def("as_py_object",
                        [](em::val* v) -> py::object { return v->as<py::object>(); });
 
-    
+
         m_internal.def(
             "get_type_string",
             [](em::val* val) -> std::string
@@ -285,8 +283,13 @@ namespace pyjs
             {
                 return py::buffer_info(self.m_data, self.m_bytes_per_element, self.m_format_descriptor,
                                         1, {self.m_size}, {self.m_bytes_per_element});
+            })
+            .def("tobytes", [](TypedArrayBuffer& self) {
+                return py::reinterpret_steal<py::object>(
+                    PYBIND11_BYTES_FROM_STRING_AND_SIZE(reinterpret_cast<const char*>(self.m_data), self.m_size)
+                ).release();
             });
-            
+
         // this class is heavy extended on the python side
         // py::class_<em::val>(m, "JsValue",  py::dynamic_attr())
         py::class_<em::val>(m, "JsValue")  //,  py::dynamic_attr())

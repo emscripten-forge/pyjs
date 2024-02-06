@@ -43,7 +43,8 @@ def test_pyodide_polyfill():
     from js import console, window
 
     with pytest.raises(AttributeError):
-        from pyodide.ffi import foo
+        from pyodide import ffi
+        ffi.foo
 
 
 def test_create_once_callable_nullary():

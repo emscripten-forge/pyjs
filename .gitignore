@@ -7,3 +7,5 @@ build_tests/
 node_modules
 package-lock.json
 docs/_build
+*.wasm
+nxtgm_javascript_runtime.js

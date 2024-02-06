@@ -40,9 +40,9 @@ def test_js_function_creation():
 def test_pyodide_polyfill():
     # Test imports
     from pyodide.ffi import JsException, to_js
-    if pyjs._module._IS_BROWSER_MAIN_THREAD:
+    if  pyjs.to_py(pyjs._module._IS_BROWSER_MAIN_THREAD):
         from js import console, window
-    if pyjs._module._IS_BROWSER_WORKER_THREAD:
+    if  pyjs.to_py(pyjs._module._IS_BROWSER_WORKER_THREAD):
         from js import console, postMessage
 
     with pytest.raises(AttributeError):

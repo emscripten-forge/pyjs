@@ -1,6 +1,7 @@
 import json
 import operator
 import os
+import sys
 from types import NoneType
 import asyncio
 
@@ -34,6 +35,15 @@ def test_js_function_creation():
     )
     ret = f("world")
     assert ret == "hello_world"
+
+
+def test_pyodide_polyfill():
+    # Test imports
+    from pyodide.ffi import JsException, to_js
+    from js import console, window
+
+    with pytest.raises(AttributeError):
+        from pyodide.ffi import foo
 
 
 def test_create_once_callable_nullary():

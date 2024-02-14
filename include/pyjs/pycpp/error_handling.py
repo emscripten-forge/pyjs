@@ -13,6 +13,13 @@ class JsException(JsHolder, Exception):
         # default message
         if message is None:
             message = js.JSON.stringify(err, js.Object.getOwnPropertyNames(err))
+
+        self.name = "UnknownError"
+        try:
+            self.name = err.name
+        except  AttributeError:
+            pass
+
         self.message = message
 
         # i

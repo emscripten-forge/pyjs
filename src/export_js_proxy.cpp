@@ -80,6 +80,21 @@ namespace pyjs
         {
             std::stringstream ss;
             ss << "has no attribute/key ";
+
+            // check if key is a string
+            if (key->typeOf().as<std::string>() == "string")
+            {
+                ss << key->as<std::string>();
+            }
+            else if (key->typeOf().as<std::string>() == "number")
+            {
+                ss << key->as<int>();
+            }
+            else
+            {
+                ss << "[unknown key type]";
+            }
+
             throw pybind11::attribute_error(ss.str());
         }
         return implicit_js_to_py(wrapped_return_value["ret"], type_string);

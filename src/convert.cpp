@@ -197,6 +197,16 @@ namespace pyjs
     }
 
 
+    em::val bytes_to_js(char * binary_string)
+    {
+        // get the length of the string
+        std::size_t length = std::strlen(binary_string);
+
+        std::cout<<"bytes_to_js length "<<length<<std::endl;
+        em::val mem_view = em::val(em::typed_memory_view(length, binary_string));
+        em::val mem_copy = em::val::global("Uint8Array").new_(mem_view);
+        return mem_copy;
+    }
 
     template <class T>
     em::val py_1d_buffer_to_typed_array_t(const std::size_t size,
@@ -214,6 +224,8 @@ namespace pyjs
         return mem_view;
     }
 
+
+    
 
     em::val py_1d_buffer_to_typed_array(py::buffer buffer, bool view)
     {

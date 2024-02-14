@@ -18,6 +18,7 @@ set(PYCPPSCRIPTS
     error_handling.py
     extend_js_val.py
     webloop.py
+    pyodide_polyfill.py
 )
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)

@@ -326,6 +326,7 @@ namespace pyjs
 
 
         m_internal.def("py_1d_buffer_to_typed_array", &py_1d_buffer_to_typed_array);
+        m_internal.def("bytes_to_typed_array", &bytes_to_js);
 
     }
 

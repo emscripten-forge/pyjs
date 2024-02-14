@@ -60,5 +60,11 @@ def to_js(value, cache=None, depth=0, max_depth=None):
         return js_undefined()
     elif isinstance(value, (int, float, str, bool)):
         return JsValue(value)
+
+    # # bytestring
+    elif isinstance(value, bytes):
+        return internal.bytes_to_typed_array(value).buffer
+
+
     else:
         raise RuntimeError(f"no registerd converted for {value} of type {type(value)}")

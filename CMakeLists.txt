@@ -8,28 +8,8 @@ option(LINK_LIBEXPAT "Link libexpat" OFF)
 option(LINK_LIBMPDEC "Link libmpdec" OFF)
 
 
-##########################################################
-# embed python files in C++ headers
-##########################################################
-set(PYCPPSCRIPTS
-    convert.py
-    convert_py_to_js.py
-    core.py
-    error_handling.py
-    extend_js_val.py
-    webloop.py
-    pyodide_polyfill.py
-)
-
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
-foreach(script ${PYCPPSCRIPTS})
-    string(REPLACE "." "_" script_var ${script})
-    add_custom_command(OUTPUT pycpp_includes/${script}.cpp
-                       DEPENDS include/pyjs/pycpp/${script}
-                       COMMAND $ENV{CONDA_PREFIX}/bin/python ${CMAKE_SOURCE_DIR}/build_utils/embed_pycpp.py
-                        ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pycpp/${script}
-                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes/${script}.cpp)
-endforeach()
+
 
 
 
@@ -103,10 +83,6 @@ set(PYJS_HEADERS
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js
 )
 
-set(PYCPPSOURCES "")
-foreach(script ${PYCPPSCRIPTS})
-    list(APPEND PYCPPSOURCES pycpp_includes/${script}.cpp)
-endforeach()
 
 
 set(CMAKE_CXX_STANDARD 14)

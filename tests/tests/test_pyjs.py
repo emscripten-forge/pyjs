@@ -40,9 +40,9 @@ def test_js_function_creation():
 def test_pyodide_polyfill():
     # Test imports
     from pyodide.ffi import JsException, to_js
-    if  pyjs.to_py(pyjs._module._IS_BROWSER_MAIN_THREAD):
+    if  pyjs.to_py(pyjs.pyjs_core._module._IS_BROWSER_MAIN_THREAD):
         from js import console, window
-    if  pyjs.to_py(pyjs._module._IS_BROWSER_WORKER_THREAD):
+    if  pyjs.to_py(pyjs.pyjs_core._module._IS_BROWSER_WORKER_THREAD):
         from js import console, postMessage
 
     with pytest.raises(AttributeError):
@@ -242,7 +242,7 @@ def test_to_js_dict():
 def test_to_js_none():
 
     jsval = pyjs.to_js(None)
-    assert pyjs._module._is_undefined(jsval)
+    assert pyjs.pyjs_core._module._is_undefined(jsval)
 
 
 @pytest.mark.parametrize(

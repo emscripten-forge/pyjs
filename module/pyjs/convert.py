@@ -1,8 +1,9 @@
 import asyncio
 import functools
 import json
-
-
+from pyjs_core import internal, js,JsValue
+from .core import new
+from .error_handling import JsError, JsGenericError, JsInternalError, JsRangeError, JsReferenceError, JsSyntaxError, JsTypeError, JsURIError
 class _JsToPyConverterCache(object):
     def __init__(self):
         self._js_obj_to_int = js.WeakMap.new()
@@ -28,7 +29,6 @@ class _JsToPyConverterCache(object):
             self[js_val] = default_py
             return default_py, False
 
-
 def array_converter(js_val, depth, cache, converter_options):
     py_list, found_in_cache = cache.get(js_val, [])
     if found_in_cache:
@@ -43,7 +43,6 @@ def array_converter(js_val, depth, cache, converter_options):
         )
         py_list.append(py_item)
     return py_list
-
 
 def object_converter(js_val, depth, cache, converter_options):
 
@@ -68,7 +67,6 @@ def object_converter(js_val, depth, cache, converter_options):
         ret_dict[py_key] = py_val
 
     return ret_dict
-
 
 def map_converter(js_val, depth, cache, converter_options):
 
@@ -113,7 +111,6 @@ def set_converter(js_val, depth, cache, converter_options):
 def error_converter(js_val, depth, cache, converter_options, error_cls):
     return error_cls(err=js_val)
 
-
 error_to_py_converters = dict(
     Error=functools.partial(error_converter, error_cls=JsError),
     InternalError=functools.partial(error_converter, error_cls=JsInternalError),
@@ -123,7 +120,6 @@ error_to_py_converters = dict(
     TypeError=functools.partial(error_converter, error_cls=JsTypeError),
     URIError=functools.partial(error_converter, error_cls=JsURIError),
 )
-
 # register converters
 basic_to_py_converters = {
     "0": lambda x: None,
@@ -158,14 +154,12 @@ basic_to_py_converters = {
 }
 basic_to_py_converters = {**basic_to_py_converters, **error_to_py_converters}
 
-
 def register_converter(cls_name, converter):
     basic_to_py_converters[cls_name] = converter
 
 
 def to_py_json(js_val):
     return json.loads(JSON.stringify(js_val))
-
 
 class JsToPyConverterOptions(object):
     def __init__(self, json=False, converters=None, default_converter=None):
@@ -183,16 +177,12 @@ class JsToPyConverterOptions(object):
 def to_py(js_val, depth=0, cache=None, converter_options=None):
     if not isinstance(js_val, JsValue):
         return js_val
-
     if converter_options is None:
         converter_options = JsToPyConverterOptions()
-
     if cache is None:
         cache = _JsToPyConverterCache()
-
     converters = converter_options.converters
     default_converter = converter_options.default_converter
-
     ts = internal.get_type_string(js_val)
     return converters.get(ts, default_converter)(
         js_val, depth, cache, converter_options
@@ -213,6 +203,3 @@ def error_to_py_and_raise(err):
 
 def buffer_to_js_typed_array(buffer, view=False):
     return internal.py_1d_buffer_to_typed_array(buffer, bool(view))
-
-
-IN_BROWSER = not to_py(internal.module_property("_IS_NODE"))

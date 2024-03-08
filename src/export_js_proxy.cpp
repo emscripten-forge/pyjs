@@ -18,11 +18,12 @@ namespace em = emscripten;
 
 namespace pyjs
 {
-    inline py::object wrap_result(const py::module_& pyjs, em::val wrapped_return_value, const bool has_err)
+    inline py::object wrap_result(const py::module_& pyjs_core, em::val wrapped_return_value, const bool has_err)
     {
         if (has_err)
         {
-            pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
+            py::module::import("pyjs").attr("error_to_py_and_raise")(wrapped_return_value["err"]);
+            //pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
         }
         const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
         const auto type_string = wrapped_return_value["type_string"].as<std::string>();

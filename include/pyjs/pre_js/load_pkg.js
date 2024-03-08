@@ -18,48 +18,50 @@ Module["mkdirs"] = function (dirname) {
 
 
 function untar_from_python(tarball_path, target_dir = "") {
-    let shared_libs = Module.exec_eval(`
-import tarfile
-import json
-import pyjs
-from pathlib import Path
-import tempfile
-import shutil
-import os
-import sys
+    Module.exec(`
+def _py_untar(tarball_path, target_dir):
+    import tarfile
+    import json
+    from pathlib import Path
+    import tempfile
+    import shutil
+    import os
+    import sys
 
 
-def check_wasm_magic_number(file_path: Path) -> bool:
-    WASM_BINARY_MAGIC = b"\\0asm"
-    with file_path.open(mode="rb") as file:
-        return file.read(4) == WASM_BINARY_MAGIC
+    def check_wasm_magic_number(file_path: Path) -> bool:
+        WASM_BINARY_MAGIC = b"\\0asm"
+        with file_path.open(mode="rb") as file:
+            return file.read(4) == WASM_BINARY_MAGIC
 
-    
-target_dir = "${target_dir}"
-if target_dir == "":
-    target_dir = sys.prefix
-try:
-    with tarfile.open("${tarball_path}") as tar:
-        files = tar.getmembers()
-        shared_libs = []
-        for file in files:
-            if file.name.endswith(".so"):
-            
-                if target_dir == "/":
-                    shared_libs.append(f"/{file.name}")
-                else:
-                    shared_libs.append(f"{target_dir}/{file.name}")
+        
+    target_dir = target_dir
+    if target_dir == "":
+        target_dir = sys.prefix
+    try:
+        with tarfile.open(tarball_path) as tar:
+            files = tar.getmembers()
+            shared_libs = []
+            for file in files:
+                if file.name.endswith(".so"):
+                
+                    if target_dir == "/":
+                        shared_libs.append(f"/{file.name}")
+                    else:
+                        shared_libs.append(f"{target_dir}/{file.name}")
 
-        tar.extractall(target_dir)
-        for file in shared_libs:
-            if not check_wasm_magic_number(Path(file)):
-                print(f" {file} is not a wasm file")
-        s = json.dumps(shared_libs)
-except Exception as e:
-    print("ERROR",e)
-    raise e
-s
+            tar.extractall(target_dir)
+            for file in shared_libs:
+                if not check_wasm_magic_number(Path(file)):
+                    print(f" {file} is not a wasm file")
+            s = json.dumps(shared_libs)
+    except Exception as e:
+        print("ERROR",e)
+        raise e
+    return s
 `)
+    let shared_libs = Module.eval(`_py_untar("${tarball_path}", "${target_dir}")`)
+
     return JSON.parse(shared_libs)
 }
 
@@ -84,7 +86,7 @@ async function bootstrap_python(prefix, package_tarballs_root_url, python_packag
 
 
 
-    await Module.init(prefix, version);
+    await Module.init_phase_1(prefix, version);
 }
 
 
@@ -161,6 +163,8 @@ Module["bootstrap_from_empack_packed_environment"] = async function
 
     // create array with size 
     let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg)))
+
+    Module.init_phase_2(prefix, python_version);
 
     if(!skip_loading_shared_libs){
         // instantiate all packages

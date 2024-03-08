@@ -15,4 +15,4 @@ class TestPyToJs:
 
     def test_none(self):
         t = pyjs.to_js(None)
-        assert pyjs._module._is_undefined(t) == True
+        assert pyjs.pyjs_core._module._is_undefined(t) == True

@@ -1,10 +1,13 @@
-
+from typing import Any
+from .convert_py_to_js import to_js
+from .error_handling import JsException
+import sys
+import types
 
 def install_pyodide_polyfill():
     # Expose a small pyodide polyfill
     def _pyodide__getattr__(name: str) -> Any:
         if name == "to_js":
-            from pyjs import to_js
             return to_js
 
         raise AttributeError(

@@ -26,4 +26,3 @@ dependencies:
   - jupyterlite-xeus
   - jupyterlite-sphinx
   - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
-

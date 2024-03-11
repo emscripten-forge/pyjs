@@ -13,7 +13,6 @@ dependencies:
   - nodejs >= 18.7.0
   - pyjs_code_runner >= 2.0.1
   - exceptiongroup
-
   # documentation
   - make
   - sphinx
@@ -26,3 +25,5 @@ dependencies:
   - jupyterlite-xeus
   - jupyterlite-sphinx
   - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
+  # pyjs_code_runner dev deps
+  - hatchling

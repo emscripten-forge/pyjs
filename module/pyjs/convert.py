@@ -136,9 +136,6 @@ basic_to_py_converters = {
     "Map": map_converter,
     "7": lambda x, d, c, opts: x,
     "Promise": lambda x, d, c, opts: x._to_future(),
-    # error classes
-    # this is a bit ugly at since `as_numpy_array`
-    # has to do the dispatching again
     "ArrayBuffer": lambda x, d, c, opts: to_py(new(js.Uint8Array, x), d, c, opts),
     "Uint8Array": lambda x, d, c, opts: internal.as_buffer(x),
     "Int8Array": lambda x, d, c, opts: internal.as_buffer(x),

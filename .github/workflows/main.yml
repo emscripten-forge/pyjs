@@ -136,6 +136,7 @@ jobs:
               browser-main \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
               --mount         $(pwd)/tests:/tests \
+              --mount         $(pwd)/module/pyjs:/lib/python3.11/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \

@@ -17,6 +17,7 @@ dependencies:
   - jupytext
   - mkdocs
   - mkdocstrings
+  - mkdocstrings-python
   - empack >=3.2.0
   - jupyter_server  # to enable contents
   - jupyterlite

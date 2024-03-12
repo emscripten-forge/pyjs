@@ -25,5 +25,5 @@ dependencies:
   # pyjs_code_runner dev deps
   - hatchling
   - pip:
-    - mkdocs-sphinxs-dracular
+    - mkdocs-dracular-theme
     - JLDracula

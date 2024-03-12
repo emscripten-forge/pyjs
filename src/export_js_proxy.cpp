@@ -18,11 +18,12 @@ namespace em = emscripten;
 
 namespace pyjs
 {
-    inline py::object wrap_result(const py::module_& pyjs, em::val wrapped_return_value, const bool has_err)
+    inline py::object wrap_result(const py::module_& pyjs_core, em::val wrapped_return_value, const bool has_err)
     {
         if (has_err)
         {
-            pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
+            py::module::import("pyjs").attr("error_to_py_and_raise")(wrapped_return_value["err"]);
+            //pyjs.attr("error_to_py_and_raise")(wrapped_return_value["err"]);
         }
         const bool has_ret = wrapped_return_value["has_ret"].as<bool>();
         const auto type_string = wrapped_return_value["type_string"].as<std::string>();
@@ -72,11 +73,14 @@ namespace pyjs
         }
 
         const auto type_string = wrapped_return_value["type_string"].as<std::string>();
-        if (type_string == "0")
+
+
+
+        if(type_string.size() == 1 && type_string[0] == static_cast<std::underlying_type<JsType>::type>(JsType::JS_NULL))
         {
             return py::none();
         }
-        else if (type_string == "1")
+        else if(type_string.size() == 1 && type_string[0] == static_cast<std::underlying_type<JsType>::type>(JsType::JS_UNDEFINED))
         {
             std::stringstream ss;
             ss << "has no attribute/key ";

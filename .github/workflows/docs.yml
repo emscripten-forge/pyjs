@@ -38,7 +38,7 @@ jobs:
       - name: build the docs
         shell: bash -el {0}
         run: |
-          ./build_docs.sh
+          ./build_mkdocs.sh
   
 
       ################################################################
@@ -47,12 +47,12 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v2
         with:
-          path: docs/_build/html
+          path: docs_build/mkdocs
 
 
   deploy:
     # only run on main branch
-    if: github.ref == 'refs/heads/main' && github.repository == 'emscripten-forge/pyjs'
+    # if: github.ref == 'refs/heads/main' && github.repository == 'emscripten-forge/pyjs'
 
     # Add a dependency to the build job
     needs: build_pyjs_docs

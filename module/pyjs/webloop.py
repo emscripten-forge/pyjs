@@ -10,6 +10,10 @@ import sys
 import time
 import traceback
 from typing import Callable
+import js
+import pyjs_core
+import pyjs_core._module
+from typing import Any, Dict, List, Tuple, Union
 
 
 class WebLoop(asyncio.AbstractEventLoop):
@@ -164,8 +168,8 @@ class WebLoop(asyncio.AbstractEventLoop):
         # use an internal optimized function, that does not allow for
         # any arguments, does not return anything, and does assume
         # that the function does not throw
-        once_callable = _module._create_once_callable_unsave_void_void(
-            JsValue(run_handle)
+        once_callable =  pyjs_core.internal.module_property("_create_once_callable_unsave_void_void")(
+            pyjs_core.JsValue(run_handle)
         )
         self._set_timeout(once_callable, delay * 1000)
         return h
@@ -357,9 +361,9 @@ class WebLoop(asyncio.AbstractEventLoop):
         For custom exception handling, use the
         `set_exception_handler()` method.
         """
-        internal.console_log("call_exception_handler")
+        pyjs_core.js.console.log("call_exception_handler")
         # internal.console_log("context", context)
-        # internal.console_log("message", context['message'])
+        pyjs_core.js.console.log("message", context['message'])
         if self._exception_handler is None:
             try:
                 self.default_exception_handler(context)

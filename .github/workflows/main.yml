@@ -31,10 +31,16 @@ jobs:
           environment-file: environment-dev.yml
           environment-name: pyjs-wasm 
 
+      # temporary: install pyjs_code_runner from source
+      - name: Install pyjs_code_runner
+        shell: bash -el {0}
+        run: |
+          python -m pip install git+https://github.com/emscripten-forge/pyjs-code-runner.git@main --no-deps --no-build-isolation
+
       - name: Install Playwright
         run: |
           playwright install
-
+      
       - name: Setup emsdk
         shell: bash -el {0}
         run: |
@@ -96,6 +102,7 @@ jobs:
               browser-main \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
               --mount         $(pwd)/tests:/tests \
+              --mount         $(pwd)/module/pyjs:/lib/python3.11/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
@@ -111,6 +118,7 @@ jobs:
               browser-worker \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
               --mount         $(pwd)/tests:/tests \
+              --mount         $(pwd)/module/pyjs:/lib/python3.11/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
@@ -136,6 +144,7 @@ jobs:
               browser-main \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
               --mount         $(pwd)/tests:/tests \
+              --mount         $(pwd)/module/pyjs:/lib/python3.11/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \

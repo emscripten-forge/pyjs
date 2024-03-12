@@ -3,7 +3,7 @@
 #include <pyjs/export_pyjs_module.hpp>
 #include <pyjs/export_js_module.hpp>
 
-PYBIND11_EMBEDDED_MODULE(pyjs, m)
+PYBIND11_EMBEDDED_MODULE(pyjs_core, m)
 {
     pyjs::export_pyjs_module(m);
 }

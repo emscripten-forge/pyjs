@@ -4,47 +4,47 @@ import sys
 import types
 from typing import Any
 import ast
+import pyjs_core
 
-
-
+from pyjs_core import JsValue, js_array, js_py_object
 def install_submodules():
     def _js_mod__getattr__(name: str) -> Any:
-        ret = internal.global_property(name)
+        ret = pyjs_core.internal.global_property(name)
         if ret is None:
             raise AttributeError(f"has no attribute {name}")
         return ret
 
-    js = sys.modules["js"] = sys.modules["pyjs.js"] = types.ModuleType("js")
+    js = sys.modules["pyjs.js"] = sys.modules["js"] = sys.modules["pyjs_core.js"] = types.ModuleType("js")
     js.__getattr__ = _js_mod__getattr__
+    pyjs_core.js = js
 
     def _module_mod__getattr__(name: str) -> Any:
-        ret = internal.module_property(name)
-        if internal.is_undefined_or_null(ret):
+        ret = pyjs_core.internal.module_property(name)
+        if pyjs_core.internal.is_undefined_or_null(ret):
             raise AttributeError(f"has no attribute {name}")
         return ret
 
-    _module = sys.modules["pyjs._module"] = types.ModuleType("_module")
+    _module = sys.modules["pyjs_core._module"] = types.ModuleType("_module")
     _module.__getattr__ = _module_mod__getattr__
+    pyjs_core._module = _module
 
 
 install_submodules()
 del install_submodules
 
 
-js = sys.modules["pyjs.js"]
-_module = sys.modules["pyjs._module"]
 
 
 def new(cls_, *args):
-    return _module._new(cls_, *args)
+    return pyjs_core._module._new(cls_, *args)
 
 
 def async_import_javascript(path):
-    return _module._async_import_javascript(path)
+    return pyjs_core._module._async_import_javascript(path)
 
 
 def type_str(x):
-    return internal.type_str(x)
+    return pyjs_core.internal.type_str(x)
 
 
 def create_callable(py_function):
@@ -73,7 +73,7 @@ def promise(py_resolve_reject):
 
 def create_once_callable(py_function):
     js_py_function = JsValue(py_function)
-    once_callable = _module._create_once_callable(js_py_function)
+    once_callable = pyjs_core._module._create_once_callable(js_py_function)
     return once_callable
 
 
@@ -81,21 +81,21 @@ def _make_js_args(args):
     js_array_args = js_array()
     is_generated_proxy = js_array()
     for arg in args:
-        js_arg, is_proxy = internal.implicit_py_to_js(arg)
-        internal.val_call(js_array_args, "push", js_arg)
-        internal.val_call(is_generated_proxy, "push", JsValue(is_proxy))
+        js_arg, is_proxy = pyjs_core.internal.implicit_py_to_js(arg)
+        pyjs_core.internal.val_call(js_array_args, "push", js_arg)
+        pyjs_core.internal.val_call(is_generated_proxy, "push", JsValue(is_proxy))
     return (js_array_args, is_generated_proxy)
 
 
 def apply(js_function, args):
     js_array_args, is_generated_proxy = _make_js_args(args)
-    ret, meta = internal.apply_try_catch(js_function, js_array_args, is_generated_proxy)
+    ret, meta = pyjs_core.internal.apply_try_catch(js_function, js_array_args, is_generated_proxy)
     return ret
 
 
 def japply(js_function, args):
     sargs = json.dumps(args)
-    ret, meta = internal.japply_try_catch(js_function, sargs)
+    ret, meta = pyjs_core.internal.japply_try_catch(js_function, sargs)
     return ret
 
 
@@ -105,7 +105,7 @@ def gapply(js_function, args, jin=True, jout=True):
         is_generated_proxy = [False] * len(args)
     else:
         args, is_generated_proxy = _make_js_args(args)
-    ret = internal.gapply_try_catch(js_function, args, is_generated_proxy, jin, jout)
+    ret = pyjs_core.internal.gapply_try_catch(js_function, args, is_generated_proxy, jin, jout)
     if jout:
         if ret == "":
             return None

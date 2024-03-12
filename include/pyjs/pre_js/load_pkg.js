@@ -18,63 +18,68 @@ Module["mkdirs"] = function (dirname) {
 
 
 function untar_from_python(tarball_path, target_dir = "") {
-    let shared_libs = Module.exec_eval(`
-import tarfile
-import json
-import pyjs
-from pathlib import Path
-import tempfile
-import shutil
-import os
-import sys
+    Module.exec(`
+def _py_untar(tarball_path, target_dir):
+    import tarfile
+    import json
+    from pathlib import Path
+    import tempfile
+    import shutil
+    import os
+    import sys
 
 
-def check_wasm_magic_number(file_path: Path) -> bool:
-    WASM_BINARY_MAGIC = b"\\0asm"
-    with file_path.open(mode="rb") as file:
-        return file.read(4) == WASM_BINARY_MAGIC
+    def check_wasm_magic_number(file_path: Path) -> bool:
+        WASM_BINARY_MAGIC = b"\\0asm"
+        with file_path.open(mode="rb") as file:
+            return file.read(4) == WASM_BINARY_MAGIC
 
-    
-target_dir = "${target_dir}"
-if target_dir == "":
-    target_dir = sys.prefix
-try:
-    with tarfile.open("${tarball_path}") as tar:
-        files = tar.getmembers()
-        shared_libs = []
-        for file in files:
-            if file.name.endswith(".so"):
-            
-                if target_dir == "/":
-                    shared_libs.append(f"/{file.name}")
-                else:
-                    shared_libs.append(f"{target_dir}/{file.name}")
+        
+    target_dir = target_dir
+    if target_dir == "":
+        target_dir = sys.prefix
+    try:
+        with tarfile.open(tarball_path) as tar:
+            files = tar.getmembers()
+            shared_libs = []
+            for file in files:
+                if file.name.endswith(".so"):
+                
+                    if target_dir == "/":
+                        shared_libs.append(f"/{file.name}")
+                    else:
+                        shared_libs.append(f"{target_dir}/{file.name}")
 
-        tar.extractall(target_dir)
-        for file in shared_libs:
-            if not check_wasm_magic_number(Path(file)):
-                print(f" {file} is not a wasm file")
-        s = json.dumps(shared_libs)
-except Exception as e:
-    print("ERROR",e)
-    raise e
-s
+            tar.extractall(target_dir)
+            for file in shared_libs:
+                if not check_wasm_magic_number(Path(file)):
+                    print(f" {file} is not a wasm file")
+            s = json.dumps(shared_libs)
+    except Exception as e:
+        print("ERROR",e)
+        raise e
+    return s
 `)
+    let shared_libs = Module.eval(`_py_untar("${tarball_path}", "${target_dir}")`)
+
     return JSON.parse(shared_libs)
 }
 
 Module["_untar_from_python"] = untar_from_python
 
-async function bootstrap_python(prefix, package_tarballs_root_url, python_package) {
+async function bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose = false) {
     // fetch python package
     let python_package_url = `${package_tarballs_root_url}/${python_package.filename}`
 
-    console.log(`fetching python package from ${python_package_url}`)
+    if (verbose) {
+        console.log(`fetching python package from ${python_package_url}`)
+    }
     let byte_array = await fetchByteArray(python_package_url)
 
-
     const python_tarball_path = `/package_tarballs/${python_package.filename}`;
-    console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
+    if(verbose){
+        console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
+    }
     Module.FS.writeFile(python_tarball_path, byte_array);
     Module._untar(python_tarball_path, prefix);
 
@@ -84,7 +89,7 @@ async function bootstrap_python(prefix, package_tarballs_root_url, python_packag
 
 
 
-    await Module.init(prefix, version);
+    await Module.init_phase_1(prefix, version);
 }
 
 
@@ -95,9 +100,6 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         verbose = false,
         skip_loading_shared_libs = false
     ) {
-
-
-
 
     function splitPackages(packages) {
         // find package with name "python" and remove it from the list
@@ -127,14 +129,19 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         (
             package_tarballs_root_url,
             python_is_ready_promise,
-            pkg
+            pkg,
+            verbose = false
         ) {
         let package_url = `${package_tarballs_root_url}/${pkg.filename}`
-        console.log(`fetching pkg ${pkg.name} from ${package_url}`)
+        if (verbose) {
+            console.log(`fetching pkg ${pkg.name} from ${package_url}`)
+        }
         let byte_array = await fetchByteArray(package_url)
         const tarball_path = `/package_tarballs/${pkg.filename}`;
         Module.FS.writeFile(tarball_path, byte_array);
-        console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
+        if(verbose){
+            console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
+        }
         await python_is_ready_promise;
         return untar_from_python(tarball_path);
     }
@@ -160,7 +167,9 @@ Module["bootstrap_from_empack_packed_environment"] = async function
     let python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package);
 
     // create array with size 
-    let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg)))
+    let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)));
+
+    Module.init_phase_2(prefix, python_version);
 
     if(!skip_loading_shared_libs){
         // instantiate all packages

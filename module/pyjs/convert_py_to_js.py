@@ -1,3 +1,7 @@
+
+from .core import new
+from pyjs_core import JsValue, js_array, js, js_undefined,internal
+
 def _py_list_like_to_js(value, cache, depth, max_depth):
     vid = id(value)
     if vid in cache:

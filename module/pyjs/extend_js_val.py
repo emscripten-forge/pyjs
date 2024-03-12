@@ -7,7 +7,6 @@ from .core import apply, japply
 
 
 def extend_val():
-    print("0")
     def _to_string(val):
         if _module._is_undefined(val):
             return "undefined"

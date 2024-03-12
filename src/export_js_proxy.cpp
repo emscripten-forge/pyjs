@@ -73,11 +73,14 @@ namespace pyjs
         }
 
         const auto type_string = wrapped_return_value["type_string"].as<std::string>();
-        if (type_string == "0")
+
+
+
+        if(type_string.size() == 1 && type_string[0] == static_cast<std::underlying_type<JsType>::type>(JsType::JS_NULL))
         {
             return py::none();
         }
-        else if (type_string == "1")
+        else if(type_string.size() == 1 && type_string[0] == static_cast<std::underlying_type<JsType>::type>(JsType::JS_UNDEFINED))
         {
             std::stringstream ss;
             ss << "has no attribute/key ";

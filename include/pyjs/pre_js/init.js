@@ -4,8 +4,6 @@ Module._is_initialized = false
 
 Module['init_phase_1'] = async function(prefix, python_version) {
 
-    console.log('init')
-
     let version_str = `${python_version[0]}.${python_version[1]}`;
 
     // list of python objects we need to delete when cleaning up
@@ -30,9 +28,6 @@ Module['init_phase_1'] = async function(prefix, python_version) {
         Module.setenv("PYTHONPATH", `${prefix}/lib/python${version_str}/site-packages:/usr/lib/python${version_str}`);
         var side_path = `${prefix}/lib/python${version_str}/site-packages`;
     }
-
-    console.log('Module  is', Module)
-    console.log('Module FS is', Module.FS)
 
     if(!Module.FS.isDir(side_path)){
         Module.FS.mkdir(side_path);
@@ -135,17 +130,10 @@ Module['init_phase_1'] = async function(prefix, python_version) {
             return ret['ret']
         }
     };
-    console.log("init phase 1 done")
 }
 
 Module['init_phase_2'] =  function(prefix, python_version) {
     let default_scope = Module["default_scope"];
-    console.log('init phase 2')
-
-    console.log("import pyjs")
-
-// raw string
-
 
     // make the python pyjs module easy available
     Module.exec(`
@@ -157,7 +145,6 @@ except Exception as e:
     traceback.print_exc()
     raise e
     `)
-    console.log("imported pyjs")
 
     Module.py_pyjs = Module.eval("pyjs")
     Module._py_objects.push(Module.py_pyjs);

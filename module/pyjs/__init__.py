@@ -1,5 +1,6 @@
+import pyjs_core
 from pyjs_core import *
-
+from pyjs_core import JsValue
 
 from . core import *
 from . extend_js_val import *
@@ -15,3 +16,4 @@ IN_BROWSER = not to_py(_in_browser_js)
 
 js = sys.modules["pyjs_core.js"]
 _module = sys.modules["pyjs_core._module"]
+

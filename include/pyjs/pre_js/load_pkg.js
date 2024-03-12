@@ -67,16 +67,19 @@ def _py_untar(tarball_path, target_dir):
 
 Module["_untar_from_python"] = untar_from_python
 
-async function bootstrap_python(prefix, package_tarballs_root_url, python_package) {
+async function bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose = false) {
     // fetch python package
     let python_package_url = `${package_tarballs_root_url}/${python_package.filename}`
 
-    console.log(`fetching python package from ${python_package_url}`)
+    if (verbose) {
+        console.log(`fetching python package from ${python_package_url}`)
+    }
     let byte_array = await fetchByteArray(python_package_url)
 
-
     const python_tarball_path = `/package_tarballs/${python_package.filename}`;
-    console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
+    if(verbose){
+        console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
+    }
     Module.FS.writeFile(python_tarball_path, byte_array);
     Module._untar(python_tarball_path, prefix);
 
@@ -97,9 +100,6 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         verbose = false,
         skip_loading_shared_libs = false
     ) {
-
-
-
 
     function splitPackages(packages) {
         // find package with name "python" and remove it from the list
@@ -129,14 +129,19 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         (
             package_tarballs_root_url,
             python_is_ready_promise,
-            pkg
+            pkg,
+            verbose = false
         ) {
         let package_url = `${package_tarballs_root_url}/${pkg.filename}`
-        console.log(`fetching pkg ${pkg.name} from ${package_url}`)
+        if (verbose) {
+            console.log(`fetching pkg ${pkg.name} from ${package_url}`)
+        }
         let byte_array = await fetchByteArray(package_url)
         const tarball_path = `/package_tarballs/${pkg.filename}`;
         Module.FS.writeFile(tarball_path, byte_array);
-        console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
+        if(verbose){
+            console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
+        }
         await python_is_ready_promise;
         return untar_from_python(tarball_path);
     }
@@ -162,7 +167,7 @@ Module["bootstrap_from_empack_packed_environment"] = async function
     let python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package);
 
     // create array with size 
-    let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg)))
+    let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)));
 
     Module.init_phase_2(prefix, python_version);
 

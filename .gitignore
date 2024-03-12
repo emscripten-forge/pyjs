@@ -9,3 +9,8 @@ package-lock.json
 docs/_build
 *.wasm
 nxtgm_javascript_runtime.js
+.DS_Store
+xeus-python/
+emsdk_*
+docs_build/
+empack_config.yaml

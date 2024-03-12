@@ -14,11 +14,8 @@ dependencies:
   - pyjs_code_runner >= 2.0.1
   - exceptiongroup
   # documentation
-  - make
-  - sphinx
-  - sphinx_rtd_theme
-  - sphinx-gallery
-  - myst-parser
+  - mkdocs
+  - mkdocstrings
   - empack >=3.2.0
   - jupyter_server  # to enable contents
   - jupyterlite
@@ -27,3 +24,6 @@ dependencies:
   - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
   # pyjs_code_runner dev deps
   - hatchling
+  - pip:
+    - mkdocs-sphinxs-dracular
+    - JLDracula

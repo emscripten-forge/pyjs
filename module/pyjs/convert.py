@@ -151,11 +151,63 @@ _basic_to_py_converters = {
 }
 _basic_to_py_converters = {**_basic_to_py_converters, **_error_to_py_converters}
 
-def register_converter(cls_name, converter):
+def register_converter(cls_name : str, converter : callable):
+    '''
+    Register a custom JavaScript to Python converter.
+
+    Args:
+        cls_name: The name of the JavaScript class to convert.
+        converter: A function that takes a JavaScript object and returns a Python object.
+    
+    Example:
+        For this example we define the JavaScript class Rectangle on the fly
+        and create an instance of it. We then register a custom converter for the
+        Rectangle class and convert the instance to a Python object.
+
+    ```python
+
+
+        # Define JavaScript Rectangle class
+        # and create an instance of it
+        rectangle = pyjs.js.Function("""
+            class Rectangle {
+            constructor(height, width) {
+                this.height = height;
+                this.width = width;
+            }
+            }
+            return new Rectangle(10,20)
+        """)()
+
+        # A Python Rectangle class
+        class Rectangle(object):
+            def __init__(self, height, width):
+                self.height = height
+                self.width = width
+        
+        # the custom converter
+        def rectangle_converter(js_val, depth, cache, converter_options):
+            return Rectangle(js_val.height, js_val.width)
+
+        # Register the custom converter
+        pyjs.register_converter("Rectangle", rectangle_converter)
+
+        # Convert the JavaScript Rectangle to a Python Rectangle
+        r = pyjs.to_py(rectangle)
+        assert isinstance(r, Rectangle)
+        assert r.height == 10
+        assert r.width == 20
+
+    ```
+
+    '''
+
+
     _basic_to_py_converters[cls_name] = converter
 
 
-def to_py_json(js_val):
+def to_py_json(js_val : JsValue):
+    """ Convert a JavaScript object to a Python object using JSON serialization."""
     return json.loads(JSON.stringify(js_val))
 
 class JsToPyConverterOptions(object):

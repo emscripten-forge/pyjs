@@ -7,6 +7,11 @@ option(WITH_NODE_TESTS "With node tests" OFF)
 option(LINK_LIBEXPAT "Link libexpat" OFF)
 option(LINK_LIBMPDEC "Link libmpdec" OFF)
 
+# set PY_VERSION to 3.11 if the user has not set it
+if (NOT DEFINED PY_VERSION)
+    set(PY_VERSION 3.11)
+endif()
+
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
 
@@ -290,3 +295,11 @@ export(EXPORT ${PROJECT_NAME}-targets
 install(EXPORT ${PROJECT_NAME}-targets
             FILE ${PROJECT_NAME}Targets.cmake
             DESTINATION ${PYJS_CMAKECONFIG_INSTALL_DIR})
+
+
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/module/pyjs
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/python${PY_VERSION}/site-packages
+        FILES_MATCHING PATTERN "*.py"
+        PATTERN "__pycache__" EXCLUDE
+)

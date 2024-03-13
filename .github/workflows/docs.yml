@@ -52,7 +52,7 @@ jobs:
 
   deploy:
     # only run on main branch
-    # if: github.ref == 'refs/heads/main' && github.repository == 'emscripten-forge/pyjs'
+    if: github.ref == 'refs/heads/main' && github.repository == 'emscripten-forge/pyjs'
 
     # Add a dependency to the build job
     needs: build_pyjs_docs

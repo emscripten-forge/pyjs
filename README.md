@@ -1,5 +1,8 @@
 # pyjs
 [![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml)
+[![CI](https://img.shields.io/badge/pyjs-docs-yellow)](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml)
+
+
 
 ## What is pyjs
 

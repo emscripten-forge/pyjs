@@ -40,6 +40,19 @@ def _py_set_like_to_js(value, cache, depth, max_depth):
 
 
 def to_js(value, cache=None, depth=0, max_depth=None):
+    """
+    Convert a Python object to a JavaScript object.
+
+    Args:
+        value: The Python object to convert.
+        cache: A dictionary to use as a cache for already converted objects.
+        depth: The current depth of of nested object conversion.
+        max_depth: The maximum depth of nested object conversion.
+    
+    Returns:
+
+        a JavaScript stored in a pyjs_core.JsValue
+    """
     if cache is None:
         cache = dict()
 

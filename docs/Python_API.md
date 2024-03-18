@@ -12,21 +12,18 @@
     options:
       show_submodules: true
       members:
+        - pyjs_core
         - to_js
-        - register_converter
-        - to_py_json
-        - JsToPyConverterOptions
         - to_py
-        - error_to_py
-        - error_to_py_and_raise
+        - register_converter
+        - JsToPyConverterOptions
         - new
         - create_callable
         - callable_context
-        - promise
         - create_once_callable
+        - promise
         - apply
-        - japply
-        - gapply
+        - WebLoop
         - JsException
         - JsGenericError
         - JsError
@@ -36,8 +33,6 @@
         - JsSyntaxError
         - JsTypeError
         - JsURIError
-        - WebLoop
-        - pyjs_core
         
 
     

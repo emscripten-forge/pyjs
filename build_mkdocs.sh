@@ -29,8 +29,7 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
             --yes \
             python pybind11 nlohmann_json pybind11_json numpy \
             bzip2 sqlite zlib libffi exceptiongroup \
-            xeus xeus-lite xeus-python xeus-javascript xtl  "ipython<8.20"
-
+            xeus xeus-lite xeus-python "xeus-javascript>=0.3.1" xtl "ipython=8.22.2=py311had7285e_1" "traitlets>=5.14.2"
 else
     echo "Wasm env $WASM_ENV_NAME already exists"
 fi
@@ -38,7 +37,7 @@ fi
 
 
 
-if [ ! -f "$PYJS_PROBE_FILE" ]; then
+if true; then
     echo "Building pyjs"
 
     cd $THIS_DIR
@@ -75,7 +74,6 @@ else
 fi
 
 
-# PYJS_PROBE_FILE=$WASM_ENV_PREFIX/share/jupyter/kernels/xpython/kernel.json
 if false; then
     echo "Building xeus-python"
 
@@ -112,6 +110,34 @@ if false; then
 else
     echo "Skipping build xeus-python"
 fi
+
+# no need to build xeus-javascript, the distributed version is fine
+# if false; then
+#     echo "Building xeus-javascript"
+
+#     cd $THIS_DIR
+#     source $EMSDK_DIR/emsdk_env.sh
+
+
+#     cd ~/src/xeus-javascript
+#     mkdir -p build_wasm
+#     cd build_wasm
+
+#     export PREFIX=$WASM_ENV_PREFIX
+#     export CMAKE_PREFIX_PATH=$PREFIX
+#     export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX          
+
+
+#     emcmake cmake .. \
+#         -DCMAKE_BUILD_TYPE=Release \
+#         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
+#         -DCMAKE_INSTALL_PREFIX=$PREFIX \
+#         -DXPYT_EMSCRIPTEN_WASM_BUILD=ON\
+    
+#     emmake make -j8 install
+# else
+#     echo "Skipping build xeus-javascript"
+# fi
 
 
 

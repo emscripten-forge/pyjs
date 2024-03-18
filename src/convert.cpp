@@ -52,6 +52,7 @@ namespace pyjs
         }
     }
 
+
     py::object implicit_js_to_py(em::val val, const std::string& type_string)
     {
         if (type_string.size() == 1)

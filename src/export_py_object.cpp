@@ -235,7 +235,46 @@ namespace pyjs
                               }
                           }))
 
-
+            .function("toString",
+                em::select_overload<em::val(py::object&)>(
+                    [](py::object& pyobject) -> em::val
+                    {
+                        const std::string str = py::str(pyobject);
+                        return em::val(str);
+                    })
+            )
+            .function("toJSON",
+                em::select_overload<em::val(py::object&, em::val )>(
+                    [](py::object& pyobject, em::val val) -> em::val
+                    {
+                        auto json_module = py::module::import("json");
+                        auto json_dumps = json_module.attr("dumps");
+                        try{
+                            auto json_str = em::val(json_dumps(pyobject).cast<std::string>());
+                            return json_str;
+                        }
+                        catch (py::error_already_set& e)
+                        {
+                            return em::val(py::str(pyobject).cast<std::string>());
+                        }
+                    })
+            )
+            .function("toJSON",
+                em::select_overload<em::val(py::object&)>(
+                    [](py::object& pyobject) -> em::val
+                    {
+                        auto json_module = py::module::import("json");
+                        auto json_dumps = json_module.attr("dumps");
+                        try{
+                            auto json_str = em::val(json_dumps(pyobject).cast<std::string>());
+                            return json_str;
+                        }
+                        catch (py::error_already_set& e)
+                        {
+                            return em::val(py::str(pyobject).cast<std::string>());
+                        }
+                    })
+            )
             ;
     }
 

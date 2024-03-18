@@ -346,16 +346,18 @@ class WebLoop(asyncio.AbstractEventLoop):
     def call_exception_handler(self, context):
         """Call the current event loop's exception handler.
         The context argument is a dict containing the following keys:
-        - 'message': Error message;
-        - 'exception' (optional): Exception object;
-        - 'future' (optional): Future instance;
-        - 'task' (optional): Task instance;
-        - 'handle' (optional): Handle instance;
-        - 'protocol' (optional): Protocol instance;
-        - 'transport' (optional): Transport instance;
-        - 'socket' (optional): Socket instance;
-        - 'asyncgen' (optional): Asynchronous generator that caused
-                                 the exception.
+
+        * `message`: Error message;
+        * `exception` (optional): Exception object;
+        * `future` (optional): Future instance;
+        * `task` (optional): Task instance;
+        * `handle` (optional): Handle instance;
+        * `protocol` (optional): Protocol instance;
+        * `transport` (optional): Transport instance;
+        * `socket` (optional): Socket instance;
+        * `asyncgen` (optional): Asynchronous generator that caused
+                                the exception.
+                                
         New keys maybe introduced in the future.
         Note: do not overload this method in an event loop subclass.
         For custom exception handling, use the

@@ -18,6 +18,7 @@ dependencies:
   - mkdocs
   - mkdocstrings
   - mkdocstrings-python
+  - mkdocs-material
   - empack >=3.2.0
   - jupyter_server  # to enable contents
   - jupyterlite
@@ -27,5 +28,4 @@ dependencies:
   # pyjs_code_runner dev deps
   - hatchling
   - pip:
-    - mkdocs-dracula-theme
     - JLDracula

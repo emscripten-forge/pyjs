@@ -1,7 +1,7 @@
 site_name: Pyjs docs
 theme:
-  # name: material
-  name: dracula
+  name: material
+  # name: dracula
 
   palette:
 
@@ -34,3 +34,13 @@ plugins:
           allow_inspection: true
           show_root_heading: true
         show_source: false
+
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences

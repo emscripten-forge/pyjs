@@ -80,10 +80,6 @@ Module['init_phase_1'] = async function(prefix, python_version) {
         return this.py_apply(args)
     };
 
-    // Module['pyobject'].prototype.toString = function(...args) {
-    //     return this.py_apply(args)
-    // };
-
     Module['pyobject'].prototype.py_apply = function(args, kwargs) {
 
         if (args === undefined) {

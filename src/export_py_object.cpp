@@ -182,13 +182,13 @@ namespace pyjs
                               }
                               catch (py::error_already_set& e)
                               {
-                                std::cout << "unhanded error: " << e.what() << "\n";
+                                std::cout << "unhandled error: " << e.what() << "\n";
                               }
                               catch( const std::exception &e) { 
-                                std::cout << "unhanded error: " << e.what() << "\n";
+                                std::cout << "unhandled error: " << e.what() << "\n";
                               }
                               catch(...){
-                                std::cout<<"catched unhanded something.\n";
+                                std::cout<<"catched unhandled something.\n";
                               }
                           }))
 

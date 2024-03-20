@@ -188,7 +188,7 @@ namespace pyjs
                                 std::cout << "unhanded error: " << e.what() << "\n";
                               }
                               catch(...){
-                                std::cout<<"catched something...\n";
+                                std::cout<<"catched unhanded something.\n";
                               }
                           }))
 
@@ -201,16 +201,6 @@ namespace pyjs
                                   pyobject(implicit_js_to_py(val));
                               }
                           }))
-
-            // .function("__usafe_void_val_val__",
-            //           em::select_overload<void(py::object&, em::val, em::val)>(
-            //               [](py::object& pyobject, em::val val1, em::val val2)
-            //               {
-            //                   {
-            //                       py::gil_scoped_acquire acquire;
-            //                       pyobject(val1, val2);
-            //                   }
-            //               }))
 
             .function("_raw_getattr",
                       em::select_overload<em::val(py::object&, const std::string&)>(
@@ -234,6 +224,24 @@ namespace pyjs
                                   return ret;
                               }
                           }))
+            .function("__toPrimitive",
+                em::select_overload<em::val(py::object&)>(
+                    [](py::object& pyobject) -> em::val
+                    {
+                        auto numbers = py::module::import("numbers");
+                        if(py::isinstance(pyobject, numbers.attr("Number")))
+                        {
+                            py::float_ pyf = pyobject.cast<py::float_>();
+                            const auto d = pyf.cast<double>();
+                            return em::val(d);
+                        }
+                        else{
+                            const auto py_str = py::str(pyobject);
+                            const std::string str = py_str.cast<std::string>();
+                            return em::val(str);
+                        }
+                    })
+            )
 
             .function("toString",
                 em::select_overload<em::val(py::object&)>(
@@ -255,23 +263,9 @@ namespace pyjs
                         }
                         catch (py::error_already_set& e)
                         {
-                            return em::val(py::str(pyobject).cast<std::string>());
-                        }
-                    })
-            )
-            .function("toJSON",
-                em::select_overload<em::val(py::object&)>(
-                    [](py::object& pyobject) -> em::val
-                    {
-                        auto json_module = py::module::import("json");
-                        auto json_dumps = json_module.attr("dumps");
-                        try{
-                            auto json_str = em::val(json_dumps(pyobject).cast<std::string>());
-                            return json_str;
-                        }
-                        catch (py::error_already_set& e)
-                        {
-                            return em::val(py::str(pyobject).cast<std::string>());
+                            const auto py_str = py::str(pyobject);
+                            const std::string str = py_str.cast<std::string>();
+                            return em::val(str);
                         }
                     })
             )

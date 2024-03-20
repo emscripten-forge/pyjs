@@ -1,5 +1,4 @@
 Module['make_proxy'] = function(py_object) {
-    // return py_object;
     const handler = {
         get(target, property, receiver) {
             var ret = target[property]

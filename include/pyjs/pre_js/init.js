@@ -114,7 +114,10 @@ Module['init_phase_1'] = async function(prefix, python_version) {
         }
     };
 
-
+    // [Symbol.toPrimitive](hint) for pyobject
+    Module['pyobject'].prototype[Symbol.toPrimitive] = function(hint) {
+        return this.__toPrimitive();
+    };
 
 
 

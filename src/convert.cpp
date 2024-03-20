@@ -247,7 +247,7 @@ namespace pyjs
         if (stride != 1)
         {
             std::stringstream s;
-            s << "only continous arrays are allowe but stride is " << stride << " raw stride "
+            s << "only continous arrays are allowed but stride is " << stride << " raw stride "
               << info.strides[0] << " itemsize " << itemsize << " shape " << info.shape[0];
             throw std::runtime_error(s.str().c_str());
         }

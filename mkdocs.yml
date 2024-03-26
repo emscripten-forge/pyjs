@@ -27,6 +27,7 @@ theme:
       
 
 plugins:
+- autorefs
 - mkdocstrings:
     handlers:
       python:

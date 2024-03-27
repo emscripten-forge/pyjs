@@ -4,8 +4,6 @@
 The main module for the JavaScript API.
 ### `exec`
 Execute a string of Python code.
-### `exec_eval`
-Execute a string of Python code and return the last expression.
 
 Example:
 ```javascript
@@ -13,6 +11,21 @@ pyjs.exec(`
 import numpy
 print(numpy.random.rand(3))
 `);
+```
+
+### `exec_eval`
+Execute a string of Python code and return the last expression.
+
+Example:
+```javascript
+const arr = pyjs.exec_eval(`
+import numpy
+numpy.random.rand(3)
+`);
+// use the array
+console.log(arr);
+// delete the array
+arr.delete();
 ```
 
 ### `eval`

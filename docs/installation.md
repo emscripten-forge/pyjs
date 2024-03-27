@@ -2,7 +2,6 @@
 
 ## Prerequisites:
 
-https://repo.mamba.pm/emscripten-forge.
 Before we start, lets introduce a few concepts and tools that are used in the pyjs workflow.
 ### Conda-forge Emscripten-Forge
 
@@ -10,7 +9,6 @@ Before we start, lets introduce a few concepts and tools that are used in the py
 
 ### Empack
 https://github.com/emscripten-forge/empack is a tool to "pack" conda environments into a set of files that can be consumed by pyjs.
-
 
 
 ## Installation Steps

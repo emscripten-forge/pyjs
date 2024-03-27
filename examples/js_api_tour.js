@@ -85,7 +85,7 @@ const square_func = pyjs.eval('numpy.square')
 
 // any function call / __call__ like operator on the python side
 // is called via "py_call" 
-const res = sin_func.py_call(arr)
+const res = square_func.py_call(arr)
 
 // print the result
 console.log(res)

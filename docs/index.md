@@ -36,3 +36,8 @@ const py_list = pyjs.eval("[i for i in range(10)]")
 /// access 
 console.log(py_list.get(0)) // same as py_list[0] on the python side
 ```
+
+## Try it out
+
+To try it out, you can use  [jupyterlite](../lite),
+the [JavaScript REPL](../try-pyjs-from-javaScript) or the [Python REPL](../try-pyjs-from-python).

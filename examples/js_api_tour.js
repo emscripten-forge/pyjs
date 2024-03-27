@@ -85,7 +85,7 @@ const square_func = pyjs.eval('numpy.square')
 
 // any function call / __call__ like operator on the python side
 // is called via "py_call" 
-const res = sin_func.py_call(arr)
+const res = square_func.py_call(arr)
 
 // print the result
 console.log(res)
@@ -128,10 +128,12 @@ console.log(Array.from(js_map.values()))
 const sum = pyjs.eval("sum([i for i in range(0,101)])")
 sum
 
+// %% [code]
 // is_true is a plain javascript boolean
 const is_true = pyjs.eval("sum([i for i in range(0,101)]) == 5050")
 is_true
 
+// %% [code]
 // none will be undefined
 let none = pyjs.eval('None')
 console.log(none)
@@ -147,4 +149,4 @@ await asyncio.sleep(2)
 sum([i for i in range(100)])
 `
 result = await pyjs.async_exec_eval(py_code)
-console.log(result); // 4950
+console.log(result);

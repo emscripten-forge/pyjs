@@ -5,8 +5,6 @@
 # %% [code]
 import pyjs
 
-
-
 # %% [markdown]
 # # Accessing the the JavaScript global object
 #
@@ -20,22 +18,8 @@ import pyjs
 # %% [code]
 pyjs.js.location.origin  # equivalent to the javascript expression `location.origin` / `globalThis.location.origin`
 
-
-
-
-
 # %% [markdown]
 # # Create JavaScript functions on the fly
-#
-# To create a javascript fuction like the following
-#
-#   .. code-block:: JavaScript
-#
-#       my_function = function(a, b) {
-#           return a + b;
-#       }
-# 
-# we can do the following:
 
 # %% [code]
 # define the function
@@ -66,6 +50,7 @@ js_nested_object = pyjs.js.Function("return{ foo:42,bar:[1,{a:1,b:2}]};")()
 py_dict = pyjs.to_py(js_nested_object)
 py_dict
 
+# %% [markdown]
 # ### Custom converters
 #
 # Pyjs allows to register custom converters for specific javascript classes.
@@ -101,7 +86,6 @@ r = pyjs.to_py(rectangle)
 assert isinstance(r, Rectangle)
 assert r.height == 10
 assert r.width == 20
-# %%
 
 # %% [markdown]
 # ## Implicit conversion
@@ -121,5 +105,3 @@ assert isinstance(js_function("hello", "world"), str)
 assert isinstance(js_function(1, 2), int)
 assert isinstance(js_function(1.5, 2.0), float)
 assert isinstance(js_function(1.5, 2.5), int) # (!)
-
-# %%

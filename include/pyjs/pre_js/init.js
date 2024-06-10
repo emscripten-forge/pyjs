@@ -29,9 +29,9 @@ Module['init_phase_1'] = async function(prefix, python_version) {
         var side_path = `${prefix}/lib/python${version_str}/site-packages`;
     }
 
-    if(!Module.FS.isDir(side_path)){
-        Module.FS.mkdir(side_path);
-    }
+
+    Module.FS.mkdirtree(side_path);
+    
 
     Module["_interpreter"] = new Module["_Interpreter"]()
     var default_scope = Module["main_scope"]()

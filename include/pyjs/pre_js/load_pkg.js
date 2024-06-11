@@ -68,8 +68,11 @@ def _py_untar(tarball_path, target_dir):
 Module["_untar_from_python"] = untar_from_python
 
 async function bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose = false) {
-    // fetch python package
-    let python_package_url = `${package_tarballs_root_url}/${python_package.filename}`
+    // fetch python package, if the package root url is not provided,
+    // fallback to the root url.
+    const python_package_url = `${
+        python_package?.package_root_url ?? package_tarballs_root_url
+      }/${python_package.filename}`;
 
     if (verbose) {
         console.log(`fetching python package from ${python_package_url}`)
@@ -132,7 +135,10 @@ Module["bootstrap_from_empack_packed_environment"] = async function
             pkg,
             verbose = false
         ) {
-        let package_url = `${package_tarballs_root_url}/${pkg.filename}`
+        //  if the package root url is not provided, fallback to the root url
+        const package_url = `${pkg?.package_root_url ?? package_tarballs_root_url}/${
+            pkg.filename
+          }`;
         if (verbose) {
             console.log(`fetching pkg ${pkg.name} from ${package_url}`)
         }

@@ -30,7 +30,7 @@ Module['init_phase_1'] = async function(prefix, python_version) {
     }
 
 
-    Module.FS.mkdirTree(side_path);
+    Module.create_directories(side_path);
     
 
     Module["_interpreter"] = new Module["_Interpreter"]()

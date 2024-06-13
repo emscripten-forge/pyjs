@@ -1,4 +1,5 @@
 #include <iostream>
+#include <filesystem>
 
 #include <pyjs/export_py_object.hpp>
 #include <pyjs/convert.hpp>
@@ -79,6 +80,14 @@ namespace pyjs
         setenv(key.c_str(), value.c_str(), 1);
     }
 
+    void create_directories(const std::string & p)
+    {
+        std::filesystem::create_directories(std::filesystem::path(p));
+    }
+    bool is_directory(const std::string & p)
+    {
+        return std::filesystem::is_directory(std::filesystem::path(p));
+    }
 
     void export_js_module()
     {
@@ -90,6 +99,9 @@ namespace pyjs
         em::function("_eval", &eval);
         em::function("_exec", &exec);
         em::function("_eval_file", &eval_file);
+
+        em::function("create_directories", &create_directories);
+        em::function("is_directory", &is_directory);
 
 
         em::function("_untar", &untar);

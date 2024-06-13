@@ -29,3 +29,4 @@ dependencies:
   - hatchling
   - pip:
     - JLDracula
+    - pyjs_code_runner >= 3.0

@@ -2,8 +2,9 @@ Module._is_initialized = false
 
 
 
-Module['init_phase_1'] = async function(prefix, python_version) {
+Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
+    if(verbose){console.log("in init phase 1");}    
     let version_str = `${python_version[0]}.${python_version[1]}`;
 
     // list of python objects we need to delete when cleaning up
@@ -133,12 +134,15 @@ Module['init_phase_1'] = async function(prefix, python_version) {
             return ret['ret']
         }
     };
+    if(verbose){console.log("in init phase 2 done");}    
 }
 
-Module['init_phase_2'] =  function(prefix, python_version) {
+Module['init_phase_2'] =  function(prefix, python_version, verbose) {
     let default_scope = Module["default_scope"];
 
     // make the python pyjs module easy available
+    if(verbose){console.log("in init phase 2");}
+
     Module.exec(`
 import traceback
 try:
@@ -149,11 +153,13 @@ except Exception as e:
     raise e
     `)
 
+    if(verbose){console.log("assign pyobjects I");}
     Module.py_pyjs = Module.eval("pyjs")
     Module._py_objects.push(Module.py_pyjs);
 
 
     // execute a script and return the value of the last expression
+    if(verbose){console.log("assign pyobjects II");}
     Module._py_exec_eval = Module.eval("pyjs.exec_eval")
     Module._py_objects.push(Module._py_exec_eval)
     Module.exec_eval = function(script, globals=default_scope, locals=default_scope){
@@ -161,12 +167,13 @@ except Exception as e:
     }
 
     // ansync execute a script and return the value of the last expression
+    if(verbose){console.log("assign pyobjects III");}
     Module._py_async_exec_eval = Module.eval("pyjs.async_exec_eval")
     Module._py_objects.push(Module._py_async_exec_eval)
     Module.async_exec_eval = async function(script, globals=default_scope, locals=default_scope){
         return await Module._py_async_exec_eval.py_call(script, globals, locals)
     }
-
+    if(verbose){console.log("assign pyobjects IV");}
     Module._add_resolve_done_callback  = Module.exec_eval(`
 import asyncio
 def _add_resolve_done_callback(future, resolve, reject):
@@ -240,4 +247,5 @@ def _mock_webbrowser():
 _mock_webbrowser()
 del _mock_webbrowser
 `);
+    if(verbose){console.log("init phase 2 done");}
 }

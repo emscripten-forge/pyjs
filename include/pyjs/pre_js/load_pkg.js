@@ -17,7 +17,8 @@ Module["mkdirs"] = function (dirname) {
 }
 
 
-function untar_from_python(tarball_path, target_dir = "") {
+
+Module["_untar_from_python"] = function(tarball_path, target_dir = "") {
     Module.exec(`
 def _py_untar(tarball_path, target_dir):
     import tarfile
@@ -65,130 +66,162 @@ def _py_untar(tarball_path, target_dir):
     return JSON.parse(shared_libs)
 }
 
-Module["_untar_from_python"] = untar_from_python
-
-async function bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose = false) {
-    // fetch python package
-    let python_package_url = `${package_tarballs_root_url}/${python_package.filename}`
-
-    if (verbose) {
-        console.log(`fetching python package from ${python_package_url}`)
-    }
-    let byte_array = await fetchByteArray(python_package_url)
-
-    const python_tarball_path = `/package_tarballs/${python_package.filename}`;
-    if(verbose){
-        console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
-    }
-    Module.FS.writeFile(python_tarball_path, byte_array);
-    Module._untar(python_tarball_path, prefix);
-
-
-    // split version string into major and minor and patch version
-    let version = python_package.version.split(".").map(x => parseInt(x));
 
 
 
-    await Module.init_phase_1(prefix, version);
-}
 
 
 Module["bootstrap_from_empack_packed_environment"] = async function
     (   
         packages_json_url,
         package_tarballs_root_url,
-        verbose = false,
+        verbose = true,
         skip_loading_shared_libs = false
-    ) {
-
-    function splitPackages(packages) {
-        // find package with name "python" and remove it from the list
-        let python_package = undefined
-        for (let i = 0; i < packages.length; i++) {
-            if (packages[i].name == "python") {
-                python_package = packages[i]
-                packages.splice(i, 1)
-                break
-            }
-        }
-        if (python_package == undefined) {
-            throw new Error("no python package found in package.json")
-        }
-        return { python_package, packages }
-    }
+    ) 
+{
+    try{
     
-    
-    function makeDirs() {
-        if (!Module.FS.isDir(`/package_tarballs`)) {
-            Module.FS.mkdir(`/package_tarballs`);
-        }
-    }
-    
-    
-    async function fetchAndUntar
-        (
-            package_tarballs_root_url,
-            python_is_ready_promise,
-            pkg,
-            verbose = false
-        ) {
-        let package_url = `${package_tarballs_root_url}/${pkg.filename}`
-        if (verbose) {
-            console.log(`fetching pkg ${pkg.name} from ${package_url}`)
-        }
-        let byte_array = await fetchByteArray(package_url)
-        const tarball_path = `/package_tarballs/${pkg.filename}`;
-        Module.FS.writeFile(tarball_path, byte_array);
-        if(verbose){
-            console.log(`extract ${tarball_path} (${byte_array.length} bytes)`)
-        }
-        await python_is_ready_promise;
-        return untar_from_python(tarball_path);
-    }
+        verbose=true;
 
-
-
-
-
-
-    // fetch json with list of all packages
-    let empack_env_meta = await fetchJson(packages_json_url);
-    let all_packages = empack_env_meta.packages;
-    let prefix = empack_env_meta.prefix;
-    makeDirs();
-
-    // enusre there is python and split it from the rest
-    let splitted = splitPackages(all_packages);
-    let packages = splitted.packages;
-    let python_package = splitted.python_package;
-    let python_version = python_package.version.split(".").map(x => parseInt(x));
-
-    // fetch init python itself
-    let python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package);
-
-    // create array with size 
-    let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)));
-
-    Module.init_phase_2(prefix, python_version);
-
-    if(!skip_loading_shared_libs){
-        // instantiate all packages
-        for (let i = 0; i < packages.length; i++) {
-
-            // if we have any shared libraries, load them
-            if (shared_libs[i].length > 0) {
-
-                for (let j = 0; j < shared_libs[i].length; j++) {
-                    let sl = shared_libs[i][j];
+        function splitPackages(packages) {
+            // find package with name "python" and remove it from the list
+            let python_package = undefined
+            for (let i = 0; i < packages.length; i++) {
+                if (packages[i].name == "python") {
+                    python_package = packages[i]
+                    packages.splice(i, 1)
+                    break
                 }
-                await Module._loadDynlibsFromPackage(
-                    prefix,
-                    python_version,
-                    packages[i].name,
-                    false,
-                    shared_libs[i]
-                )
+            }
+            if (python_package == undefined) {
+                throw new Error("no python package found in package.json")
+            }
+            return { python_package, packages }
+        }
+        
+
+        
+        async function fetchAndUntar
+            (
+                package_tarballs_root_url,
+                python_is_ready_promise,
+                pkg,
+                verbose
+            ) {
+            let package_url = `${package_tarballs_root_url}/${pkg.filename}`
+            if (verbose) {
+                console.log(`!!fetching pkg ${pkg.name} from ${package_url}`)
+            }
+            let byte_array = await fetchByteArray(package_url)
+            const tarball_path = `/package_tarballs/${pkg.filename}`;
+            Module.FS.writeFile(tarball_path, byte_array);
+            if(verbose){
+                console.log(`!!extract ${tarball_path} (${byte_array.length} bytes)`)
+            }
+            if(verbose){console.log("await python_is_ready_promise");}     
+            await python_is_ready_promise;
+            return Module["_untar_from_python"](tarball_path);
+        }
+
+        
+        async function bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose) {
+            // fetch python package
+            let python_package_url = `${package_tarballs_root_url}/${python_package.filename}`
+        
+            if (verbose) {
+                console.log(`fetching python package from ${python_package_url}`)
+            }
+            let byte_array = await fetchByteArray(python_package_url)
+        
+            const python_tarball_path = `/package_tarballs/${python_package.filename}`;
+            if(verbose){
+                console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
+            }
+            Module.FS.writeFile(python_tarball_path, byte_array);
+            if(verbose){console.log("untar_from_python");}
+            Module._untar(python_tarball_path, prefix);
+            
+            
+        
+        
+        
+            // split version string into major and minor and patch version
+            let version = python_package.version.split(".").map(x => parseInt(x));
+        
+        
+            if(verbose){console.log("start init_phase_1");}
+            await Module.init_phase_1(prefix, version, verbose);
+        }
+        
+        
+        
+        if(verbose){
+            console.log("fetching packages.json from", packages_json_url)
+        }
+
+        // fetch json with list of all packages
+        let empack_env_meta = await fetchJson(packages_json_url);
+        let all_packages = empack_env_meta.packages;
+        let prefix = empack_env_meta.prefix;
+
+        if(verbose){
+            console.log("makeDirs");
+        }
+        Module.create_directories("/package_tarballs");
+        
+        // enusre there is python and split it from the rest
+        if(verbose){console.log("splitPackages");}
+        let splitted = splitPackages(all_packages);
+        let packages = splitted.packages;
+        let python_package = splitted.python_package;
+        let python_version = python_package.version.split(".").map(x => parseInt(x));
+
+        // fetch init python itself
+        console.log("--bootstrap_python");
+        if(verbose){
+            console.log("bootstrap_python");
+        }
+        let python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose);
+
+        // create array with size 
+        if(verbose){
+            console.log("fetchAndUntarAll");
+        }
+        let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)));
+
+        if(verbose){
+            console.log("init_phase_2");
+        }       
+        Module.init_phase_2(prefix, python_version, verbose);
+
+        if(verbose){
+            console.log("init shared");
+        }     
+        if(!skip_loading_shared_libs){
+            // instantiate all packages
+            for (let i = 0; i < packages.length; i++) {
+
+                // if we have any shared libraries, load them
+                if (shared_libs[i].length > 0) {
+
+                    for (let j = 0; j < shared_libs[i].length; j++) {
+                        let sl = shared_libs[i][j];
+                    }
+                    await Module._loadDynlibsFromPackage(
+                        prefix,
+                        python_version,
+                        packages[i].name,
+                        false,
+                        shared_libs[i]
+                    )
+                }
             }
         }
+        if(verbose){
+            console.log("done bootstrapping");}         
+    }
+    catch(e){
+        console.log("error in bootstrapping process")
+        console.error(e);
     }
 }

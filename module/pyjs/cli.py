@@ -1,8 +1,17 @@
 # fake a python executable
 import argparse
 import traceback 
+from .convert import to_py
+from pyjs_core import JsValue
 
 def run_cmd(args):
+
+
+    if isinstance(args, JsValue):
+        args = to_py(args)
+    
+    if not isinstance(args, list):
+        raise TypeError("args should be a list")
 
     parser = argparse.ArgumentParser(
         description="A Python script with various command-line options.",
@@ -71,11 +80,25 @@ def run_cmd(args):
             return 1
         return 0
 
+    return 1
+
+# if __name__ == "__main__":
+#     from contextlib import redirect_stdout
+
+#     with io.StringIO() as buf, redirect_stdout(buf):
+#         ret = run_cmd(['-h'])
+#         assert ret == 0
+#         assert "usage" in buf.getvalue()
+    
+#     with io.StringIO() as buf, redirect_stdout(buf):
+#         ret = run_cmd(['-V'])
+#         assert ret == 0
+#         assert "3." in buf.getvalue()
+    
+#     with io.StringIO() as buf, redirect_stdout(buf):
+#         ret = run_cmd(['-c', 'a=1+1;print(a)'])
+#         assert ret == 0
+#         ret = str(buf.getvalue())
+#         assert buf.getvalue() == "2\n"
 
 
-if __name__ == "__main__":
-    print("Running as a script")
-    assert (run_cmd(['-h']) == 0)
-    print(run_cmd(['''-c "a=1+1;print(a)"''']))
-    print(run_cmd(['-V']))
-    print(run_cmd(['''-c "a=1+1;print(aa)"''']))

@@ -115,6 +115,29 @@ await asyncio.sleep(0.5)
 `);
     assert_eq(res, 42);
 }
+
+tests.test_cli_exec_code_from_string = async function(){
+    let return_code = pyjs.cli(["-c","print(42)"])
+    assert_eq(return_code, 0);
+}
+
+// tests.test_cli_exec_code_from_file = async function(){
+//     // create a file from wihthin python
+//     pyjs.exec(`
+// content = '''
+// print(42)
+// if __name__ == "__main__":
+//     print("hello world")
+// '''
+// with open('/test.py','w') as f:
+//     f.write(content)
+// `)
+//     let return_code = pyjs.cli(["test.py"])
+//     assert_eq(return_code, 0);
+// }
+
+
+
 async function async_main(pyjs_module){
     pyjs = pyjs_module
     var name;

@@ -171,23 +171,57 @@ Module["bootstrap_from_empack_packed_environment"] = async function
 
     Module.init_phase_2(prefix, python_version);
 
+    const lib_path = prefix == "/" ? "/lib" : `${prefix}/lib`;
+
+    function dir_name_from_path(path) {
+        return path.split("/").slice(0, -1).join("/");
+    }
+
+    function is_plain_shared(filename) {
+        // check if filename is in dir lib_path
+        return dir_name_from_path(filename) == lib_path ||  dir_name_from_path(filename) == "/";
+    }
+
     if(!skip_loading_shared_libs){
+
+        // FIRST PASS only contains libraries in /lib/
         // instantiate all packages
         for (let i = 0; i < packages.length; i++) {
 
             // if we have any shared libraries, load them
             if (shared_libs[i].length > 0) {
 
-                for (let j = 0; j < shared_libs[i].length; j++) {
-                    let sl = shared_libs[i][j];
+                // filter shared to only contain shared libraries
+                let filtered_shared = shared_libs[i].filter(is_plain_shared);
+                console.log("loading shared libs  (I)",filtered_shared)
+                if(filtered_shared.length > 0){
+                    await Module._loadDynlibsFromPackage(
+                        prefix,
+                        python_version,
+                        packages[i].name,
+                        true,
+                        filtered_shared
+                    )
                 }
-                await Module._loadDynlibsFromPackage(
-                    prefix,
-                    python_version,
-                    packages[i].name,
-                    false,
-                    shared_libs[i]
-                )
+            }
+        }
+        // SECOND PASS contains all other shared libraries
+        for (let i = 0; i < packages.length; i++) {
+
+            // if we have any shared libraries, load them
+            if (shared_libs[i].length > 0) {
+                // filter shared to only contain shared libraries
+                let filtered_shared = shared_libs[i].filter(x => !is_plain_shared(x));
+                if(filtered_shared.length > 0){
+                    console.log("loading shared libs (II)",filtered_shared)
+                    await Module._loadDynlibsFromPackage(
+                        prefix,
+                        python_version,
+                        packages[i].name,
+                        false,
+                        filtered_shared
+                    )
+                }
             }
         }
     }

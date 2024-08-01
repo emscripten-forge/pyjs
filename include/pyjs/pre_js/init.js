@@ -133,6 +133,8 @@ Module['init_phase_1'] = async function(prefix, python_version) {
             return ret['ret']
         }
     };
+
+
 }
 
 Module['init_phase_2'] =  function(prefix, python_version) {
@@ -158,6 +160,16 @@ except Exception as e:
     Module._py_objects.push(Module._py_exec_eval)
     Module.exec_eval = function(script, globals=default_scope, locals=default_scope){
         return Module._py_exec_eval.py_call(script, globals, locals)
+    }
+
+
+
+
+    Module['cli'] = function(args){
+        let run_cmd = Module.exec_eval(`from pyjs.cli import run_cmd;run_cmd`)
+        const ret = run_cmd.py_call(args)
+        run_cmd.delete()
+        return ret
     }
 
     // ansync execute a script and return the value of the last expression

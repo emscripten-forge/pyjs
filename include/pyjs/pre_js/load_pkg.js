@@ -108,7 +108,7 @@ Module["bootstrap_from_empack_packed_environment"] = async function
                 pkg,
                 verbose
             ) {
-            let package_url = `${package_tarballs_root_url}/${pkg.filename}`
+            let package_url = pkg?.url ? pkg.url :`${package_tarballs_root_url}/${pkg.filename}`
             if (verbose) {
                 console.log(`!!fetching pkg ${pkg.name} from ${package_url}`)
             }
@@ -126,7 +126,7 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         
         async function bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose) {
             // fetch python package
-            let python_package_url = `${package_tarballs_root_url}/${python_package.filename}`
+            let python_package_url = python_package?.url ? python_package.url : `${package_tarballs_root_url}/${python_package.filename}`
         
             if (verbose) {
                 console.log(`fetching python package from ${python_package_url}`)

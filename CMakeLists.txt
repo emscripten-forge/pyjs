@@ -83,6 +83,7 @@ set(PYJS_HEADERS
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
     include/pyjs/untar.hpp
+    include/pyjs/unzstd.hpp
     include/pyjs/inflate.hpp
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js
@@ -110,6 +111,7 @@ add_library(pyjs STATIC
     src/js_timestamp.cpp
     src/inflate.cpp
     src/untar.cpp
+    src/unzstd.cpp
     ${PYCPPSOURCES}
 )
 
@@ -153,6 +155,7 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libz.a
     ${CMAKE_INSTALL_PREFIX}/lib/libsqlite3.a
     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libzstd.a
 )
 
 

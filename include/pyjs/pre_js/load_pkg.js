@@ -67,6 +67,39 @@ def _py_untar(tarball_path, target_dir):
 }
 
 
+Module["_unzip_from_python"] = function(tarball_path, target_dir) {
+    Module.exec(`
+def _py_unzip(tarball_path, target_dir):
+    import json
+    from pathlib import Path
+    import tempfile
+    import shutil
+    import os
+    import sys
+    import zipfile
+    
+
+    print("USING CONDA FORMAT")
+    target = Path(target_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    pkg_file = {"name": "", "path": ""}
+    with zipfile.ZipFile(tarball_path, mode="r") as archive:
+        archive.extractall(target_dir)    
+        for filename in archive.namelist():
+            if filename.startswith("pkg-"):
+                pkg_file["name"] = filename
+                pkg_file["path"] = str(target / filename)
+                break
+        print("######### EXTRACTED TO", pkg_file)
+    return json.dumps(pkg_file)
+
+`)
+    let extracted_file = Module.eval(`_py_unzip("${tarball_path}", "${target_dir}")`)
+
+    return JSON.parse(extracted_file)
+}
+
+
 
 
 
@@ -108,20 +141,34 @@ Module["bootstrap_from_empack_packed_environment"] = async function
                 pkg,
                 verbose
             ) {
-            const package_url = pkg?.url ?? `${package_tarballs_root_url}/${pkg.filename}`;
-            if (verbose) {
-                console.log(`!!fetching pkg ${pkg.name} from ${package_url}`)
+              const package_url =
+                pkg?.url ?? `${package_tarballs_root_url}/${pkg.filename}`;
+              if (verbose) {
+                console.log(`!!fetching pkg ${pkg.name} from ${package_url}`);
+              }
+              let byte_array = await fetchByteArray(package_url);
+              const tarball_path = `/package_tarballs/${pkg.filename}`;
+              Module.FS.writeFile(tarball_path, byte_array);
+              if (verbose) {
+                console.log(
+                  `!!extract ${tarball_path} (${byte_array.length} bytes)`
+                );
+              }
+
+              if (verbose) {
+                console.log("await python_is_ready_promise");
+              }
+              await python_is_ready_promise;
+
+              if (package_url.endsWith(".conda")) {
+                const pkg_file = Module["_unzip_from_python"](tarball_path, `/conda_packages/${pkg.name}`);
+                console.log("########", pkg_file);
+                Module._unzstd(pkg_file.path, prefix);
+                return []
+              } else {
+                return Module["_untar_from_python"](tarball_path);
+              }
             }
-            let byte_array = await fetchByteArray(package_url)
-            const tarball_path = `/package_tarballs/${pkg.filename}`;
-            Module.FS.writeFile(tarball_path, byte_array);
-            if(verbose){
-                console.log(`!!extract ${tarball_path} (${byte_array.length} bytes)`)
-            }
-            if(verbose){console.log("await python_is_ready_promise");}     
-            await python_is_ready_promise;
-            return Module["_untar_from_python"](tarball_path);
-        }
 
         
         async function bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose) {

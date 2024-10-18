@@ -2,7 +2,7 @@
 [![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml)
 [![CI](https://img.shields.io/badge/pyjs-docs-yellow)](https://emscripten-forge.github.io/pyjs/)
 
-## What is pyjs
+## What is pyjs?
 
 pyjs is  modern [pybind11](https://github.com/pybind/pybind11) + emscripten [Embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html) based
 Python <-> JavaScript foreign function interface (FFI) for wasm/emscripten compiled Python.

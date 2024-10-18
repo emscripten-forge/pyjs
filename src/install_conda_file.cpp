@@ -158,12 +158,15 @@ namespace pyjs
         }
 
         auto site_packages_dir_path = output_dir / "site-packages";
-        auto site_packages_dest = fs::path(prefix) / "lib/python3.11/site-packages";
-        bool check = merge_directories(site_packages_dir_path, site_packages_dest);
-        if (!check)
+        if (fs::exists(site_packages_dir_path))
         {
-            std::cerr << " Failed to copy package to site-packages directory: "
-                      << site_packages_dir_path << std::endl;
+            auto site_packages_dest = fs::path(prefix) / "lib/python3.11/site-packages";
+            bool check = merge_directories(site_packages_dir_path, site_packages_dest);
+            if (!check)
+            {
+                std::cerr << " Failed to copy package to site-packages directory: "
+                          << site_packages_dir_path << std::endl;
+            }
         }
         std::fclose(output_file_ptr);
         fs::remove_all(output_dir);

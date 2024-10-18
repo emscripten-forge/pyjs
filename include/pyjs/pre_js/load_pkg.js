@@ -93,6 +93,42 @@ def _py_unzip(tarball_path, target_dir):
     return JSON.parse(extracted_file)
 }
 
+Module["_install_conda_file_from_python"] = function(tarball_path, target_dir) {
+    Module.exec(`
+def _py_unbz2(tarball_path, target_dir):
+    import json
+    from pathlib import Path
+    import tarfile
+    import shutil
+    import os
+    import sys
+    
+    target = Path(target_dir)
+    prefix = Path(sys.prefix)
+    try:
+        with tarfile.open(tarball_path) as tar:
+            tar.extractall(target_dir)
+
+        src = target / "site-packages"
+        dest = prefix / "lib/python3.11/site-packages"
+        shutil.copytree(src, dest, dirs_exist_ok=True)
+        for folder in ["etc", "share"]:
+            src = target / folder
+            dest = prefix / folder
+            if src.exists():
+                shutil.copytree(src, dest, dirs_exist_ok=True)
+        shutil.rmtree(target)
+    except Exception as e:
+        print("ERROR",e)
+        raise e
+    
+    return json.dumps([])
+
+`)
+    let extracted_file = Module.eval(`_py_unbz2("${tarball_path}", "${target_dir}")`)
+
+    return JSON.parse(extracted_file)
+}
 
 
 
@@ -155,18 +191,32 @@ Module["bootstrap_from_empack_packed_environment"] = async function
               await python_is_ready_promise;
 
               if (package_url.toLowerCase().endsWith(".conda")) {
+                // Conda v2 packages
                 if (verbose) {
-                    console.log(
-                      `!!extract conda package ${package_url} (${byte_array.length} bytes)`
-                    );
-                  }
+                  console.log(
+                    `!!extract conda package ${package_url} (${byte_array.length} bytes)`
+                  );
+                }
                 const dest = `/conda_packages/${pkg.name}`;
                 const pkg_file = Module["_unzip_from_python"](
                   tarball_path,
                   dest
                 );
                 return Module._install_conda_file(pkg_file.path, dest, prefix);
+              } else if (package_url.toLowerCase().endsWith(".tar.bz2")) {
+                // Conda v1 packages
+                if (verbose) {
+                  console.log(
+                    `!!extract conda package ${package_url} (${byte_array.length} bytes)`
+                  );
+                }
+                const dest = `/conda_packages/${pkg.name}`;
+                return Module["_install_conda_file_from_python"](
+                  tarball_path,
+                  dest
+                );
               } else {
+                // Pre-relocated packages
                 return Module["_untar_from_python"](tarball_path);
               }
             }

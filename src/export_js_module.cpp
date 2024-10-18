@@ -4,7 +4,7 @@
 #include <pyjs/export_py_object.hpp>
 #include <pyjs/convert.hpp>
 #include <pyjs/untar.hpp>
-#include <pyjs/unzstd.hpp>
+#include <pyjs/install_conda_file.hpp>
 
 #include <pybind11/embed.h>
 #include <emscripten/bind.h>
@@ -106,7 +106,7 @@ namespace pyjs
 
 
         em::function("_untar", &untar);
-        em::function("_unzstd", &unzstd);
+        em::function("_install_conda_file", &install_conda_file);
         em::function("setenv", &set_env);
 
         // py-object (proxy)

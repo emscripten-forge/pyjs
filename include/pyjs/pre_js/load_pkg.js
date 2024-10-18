@@ -72,25 +72,19 @@ Module["_unzip_from_python"] = function(tarball_path, target_dir) {
 def _py_unzip(tarball_path, target_dir):
     import json
     from pathlib import Path
-    import tempfile
-    import shutil
-    import os
-    import sys
     import zipfile
     
-
-    print("USING CONDA FORMAT")
     target = Path(target_dir)
     target.mkdir(parents=True, exist_ok=True)
     pkg_file = {"name": "", "path": ""}
     with zipfile.ZipFile(tarball_path, mode="r") as archive:
-        archive.extractall(target_dir)    
+        
         for filename in archive.namelist():
             if filename.startswith("pkg-"):
                 pkg_file["name"] = filename
                 pkg_file["path"] = str(target / filename)
+                archive.extract(filename, target_dir)    
                 break
-        print("######### EXTRACTED TO", pkg_file)
     return json.dumps(pkg_file)
 
 `)
@@ -160,11 +154,18 @@ Module["bootstrap_from_empack_packed_environment"] = async function
               }
               await python_is_ready_promise;
 
-              if (package_url.endsWith(".conda")) {
-                const pkg_file = Module["_unzip_from_python"](tarball_path, `/conda_packages/${pkg.name}`);
-                console.log("########", pkg_file);
-                Module._unzstd(pkg_file.path, prefix);
-                return []
+              if (package_url.toLowerCase().endsWith(".conda")) {
+                if (verbose) {
+                    console.log(
+                      `!!extract conda package ${package_url} (${byte_array.length} bytes)`
+                    );
+                  }
+                const dest = `/conda_packages/${pkg.name}`;
+                const pkg_file = Module["_unzip_from_python"](
+                  tarball_path,
+                  dest
+                );
+                return Module._install_conda_file(pkg_file.path, dest, prefix);
               } else {
                 return Module["_untar_from_python"](tarball_path);
               }

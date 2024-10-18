@@ -83,7 +83,7 @@ set(PYJS_HEADERS
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
     include/pyjs/untar.hpp
-    include/pyjs/unzstd.hpp
+    include/pyjs/install_conda_file.hpp
     include/pyjs/inflate.hpp
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js
@@ -111,7 +111,7 @@ add_library(pyjs STATIC
     src/js_timestamp.cpp
     src/inflate.cpp
     src/untar.cpp
-    src/unzstd.cpp
+    src/install_conda_file.cpp
     ${PYCPPSOURCES}
 )
 

@@ -28,7 +28,7 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
             -c https://repo.mamba.pm/conda-forge \
             --yes \
             python pybind11 nlohmann_json pybind11_json numpy \
-            bzip2 sqlite zlib libffi exceptiongroup \
+            bzip2 sqlite zlib zstd libffi exceptiongroup \
             "xeus<4" "xeus-lite<2" xeus-python "xeus-javascript>=0.3.2" xtl "ipython=8.22.2=py311had7285e_1" "traitlets>=5.14.2"
 
 else

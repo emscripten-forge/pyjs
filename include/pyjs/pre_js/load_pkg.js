@@ -67,6 +67,69 @@ def _py_untar(tarball_path, target_dir):
 }
 
 
+Module["_unzip_from_python"] = function(tarball_path, target_dir) {
+    Module.exec(`
+def _py_unzip(tarball_path, target_dir):
+    import json
+    from pathlib import Path
+    import zipfile
+    
+    target = Path(target_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    pkg_file = {"name": "", "path": ""}
+    with zipfile.ZipFile(tarball_path, mode="r") as archive:
+        
+        for filename in archive.namelist():
+            if filename.startswith("pkg-"):
+                pkg_file["name"] = filename
+                pkg_file["path"] = str(target / filename)
+                archive.extract(filename, target_dir)    
+                break
+    return json.dumps(pkg_file)
+
+`)
+    let extracted_file = Module.eval(`_py_unzip("${tarball_path}", "${target_dir}")`)
+
+    return JSON.parse(extracted_file)
+}
+
+Module["_install_conda_file_from_python"] = function(tarball_path, target_dir) {
+    Module.exec(`
+def _py_unbz2(tarball_path, target_dir):
+    import json
+    from pathlib import Path
+    import tarfile
+    import shutil
+    import os
+    import sys
+    
+    target = Path(target_dir)
+    prefix = Path(sys.prefix)
+    try:
+        with tarfile.open(tarball_path) as tar:
+            tar.extractall(target_dir)
+
+        src = target / "site-packages"
+        dest = prefix / "lib/python3.11/site-packages"
+        shutil.copytree(src, dest, dirs_exist_ok=True)
+        for folder in ["etc", "share"]:
+            src = target / folder
+            dest = prefix / folder
+            if src.exists():
+                shutil.copytree(src, dest, dirs_exist_ok=True)
+        shutil.rmtree(target)
+    except Exception as e:
+        print("ERROR",e)
+        raise e
+    
+    return json.dumps([])
+
+`)
+    let extracted_file = Module.eval(`_py_unbz2("${tarball_path}", "${target_dir}")`)
+
+    return JSON.parse(extracted_file)
+}
+
 
 
 
@@ -108,20 +171,55 @@ Module["bootstrap_from_empack_packed_environment"] = async function
                 pkg,
                 verbose
             ) {
-            const package_url = pkg?.url ?? `${package_tarballs_root_url}/${pkg.filename}`;
-            if (verbose) {
-                console.log(`!!fetching pkg ${pkg.name} from ${package_url}`)
+              const package_url =
+                pkg?.url ?? `${package_tarballs_root_url}/${pkg.filename}`;
+              if (verbose) {
+                console.log(`!!fetching pkg ${pkg.name} from ${package_url}`);
+              }
+              let byte_array = await fetchByteArray(package_url);
+              const tarball_path = `/package_tarballs/${pkg.filename}`;
+              Module.FS.writeFile(tarball_path, byte_array);
+              if (verbose) {
+                console.log(
+                  `!!extract ${tarball_path} (${byte_array.length} bytes)`
+                );
+              }
+
+              if (verbose) {
+                console.log("await python_is_ready_promise");
+              }
+              await python_is_ready_promise;
+
+              if (package_url.toLowerCase().endsWith(".conda")) {
+                // Conda v2 packages
+                if (verbose) {
+                  console.log(
+                    `!!extract conda package ${package_url} (${byte_array.length} bytes)`
+                  );
+                }
+                const dest = `/conda_packages/${pkg.name}`;
+                const pkg_file = Module["_unzip_from_python"](
+                  tarball_path,
+                  dest
+                );
+                return Module._install_conda_file(pkg_file.path, dest, prefix);
+              } else if (package_url.toLowerCase().endsWith(".tar.bz2")) {
+                // Conda v1 packages
+                if (verbose) {
+                  console.log(
+                    `!!extract conda package ${package_url} (${byte_array.length} bytes)`
+                  );
+                }
+                const dest = `/conda_packages/${pkg.name}`;
+                return Module["_install_conda_file_from_python"](
+                  tarball_path,
+                  dest
+                );
+              } else {
+                // Pre-relocated packages
+                return Module["_untar_from_python"](tarball_path);
+              }
             }
-            let byte_array = await fetchByteArray(package_url)
-            const tarball_path = `/package_tarballs/${pkg.filename}`;
-            Module.FS.writeFile(tarball_path, byte_array);
-            if(verbose){
-                console.log(`!!extract ${tarball_path} (${byte_array.length} bytes)`)
-            }
-            if(verbose){console.log("await python_is_ready_promise");}     
-            await python_is_ready_promise;
-            return Module["_untar_from_python"](tarball_path);
-        }
 
         
         async function bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose) {

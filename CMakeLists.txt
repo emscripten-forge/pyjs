@@ -101,6 +101,8 @@ if (NOT TARGET pybind11::headers)
 endif ()
 
 
+set(EM_FLAGS "${EM_FLAGS} -s WASM=1 --bind --pre-js pyjs_pre.js --post-js pyjs_post.js")
+
 add_library(pyjs STATIC
     src/export_js_module.cpp
     src/export_js_proxy.cpp
@@ -119,12 +121,14 @@ target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
     target_compile_options(pyjs
         PUBLIC --std=c++17
         PUBLIC -Wno-deprecated
+        PUBLIC "SHELL: --bind"
         PUBLIC "SHELL: -fexceptions"
     )
 
     target_link_options(pyjs
-        PUBLIC -lembind
+        PUBLIC --bind
         PUBLIC -Wno-unused-command-line-argument
+        PUBLIC "SHELL: --bind"
         PUBLIC "SHELL: -fexceptions"
         #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
         #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
@@ -191,6 +195,7 @@ target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11:
 target_compile_options(pyjs_runtime_browser
     PUBLIC --std=c++17
     PUBLIC -Wno-deprecated
+    PUBLIC "SHELL: --bind"
     PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
     PUBLIC "SHELL: -fexceptions"
     #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
@@ -201,7 +206,9 @@ target_compile_options(pyjs_runtime_browser
 )
 
 target_link_options(pyjs_runtime_browser
+    PUBLIC --bind
     PUBLIC -Wno-unused-command-line-argument
+    PUBLIC "SHELL: --bind"
     PUBLIC "SHELL: -s MODULARIZE=1"
     PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
     PUBLIC "SHELL: -s EXPORT_ES6=0"

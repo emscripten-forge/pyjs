@@ -6,7 +6,7 @@ THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 WASM_ENV_NAME=pyjs-wasm-dev
 WASM_ENV_PREFIX=$MAMBA_ROOT_PREFIX/envs/$WASM_ENV_NAME
 EMSDK_DIR=$THIS_DIR/emsdk_install
-EMSDK_VERSION="3.1.58"
+EMSDK_VERSION="3.1.45"
 
 
 

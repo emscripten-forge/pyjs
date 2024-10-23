@@ -30,7 +30,10 @@ jobs:
         with:
           environment-file: environment-dev_${{matrix.emsdk_ver}}.yml
           environment-name: pyjs-wasm 
-
+          condarc: |
+            channels:
+              - https://repo.mamba.pm/emscripten-forge 
+              - conda-forge
     
       - name: Install Playwright
         run: |

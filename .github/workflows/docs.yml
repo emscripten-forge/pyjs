@@ -44,7 +44,7 @@ jobs:
       - name: build the docs
         shell: bash -el {0}
         run: |
-          ./build_mkdocs.sh
+          ./build_mkdocs.sh ${{matrix.emsdk_ver}} ${{ matrix.python_version }}
   
       ################################################################
       # upload to github pages
@@ -52,7 +52,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v2
         with:
-          path: docs_build/mkdocs ${{matrix.emsdk_ver}} ${{ matrix.python_version }}
+          path: docs_build/mkdocs 
 
 
   deploy:

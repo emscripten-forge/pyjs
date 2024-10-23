@@ -89,7 +89,7 @@ jobs:
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python "pytest==7.1.1" numpy exceptiongroup
+            "python=${{matrix.python_version}}" "pytest==7.1.1" "numpy<2" exceptiongroup
 
 
       - name: Test in browser-main
@@ -130,7 +130,7 @@ jobs:
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python "pytest==7.1.1" exceptiongroup
+            "python=${{matrix.python_version}}" "pytest==7.1.1" exceptiongroup
 
       - name: Test in browser-main-no-numpy
         run: |

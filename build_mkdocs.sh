@@ -74,7 +74,7 @@ if true; then
     echo "Building xeus-python"
 
     cd $THIS_DIR
-    source $EMSDK_DIR/emsdk_env.sh
+    # source $EMSDK_DIR/emsdk_env.sh
 
 
     cd xeus-python
@@ -112,7 +112,7 @@ if false; then
     echo "Building xeus-javascript"
 
     cd $THIS_DIR
-    source $EMSDK_DIR/emsdk_env.sh
+    # source $EMSDK_DIR/emsdk_env.sh
 
 
     cd ~/src/xeus-javascript

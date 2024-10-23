@@ -47,8 +47,8 @@ jobs:
         run: |
           micromamba activate pyjs-wasm
 
-          emsdk activate ${{matrix.emsdk_ver}}
-          source $(pwd)/emsdk_install/emsdk_env.sh
+          # emsdk activate ${{matrix.emsdk_ver}}
+          # source $(pwd)/emsdk_install/emsdk_env.sh
 
           micromamba create -n pyjs-build-wasm \
             --platform=emscripten-wasm32 \

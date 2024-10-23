@@ -28,16 +28,9 @@ jobs:
       - name: Install micromamba
         uses: mamba-org/setup-micromamba@v1
         with:
-          environment-file: environment-dev.yml
+          environment-file: environment-dev_${{matrix.emsdk_ver}}.yml
           environment-name: pyjs-wasm 
 
-      - name: install emscripten
-        shell: bash -el {0}
-        run: |
-          micromamba install \
-            -c https://repo.mamba.pm/emscripten-forge \
-            --yes \
-            emscripten_emscripten-wasm32==${{ matrix.emsdk_ver }}
     
       - name: Install Playwright
         run: |

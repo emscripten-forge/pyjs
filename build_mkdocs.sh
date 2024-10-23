@@ -91,6 +91,9 @@ if true; then
     cd build_wasm
 
 
+    # this is stupid
+    cp -r $WASM_ENV_PREFIX/include/python3.11/ $WASM_ENV_PREFIX/include/
+    
     emcmake cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \

@@ -36,8 +36,7 @@ if true; then
     echo "Building pyjs"
 
     cd $THIS_DIR
-    source $EMSDK_DIR/emsdk_env.sh
-
+  
     mkdir -p build
     cd build
 

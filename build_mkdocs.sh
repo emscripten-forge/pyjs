@@ -62,7 +62,7 @@ fi
 # if there is no xeus-python dir, clone it
 if [ ! -d "$THIS_DIR/xeus-python" ]; then
     cd $THIS_DIR
-    git clone -b pyjs_update https://github.com/jupyter-xeus/xeus-python/
+    git clone https://github.com/jupyter-xeus/xeus-python/
 else
     echo "xeus-python dir already exists"
 fi

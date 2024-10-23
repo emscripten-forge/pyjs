@@ -10,7 +10,7 @@ dependencies:
   - empack >=3.0.1
   - microsoft::playwright
   - ninja
-  - nodejs >= 18.7.0
+  - nodejs
   - pyjs_code_runner >= 2.0.1
   - exceptiongroup
   # documentation

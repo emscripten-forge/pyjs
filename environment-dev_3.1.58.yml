@@ -10,7 +10,7 @@ dependencies:
   - empack >=3.0.1
   - microsoft::playwright
   - ninja
-  - nodejs >= 18.7.0
+  - nodejs
   - pyjs_code_runner >= 2.0.1
   - exceptiongroup
   # documentation
@@ -27,6 +27,7 @@ dependencies:
   - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
   # pyjs_code_runner dev deps
   - hatchling
+  - emscripten_emscripten-wasm32 == 3.1.58
   - pip:
     - JLDracula
     - pyjs_code_runner >= 3.0

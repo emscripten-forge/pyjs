@@ -5,18 +5,12 @@ set -e
 THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 WASM_ENV_NAME=pyjs-wasm-dev
 WASM_ENV_PREFIX=$MAMBA_ROOT_PREFIX/envs/$WASM_ENV_NAME
-EMSDK_DIR=$THIS_DIR/emsdk_install
-EMSDK_VERSION="3.1.58"
+EMSDK_DIR=$WASM_ENV_PREFIX/opt/emsdk
+EMSDK_VERSION=$1
+PYTHON_VERSION=$2
 
 
-
-
-if [ ! -d "$EMSDK_DIR" ]; then
-    echo "Creating emsdk dir $EMSDK_DIR"
-    $THIS_DIR/emsdk/setup_emsdk.sh $EMSDK_VERSION $EMSDK_DIR
-else
-    echo "Emsdk dir $EMSDK_DIR already exists"
-fi
+ 
 
 PYJS_PROBE_FILE=$WASM_ENV_PREFIX/lib_js/pyjs/pyjs_runtime_browser.js
 
@@ -27,7 +21,7 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python pybind11 nlohmann_json pybind11_json numpy \
+            python==$PYTHON_VERSION emscripten-abi==$EMSDK_VERSION pybind11 nlohmann_json pybind11_json numpy \
             bzip2 sqlite zlib zstd libffi exceptiongroup \
             "xeus<4" "xeus-lite<2" xeus-python "xeus-javascript>=0.3.2" xtl "ipython=8.22.2=py311had7285e_1" "traitlets>=5.14.2"
 

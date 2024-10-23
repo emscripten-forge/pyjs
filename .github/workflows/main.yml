@@ -20,7 +20,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emsdk_ver: ["3.1.45", "3.1.58"]
+        include:
+          - emsdk_ver: "3.1.45"
+            python_version: "3.11"
+          - emsdk_ver: "3.1.58"
+            python_version: "3.12"
 
     steps:
       - uses: actions/checkout@v2
@@ -51,7 +55,7 @@ jobs:
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python pybind11 nlohmann_json pybind11_json numpy "pytest==7.1.1" bzip2 sqlite zlib zstd libffi exceptiongroup
+            python==$${matrix.python_version}} pybind11 nlohmann_json pybind11_json numpy<2 "pytest==7.1.1" bzip2 sqlite zlib zstd libffi exceptiongroup emscripten-abi==$${matrix.emsdk_ver}}
 
 
           mkdir build

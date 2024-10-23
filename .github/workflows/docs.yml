@@ -20,7 +20,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emsdk_ver: ["3.1.45"]
+        include:
+          - emsdk_ver: "3.1.45"
+            python_version: "3.11"
+
 
     steps:
       - uses: actions/checkout@v2
@@ -49,7 +52,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v2
         with:
-          path: docs_build/mkdocs
+          path: docs_build/mkdocs ${{matrix.emsdk_ver}} ${{ matrix.python_version }}
 
 
   deploy:

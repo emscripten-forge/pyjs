@@ -34,8 +34,7 @@ jobs:
       - name: install emscripten
         shell: bash -el {0}
         run: |
-          $MICROMAMBA_EXE install \
-            -n pyjs-wasm  \
+          micromamba install \
             -c https://repo.mamba.pm/emscripten-forge \
             --yes \
             emscripten_emscripten-wasm32==${{ matrix.emsdk_ver }}

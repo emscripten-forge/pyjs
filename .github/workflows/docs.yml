@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emsdk_ver: ["3.1.45", "3.1.58"]
+        emsdk_ver: ["3.1.45"]
 
     steps:
       - uses: actions/checkout@v2
@@ -41,8 +41,7 @@ jobs:
       - name: install emscripten
         shell: bash -el {0}
         run: |
-          $MICROMAMBA_EXE install \
-            -n pyjs-wasm  \
+          micromamba install \
             -c https://repo.mamba.pm/emscripten-forge \
             --yes \
             emscripten_emscripten-wasm32==${{ matrix.emsdk_ver }}

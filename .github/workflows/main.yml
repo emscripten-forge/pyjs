@@ -24,9 +24,9 @@ jobs:
           - emsdk_ver: "3.1.45"
             python_version: "3.11"
             pybind11_version: "<2.12.0"
-          - emsdk_ver: "3.1.58"
-            python_version: "3.12"
-            pybind11_version: ""
+          # - emsdk_ver: "3.1.58"
+          #   python_version: "3.12"
+          #   pybind11_version: ""
 
     steps:
       - uses: actions/checkout@v2

@@ -22,7 +22,7 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
             -c https://repo.mamba.pm/conda-forge \
             --yes \
             python==$PYTHON_VERSION emscripten-abi==$EMSDK_VERSION "pybind11<2.12.0" nlohmann_json pybind11_json numpy \
-            bzip2 sqlite zlib zstd libffi exceptiongroup zstd\
+            bzip2 sqlite zlib zstd libffi exceptiongroup\
             "xeus<4" "xeus-lite<2" xeus-python "xeus-javascript>=0.3.2" xtl "ipython=8.22.2=py311had7285e_1" "traitlets>=5.14.2"
 
 else
@@ -62,7 +62,7 @@ fi
 # if there is no xeus-python dir, clone it
 if [ ! -d "$THIS_DIR/xeus-python" ]; then
     cd $THIS_DIR
-    git clone -b pyjs_update https://github.com/DerThorsten/xeus-python/
+    git clone -b pyjs_update https://github.com/jupyter-xeus/xeus-python/
 else
     echo "xeus-python dir already exists"
 fi

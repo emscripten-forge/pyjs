@@ -20,7 +20,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emsdk_ver: ["3.1.58"]
+        include:
+          - emsdk_ver: "3.1.45"
+            python_version: "3.11"
+            pybind11_version: "<2.12.0"
+          # - emsdk_ver: "3.1.58"
+          #   python_version: "3.12"
+          #   pybind11_version: ""
 
     steps:
       - uses: actions/checkout@v2
@@ -28,32 +34,30 @@ jobs:
       - name: Install micromamba
         uses: mamba-org/setup-micromamba@v1
         with:
-          environment-file: environment-dev.yml
+          environment-file: environment-dev_${{matrix.emsdk_ver}}.yml
           environment-name: pyjs-wasm 
-
-
+          condarc: |
+            channels:
+              - https://repo.mamba.pm/emscripten-forge 
+              - conda-forge
+    
       - name: Install Playwright
         run: |
           playwright install
-      
-      - name: Setup emsdk
-        shell: bash -el {0}
-        run: |
-          ./emsdk/setup_emsdk.sh ${{ matrix.emsdk_ver }} $(pwd)/emsdk_install
 
       - name: Build pyjs
         run: |
           micromamba activate pyjs-wasm
 
-          emsdk activate ${{matrix.emsdk_ver}}
-          source $(pwd)/emsdk_install/emsdk_env.sh
+          # emsdk activate ${{matrix.emsdk_ver}}
+          # source $(pwd)/emsdk_install/emsdk_env.sh
 
           micromamba create -n pyjs-build-wasm \
             --platform=emscripten-wasm32 \
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python pybind11 nlohmann_json pybind11_json numpy "pytest==7.1.1" bzip2 sqlite zlib zstd libffi exceptiongroup
+            python=${{matrix.python_version}} "pybind11${{matrix.pybind11_version}}" nlohmann_json pybind11_json "numpy<2" "pytest==7.1.1" bzip2 sqlite zlib zstd libffi exceptiongroup emscripten-abi==${{matrix.emsdk_ver}}
 
 
           mkdir build
@@ -87,7 +91,7 @@ jobs:
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python "pytest==7.1.1" numpy exceptiongroup
+            "python=${{matrix.python_version}}" "pytest==7.1.1" "numpy<2" exceptiongroup
 
 
       - name: Test in browser-main
@@ -128,7 +132,7 @@ jobs:
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python "pytest==7.1.1" exceptiongroup
+            "python=${{matrix.python_version}}" "pytest==7.1.1" exceptiongroup
 
       - name: Test in browser-main-no-numpy
         run: |

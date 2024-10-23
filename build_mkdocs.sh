@@ -21,7 +21,7 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python==$PYTHON_VERSION emscripten-abi==$EMSDK_VERSION "pybind11<2.12.0" nlohmann_json pybind11_json numpy \
+            python==$PYTHON_VERSION "pybind11" nlohmann_json pybind11_json numpy \
             bzip2 sqlite zlib zstd libffi exceptiongroup\
             "xeus" "xeus-lite" xeus-python "xeus-javascript" xtl "ipython=8.22.2=py311had7285e_1" "traitlets>=5.14.2"
 
@@ -93,7 +93,7 @@ if true; then
 
     # this is stupid
     cp -r $WASM_ENV_PREFIX/include/python3.11/ $WASM_ENV_PREFIX/include/
-    
+
     emcmake cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \

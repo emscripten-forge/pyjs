@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emsdk_ver: ["3.1.58"]
+        emsdk_ver: ["3.1.45", "3.1.58"]
 
     steps:
       - uses: actions/checkout@v2
@@ -31,15 +31,18 @@ jobs:
           environment-file: environment-dev.yml
           environment-name: pyjs-wasm 
 
-
+      - name: install emscripten
+        shell: bash -el {0}
+        run: |
+          $MICROMAMBA_EXE install \
+            -n pyjs-wasm  \
+            -c https://repo.mamba.pm/emscripten-forge \
+            --yes \
+            emscripten_emscripten-wasm32==${{ matrix.emsdk_ver }}
+    
       - name: Install Playwright
         run: |
           playwright install
-      
-      - name: Setup emsdk
-        shell: bash -el {0}
-        run: |
-          ./emsdk/setup_emsdk.sh ${{ matrix.emsdk_ver }} $(pwd)/emsdk_install
 
       - name: Build pyjs
         run: |

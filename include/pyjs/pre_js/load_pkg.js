@@ -144,8 +144,6 @@ Module["bootstrap_from_empack_packed_environment"] = async function
 {
     try{
     
-        verbose=true;
-
         function splitPackages(packages) {
             // find package with name "python" and remove it from the list
             let python_package = undefined

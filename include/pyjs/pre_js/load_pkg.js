@@ -331,7 +331,6 @@ Module["init_python_phases"] = async function (
     if(verbose) {
         console.log('Turn on support for running python code for xeus-python');
     }
-    if(verbose){console.log("start init_phase_1");}
     await Module.init_phase_1(prefix, python_version, verbose);
     Module.init_phase_2(prefix, python_version, verbose);
 }

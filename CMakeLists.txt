@@ -118,19 +118,19 @@ add_library(pyjs STATIC
 target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
 
-    target_compile_options(pyjs
-        PUBLIC --std=c++17
-        PUBLIC -Wno-deprecated
-        PUBLIC "SHELL: -fexceptions"
-    )
+target_compile_options(pyjs
+    PUBLIC --std=c++17
+    PUBLIC -Wno-deprecated
+    PUBLIC "SHELL: -fexceptions"
+)
 
-    target_link_options(pyjs
-        PUBLIC -lembind
-        PUBLIC -Wno-unused-command-line-argument
-        PUBLIC "SHELL: -fexceptions"
-        #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
-        #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
-    )
+target_link_options(pyjs
+    PRIVATE -lembind
+    PUBLIC -Wno-unused-command-line-argument
+    PUBLIC "SHELL: -fexceptions"
+    #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
+    #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
+)
 
 
 
@@ -141,14 +141,21 @@ set_target_properties(pyjs PROPERTIES
 
 add_dependencies(pyjs merge_pyjs)
 
-target_link_libraries(pyjs PRIVATE pybind11::pybind11)
+target_link_libraries(pyjs PRIVATE pybind11::pybind11 ${ZLIB_LIBRARIES})
 target_compile_options(pyjs PRIVATE -fPIC)
+
+
+SET(BUILD_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 
 target_include_directories(pyjs
                            PUBLIC
                             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                             $<INSTALL_INTERFACE:include>  # <prefix>/include
 )
+
+# find zlib in the proper way
+find_package(ZLIB REQUIRED)
 
 SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a
@@ -180,7 +187,9 @@ target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
 target_include_directories(pyjs_runtime_browser
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/include
-                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
+                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes
+                        ${ZLIB_INCLUDE_DIRS}
+                    )
 
 set_target_properties(pyjs_runtime_browser
     PROPERTIES
@@ -188,8 +197,9 @@ set_target_properties(pyjs_runtime_browser
 )
 target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
 target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
-target_link_libraries(pyjs_runtime_browser PRIVATE pyjs)
-target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
+target_link_libraries(pyjs_runtime_browser PRIVATE pyjs  pybind11::embed ${PYTHON_UTIL_LIBS})
+
+
 
 target_compile_options(pyjs_runtime_browser
     PUBLIC --std=c++17
@@ -204,6 +214,7 @@ target_compile_options(pyjs_runtime_browser
 )
 
 target_link_options(pyjs_runtime_browser
+    PRIVATE -lembind
     PUBLIC -Wno-unused-command-line-argument
     PUBLIC "SHELL: -s MODULARIZE=1"
     PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""

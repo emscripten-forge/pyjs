@@ -12,11 +12,7 @@ if (NOT DEFINED PY_VERSION)
     set(PY_VERSION 3.11)
 endif()
 
-
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
-
-
-
 
 ##########################################################
 # generate prejs and postjs
@@ -70,9 +66,6 @@ add_custom_command(OUTPUT "pyjs_post.js"
     DEPENDS  ${POSTJS_FILES})
 
 
-
-
-
 ##########################################################
 # headers to install
 ##########################################################
@@ -117,21 +110,19 @@ add_library(pyjs STATIC
 
 target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
+target_compile_options(pyjs
+    PUBLIC --std=c++17
+    PUBLIC -Wno-deprecated
+    PUBLIC "SHELL: -fexceptions"
+)
 
-    target_compile_options(pyjs
-        PUBLIC --std=c++17
-        PUBLIC -Wno-deprecated
-        PUBLIC "SHELL: -fexceptions"
-    )
-
-    target_link_options(pyjs
-        PUBLIC -lembind
-        PUBLIC -Wno-unused-command-line-argument
-        PUBLIC "SHELL: -fexceptions"
-        #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
-        #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
-    )
-
+target_link_options(pyjs
+    PRIVATE -lembind
+    PUBLIC -Wno-unused-command-line-argument
+    PUBLIC "SHELL: -fexceptions"
+    #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
+    #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
+)
 
 
 set_target_properties(pyjs PROPERTIES
@@ -144,10 +135,11 @@ add_dependencies(pyjs merge_pyjs)
 target_link_libraries(pyjs PRIVATE pybind11::pybind11)
 target_compile_options(pyjs PRIVATE -fPIC)
 
+
 target_include_directories(pyjs
-                           PUBLIC
-                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-                            $<INSTALL_INTERFACE:include>  # <prefix>/include
+    PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
 SET(PYTHON_UTIL_LIBS
@@ -180,7 +172,9 @@ target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
 target_include_directories(pyjs_runtime_browser
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/include
-                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
+                        ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes
+                        ${ZLIB_INCLUDE_DIRS}
+                    )
 
 set_target_properties(pyjs_runtime_browser
     PROPERTIES
@@ -188,8 +182,9 @@ set_target_properties(pyjs_runtime_browser
 )
 target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
 target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
-target_link_libraries(pyjs_runtime_browser PRIVATE pyjs)
-target_link_libraries(pyjs_runtime_browser PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
+target_link_libraries(pyjs_runtime_browser PRIVATE pyjs  pybind11::embed ${PYTHON_UTIL_LIBS})
+
+
 
 target_compile_options(pyjs_runtime_browser
     PUBLIC --std=c++17
@@ -204,6 +199,7 @@ target_compile_options(pyjs_runtime_browser
 )
 
 target_link_options(pyjs_runtime_browser
+    PRIVATE -lembind
     PUBLIC -Wno-unused-command-line-argument
     PUBLIC "SHELL: -s MODULARIZE=1"
     PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""

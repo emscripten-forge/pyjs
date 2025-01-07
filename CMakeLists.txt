@@ -154,9 +154,6 @@ target_include_directories(pyjs
                             $<INSTALL_INTERFACE:include>  # <prefix>/include
 )
 
-# find zlib in the proper way
-find_package(ZLIB REQUIRED)
-
 SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a
     ${CMAKE_INSTALL_PREFIX}/lib/libz.a

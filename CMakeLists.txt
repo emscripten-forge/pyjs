@@ -12,11 +12,7 @@ if (NOT DEFINED PY_VERSION)
     set(PY_VERSION 3.11)
 endif()
 
-
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
-
-
-
 
 ##########################################################
 # generate prejs and postjs
@@ -70,9 +66,6 @@ add_custom_command(OUTPUT "pyjs_post.js"
     DEPENDS  ${POSTJS_FILES})
 
 
-
-
-
 ##########################################################
 # headers to install
 ##########################################################
@@ -117,7 +110,6 @@ add_library(pyjs STATIC
 
 target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
-
 target_compile_options(pyjs
     PUBLIC --std=c++17
     PUBLIC -Wno-deprecated
@@ -133,7 +125,6 @@ target_link_options(pyjs
 )
 
 
-
 set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
     # DEPENDS "pyjs_pre.js" "pyjs_post.js"
@@ -145,13 +136,10 @@ target_link_libraries(pyjs PRIVATE pybind11::pybind11)
 target_compile_options(pyjs PRIVATE -fPIC)
 
 
-SET(BUILD_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
 target_include_directories(pyjs
-                           PUBLIC
-                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-                            $<INSTALL_INTERFACE:include>  # <prefix>/include
+    PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
 SET(PYTHON_UTIL_LIBS

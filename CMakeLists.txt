@@ -141,7 +141,7 @@ set_target_properties(pyjs PROPERTIES
 
 add_dependencies(pyjs merge_pyjs)
 
-target_link_libraries(pyjs PRIVATE pybind11::pybind11 ${ZLIB_LIBRARIES})
+target_link_libraries(pyjs PRIVATE pybind11::pybind11)
 target_compile_options(pyjs PRIVATE -fPIC)
 
 

@@ -57,7 +57,12 @@ jobs:
             -c https://repo.mamba.pm/emscripten-forge \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python=${{matrix.python_version}} "pybind11${{matrix.pybind11_version}}" nlohmann_json pybind11_json "numpy<2" "pytest==7.1.1" bzip2 sqlite zlib zstd libffi exceptiongroup emscripten-abi==${{matrix.emsdk_ver}}
+            python=${{matrix.python_version}} \
+            "pybind11${{matrix.pybind11_version}}" \
+            nlohmann_json pybind11_json "numpy<2" \
+            "pytest==7.1.1" bzip2 sqlite zlib zstd libffi \
+            exceptiongroup emscripten-abi==${{matrix.emsdk_ver}} \
+            openssl
 
 
           mkdir build

@@ -19,7 +19,11 @@ from .conftest import *
 
 import pyjs
 
-
+# check python version
+if sys.version_info[0] == 3 and sys.version_info[1] >= 13:
+    def test_ssl_import():
+        import ssl
+        
 def test_js_submodule():
     from pyjs.js import Function
 

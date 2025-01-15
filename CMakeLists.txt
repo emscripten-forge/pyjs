@@ -148,6 +148,10 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libsqlite3.a
     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
     ${CMAKE_INSTALL_PREFIX}/lib/libzstd.a
+    # ssl
+    ${CMAKE_INSTALL_PREFIX}/lib/libssl.a
+    # crypto
+    ${CMAKE_INSTALL_PREFIX}/lib/libcrypto.a
 )
 
 

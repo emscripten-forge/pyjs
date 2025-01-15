@@ -1,7 +1,6 @@
 // from https://zlib.net/zlib_how.html
 // and https://windrealm.org/tutorials/decompress-gzip-stream.php
 // and https://stackoverflow.com/questions/10195343/copy-a-file-in-a-sane-safe-and-efficient-way
-#pragma once
 
 #include <stdio.h>
 #include <string.h>

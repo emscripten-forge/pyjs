@@ -23,6 +23,9 @@ import pyjs
 if sys.version_info[0] == 3 and sys.version_info[1] >= 13:
     def test_ssl_import():
         import ssl
+    
+    def test_import_lzma():
+        import lzma
         
 def test_js_submodule():
     from pyjs.js import Function

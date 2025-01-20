@@ -152,6 +152,8 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libssl.a
     # crypto
     ${CMAKE_INSTALL_PREFIX}/lib/libcrypto.a
+    # lzma
+    ${CMAKE_INSTALL_PREFIX}/lib/liblzma.a
 )
 
 

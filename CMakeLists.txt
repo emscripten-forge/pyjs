@@ -7,6 +7,8 @@ option(WITH_NODE_TESTS "With node tests" OFF)
 option(LINK_LIBEXPAT "Link libexpat" OFF)
 option(LINK_LIBMPDEC "Link libmpdec" OFF)
 
+option(LINK_LIBLZMA "Link liblzma" OFF)
+
 # set PY_VERSION to 3.11 if the user has not set it
 if (NOT DEFINED PY_VERSION)
     set(PY_VERSION 3.11)
@@ -152,9 +154,11 @@ SET(PYTHON_UTIL_LIBS
     ${CMAKE_INSTALL_PREFIX}/lib/libssl.a
     # crypto
     ${CMAKE_INSTALL_PREFIX}/lib/libcrypto.a
-    # lzma
-    ${CMAKE_INSTALL_PREFIX}/lib/liblzma.a
 )
+
+if(LINK_LIBLZMA)
+    SET(PYTHON_UTIL_LIBS ${PYTHON_UTIL_LIBS} ${CMAKE_INSTALL_PREFIX}/lib/liblzma.a)
+endif()
 
 
 if (LINK_LIBEXPAT)

@@ -24,7 +24,7 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
             python=$PYTHON_VERSION "pybind11" nlohmann_json pybind11_json numpy \
             bzip2 sqlite zlib zstd libffi exceptiongroup\
             "xeus" "xeus-lite" xeus-python "xeus-javascript" xtl "ipython=8.22.2=py311had7285e_1" "traitlets>=5.14.2" \
-            openssl liblzma
+            openssl
 
 else
     echo "Wasm env $WASM_ENV_NAME already exists"

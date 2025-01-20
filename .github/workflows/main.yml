@@ -62,7 +62,7 @@ jobs:
             nlohmann_json pybind11_json "numpy<2" \
             "pytest==7.1.1" bzip2 sqlite zlib zstd libffi \
             exceptiongroup emscripten-abi==${{matrix.emsdk_ver}} \
-            openssl liblzma
+            openssl
 
 
           mkdir build

@@ -1,5 +1,7 @@
 #include <iostream>
 #include <filesystem>
+#include <vector>
+#include <string>
 
 #include <pyjs/export_py_object.hpp>
 #include <pyjs/convert.hpp>
@@ -90,6 +92,18 @@ namespace pyjs
         return std::filesystem::is_directory(std::filesystem::path(p));
     }
 
+
+    std::string get_exception_message(int exceptionPtr)
+    {
+        auto ptr = reinterpret_cast<std::exception *>(exceptionPtr);
+
+        // get traceback
+        std::vector<std::string> traceback;
+
+        return std::string(ptr->what());
+    }
+
+
     void export_js_module()
     {
         // interpreter itself,
@@ -125,6 +139,8 @@ namespace pyjs
                      em::select_overload<void(const std::string&)>([](const std::string& val)
                                                                    { std::cout << val; }));
 
+
+        em::function("get_exception_message", &get_exception_message);
 
     }
 

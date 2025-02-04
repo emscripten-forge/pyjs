@@ -93,7 +93,7 @@ namespace pyjs
     }
 
 
-    std::string get_exception_message(int exceptionPtr)
+    std::string extract_exception_message(int exceptionPtr)
     {
         auto ptr = reinterpret_cast<std::exception *>(exceptionPtr);
 
@@ -140,7 +140,7 @@ namespace pyjs
                                                                    { std::cout << val; }));
 
 
-        em::function("get_exception_message", &get_exception_message);
+        em::function("extract_exception_message", &extract_exception_message);
 
     }
 

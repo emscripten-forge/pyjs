@@ -44,18 +44,20 @@ def _py_untar(tarball_path, target_dir):
             files = tar.getmembers()
             shared_libs = []
             for file in files:
-                if file.name.endswith(".so"):
-                
+                if file.name.endswith(".so") or ".so." in file.name:
                     if target_dir == "/":
                         shared_libs.append(f"/{file.name}")
                     else:
                         shared_libs.append(f"{target_dir}/{file.name}")
 
             tar.extractall(target_dir)
+            actual_shared_libs = []
             for file in shared_libs:
                 if not check_wasm_magic_number(Path(file)):
                     print(f" {file} is not a wasm file")
-            s = json.dumps(shared_libs)
+                else:
+                    actual_shared_libs.append(file)
+            s = json.dumps(actual_shared_libs)
     except Exception as e:
         print("ERROR",e)
         raise e

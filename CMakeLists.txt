@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.9)
 
-project(pyjs VERSION 2.7.1 DESCRIPTION "pyjs")
+project(pyjs VERSION 2.7.2 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(WITH_NODE_TESTS "With node tests" OFF)

@@ -323,3 +323,16 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         console.error(e);
     }
 }
+
+Module["init_python_phases"] = async function (   
+    python_version = [3,11],
+    prefix,
+    verbose = true
+) 
+{
+    if(verbose) {
+        console.log('Turn on support for running python code for xeus-python');
+    }
+    await Module.init_phase_1(prefix, python_version, verbose);
+    Module.init_phase_2(prefix, python_version, verbose);
+}

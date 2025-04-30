@@ -37,7 +37,7 @@ jobs:
               - https://repo.prefix.dev/emscripten-forge-dev
               - conda-forge
 
-              
+
       - name: Install Playwright
         run: |
           playwright install
@@ -88,7 +88,7 @@ jobs:
       - name: setup env with numpy
         run: |
           micromamba activate pyjs-wasm
-          micromamba create -n pyjs-build-wasm \
+          micromamba create -n pyjs-build-wasm-with-numpy \
             --platform=emscripten-wasm32 \
             -c  https://repo.prefix.dev/emscripten-forge-dev\
             -c https://repo.mamba.pm/conda-forge \
@@ -101,7 +101,7 @@ jobs:
           micromamba activate pyjs-wasm
           pyjs_code_runner run script \
               browser-main \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-with-numpy  \
               --mount         $(pwd)/tests:/tests \
               --mount         $(pwd)/module/pyjs:/lib/${{matrix.python_version}}/site-packages/pyjs \
               --script        main.py \
@@ -117,7 +117,7 @@ jobs:
 
           pyjs_code_runner run script \
               browser-worker \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-with-numpy \
               --mount         $(pwd)/tests:/tests \
               --mount         $(pwd)/module/pyjs:/lib/${{matrix.python_version}}/site-packages/pyjs \
               --script        main.py \
@@ -129,7 +129,7 @@ jobs:
       - name: setup minimal env without numpy
         run: |
           micromamba activate pyjs-wasm
-          micromamba create -n pyjs-build-wasm \
+          micromamba create -n pyjs-build-wasm-no-numpy \
             --platform=emscripten-wasm32 \
             -c  https://repo.prefix.dev/emscripten-forge-dev\
             -c https://repo.mamba.pm/conda-forge \
@@ -143,7 +143,7 @@ jobs:
 
           pyjs_code_runner run script \
               browser-main \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm  \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-no-numpy  \
               --mount         $(pwd)/tests:/tests \
               --mount         $(pwd)/module/pyjs:/lib/${{matrix.python_version}}/site-packages/pyjs \
               --script        main.py \

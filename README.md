@@ -13,7 +13,9 @@ The API is loosly based on the  FFI of [pyodide](https://pyodide.org/en/stable/u
 See the [documentation](https://emscripten-forge.github.io/pyjs/) for a full documentation.
 
 ## Try it out
-To try it out, you can use the [playground](https://emscripten-forge.github.io/pyjs/lite/).
+* To try it out, you can use the [playground](https://emscripten-forge.github.io/pyjs/lite/).
+* To create your own jupyterlite deployments use
+  [xeus-lite-demo](https://github.com/jupyterlite/xeus-lite-demo)
 
 ## Quickstart
 

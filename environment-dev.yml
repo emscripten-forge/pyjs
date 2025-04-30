@@ -1,13 +1,13 @@
 name: pyjs-wasm
 channels:
   - conda-forge
+  - https://repo.prefix.dev/emscripten-forge-dev
 dependencies:
   - cmake
   - pip
   - python
   - yarn
   - click
-  - empack >=3.0.1
   - microsoft::playwright <= 1.50
   - ninja
   - nodejs
@@ -27,7 +27,7 @@ dependencies:
   - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
   # pyjs_code_runner dev deps
   - hatchling
-  - emscripten_emscripten-wasm32 == 3.1.45
+  - emscripten_emscripten-wasm32
   - pip:
     - JLDracula
     - pyjs_code_runner >= 3.0

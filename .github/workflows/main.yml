@@ -46,9 +46,6 @@ jobs:
         run: |
           micromamba activate pyjs-wasm
 
-          # emsdk activate ${{matrix.emsdk_ver}}
-          # source $(pwd)/emsdk_install/emsdk_env.sh
-
           micromamba create -n pyjs-build-wasm \
             --platform=emscripten-wasm32 \
             -c  https://repo.prefix.dev/emscripten-forge-dev\
@@ -56,7 +53,7 @@ jobs:
             --yes \
             python=${{matrix.python_version}} \
             "pybind11${{matrix.pybind11_version}}" \
-            nlohmann_json pybind11_json "numpy<2" \
+            nlohmann_json pybind11_json numpy \
             pytest bzip2 sqlite zlib zstd libffi \
             exceptiongroup emscripten-abi==${{matrix.emsdk_ver}} \
             openssl liblzma

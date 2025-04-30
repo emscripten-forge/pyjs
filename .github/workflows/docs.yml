@@ -21,8 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - emsdk_ver: "3.1.45"
-            python_version: "3.11"
+          - emsdk_ver: "3.1.73"
+            python_version: "3.13"
 
 
     steps:
@@ -34,7 +34,7 @@ jobs:
       - name: Install micromamba
         uses: mamba-org/setup-micromamba@v1
         with:
-          environment-file: environment-dev_${{matrix.emsdk_ver}}.yml
+          environment-file: environment-dev.yml
           environment-name: pyjs-wasm 
           condarc: |
             channels:

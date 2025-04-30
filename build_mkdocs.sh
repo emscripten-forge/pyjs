@@ -18,13 +18,13 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
     echo "Creating wasm env $WASM_ENV_NAME"
     micromamba create -n $WASM_ENV_NAME \
             --platform=emscripten-wasm32 \
-            -c https://repo.mamba.pm/emscripten-forge \
-            -c https://repo.mamba.pm/conda-forge \
+            -c https://repo.prefix.dev/emscripten-forge-dev\
+            -c https://repo.prefix.dev/conda-forge \
             --yes \
             python=$PYTHON_VERSION "pybind11" nlohmann_json pybind11_json numpy \
             bzip2 sqlite zlib zstd libffi exceptiongroup\
-            "xeus" "xeus-lite" xeus-python "xeus-javascript" xtl "ipython=8.22.2=py311had7285e_1" "traitlets>=5.14.2" \
-            openssl
+            "xeus" "xeus-lite" xeus-python "xeus-javascript" xtl "ipython" "traitlets>=5.14.2" \
+            openssl liblzma
 
 else
     echo "Wasm env $WASM_ENV_NAME already exists"
@@ -100,7 +100,7 @@ if true; then
         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
         -DCMAKE_INSTALL_PREFIX=$PREFIX \
         -DXPYT_EMSCRIPTEN_WASM_BUILD=ON \
-        -DCMAKE_INCLUDE_PATH=$WASM_ENV_PREFIX/include/python3.11
+        -DCMAKE_INCLUDE_PATH=$WASM_ENV_PREFIX/include/python3.13
 
 
     emmake make -j8 install

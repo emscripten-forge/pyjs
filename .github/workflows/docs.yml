@@ -21,8 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - emsdk_ver: "3.1.45"
-            python_version: "3.11"
+          - emsdk_ver: "3.1.73"
+            python_version: "3.13"
 
 
     steps:

@@ -30,12 +30,23 @@ jobs:
       - name: Install micromamba
         uses: mamba-org/setup-micromamba@v1
         with:
-          environment-file: environment-dev_${{matrix.emsdk_ver}}.yml
+          environment-file: environment-dev.yml
           environment-name: pyjs-wasm 
           condarc: |
             channels:
               - https://repo.prefix.dev/emscripten-forge-dev
               - conda-forge
+
+      - name: Install micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          micromamba-version: '1.5.8-0'
+          environment-file: ci_env.yml
+          environment-name: ci
+          init-shell: bash
+          cache-environment: false
+          post-cleanup: 'all'
+
     
       - name: Install Playwright
         run: |

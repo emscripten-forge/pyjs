@@ -49,7 +49,7 @@ Copy the pyjs binary from the environment to the deploy directory.
 This should move pyjs_runtime_browser.js and pyjs_runtime_browser.wasm to the deployment directory.
 
 ```Bash
-cp /path/to/env/js_bin/pyjs/* /path/to/deploy
+cp /path/to/env/lib_js/pyjs/* /path/to/deploy
 ```
 
 

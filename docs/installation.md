@@ -95,6 +95,7 @@ The last step is to create a html file that loads the pyjs runtime and the packe
         // now we can use pyjs
         pyjs.eval("print('hello world')");
       }
+      runPyjs();
 
     </script>
   </head>

@@ -24,8 +24,8 @@ and all packages required for the project.
 ```yaml
 name: my-pyjs-env 
 channels:
-  - https://repo.mamba.pm/emscripten-forge 
-  - conda-forge
+  - https://repo.prefix.dev/emscripten-forge-dev
+  - https://repo.prefix.dev/conda-forge
 dependencies:
   - pyjs
   - numpy

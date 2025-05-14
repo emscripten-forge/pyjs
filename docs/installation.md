@@ -59,7 +59,7 @@ cp /path/to/env/lib_js/pyjs/* /path/to/deploy
 After the environment is defined, the next step is to pack the environment using `empack`.
 
 ```Bash
-empack pack env --env-prefix /path/to/env --output /path/to/deploy
+empack pack env --env-prefix /path/to/env --outdir /path/to/deploy
 ```
 This will create a tarball for each package in the environment and a `empack_env_meta.json` file that describes the environment.
 

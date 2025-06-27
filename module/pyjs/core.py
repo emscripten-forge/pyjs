@@ -6,6 +6,8 @@ from typing import Any
 import ast
 import pyjs_core
 from pyjs_core import JsValue, js_array, js_py_object
+import warnings
+import time
 
 def install_submodules():
     def _js_mod__getattr__(name: str) -> Any:
@@ -307,3 +309,49 @@ async def async_exec_eval(stmts, globals=None, locals=None):
     parsed_fn.body[0].body = parsed_stmts.body
     exec(compile(parsed_fn, filename="<ast>", mode="exec"), globals, locals)
     return await  eval(f'{fn_name}()', globals, locals)  # fmt: skip
+
+
+
+class _CallbackEntryPoint:
+    def __init__(self, py_callback):
+        self._py_callback = py_callback
+        self._last_time = time.time()
+    def __call__(self):
+        t =  time.time()
+        dt = t - self._last_time
+        self._last_time = t
+        self._py_callback(dt)
+
+_callback_entry_point = None
+
+
+def set_main_loop_callback(py_callback, fps=0):
+
+    global  _callback_entry_point
+    if _callback_entry_point is not None:
+        # show a warning if the callback is already set
+        warnings.warn(""" A main loop callback is already set. 
+            This will be replaced by the new callback,
+            use cancel_main_loop before setting a new callback to avoid this warning
+            """,
+            UserWarning)
+        
+        cancel_main_loop()
+    
+    _callback_entry_point = _CallbackEntryPoint(py_callback)
+
+    pyjs_core._set_main_loop_callback(
+        _callback_entry_point,
+        int(fps)
+    )
+   
+
+def cancel_main_loop():
+    """Cancel the main loop callback."""
+    global _callback_entry_point
+    if _callback_entry_point is not None:
+        pyjs_core._cancel_main_loop()
+        pyjs_core._set_noop_main_loop()
+        _callback_entry_point = None
+    else:
+        warnings.warn("No main loop callback is set to cancel.", UserWarning)

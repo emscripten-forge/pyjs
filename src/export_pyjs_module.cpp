@@ -18,30 +18,17 @@ namespace em = emscripten;
 namespace pyjs
 {   
 
-    struct LoopContext
-    {
-        py::object m_callback;
-        bool m_cancel_loop_on_error = true; // default to true
-        bool m_exit_loop = false;
+    // struct LoopContext
+    // {
+    //     py::object m_callback;
+    //     bool m_cancel_loop_on_error = true; // default to true
+    //     bool m_exit_loop = false;
 
-        LoopContext(py::object callback, bool cancel_loop_on_error)
-            : m_callback(std::move(callback)), m_cancel_loop_on_error(cancel_loop_on_error), m_exit_loop(false) {}
-    };
-
-
-
-
-    // void wrapped_callback_without_cancel(void* cb_ptr) {
-    //     // Reinterpret the void pointer back to a PyObject pointer
-    //     auto py_object = reinterpret_cast<PyObject*>(cb_ptr);
-    //     // We can use PyObject_CallObject to call the Python function
-    //     if (PyObject_CallNoArgs(py_object) == nullptr) {
-    //         // If the call fails, we can print the error
-    //         std::cerr << "Error calling Python callback." << std::endl;
-    //         PyErr_Print();
-            
-    //     }
+    //     LoopContext(py::object callback, bool cancel_loop_on_error)
+    //         : m_callback(std::move(callback)), m_cancel_loop_on_error(cancel_loop_on_error), m_exit_loop(false) {}
     // };
+
+
     void wrapped_callback(void* cb_ptr) {
         // Reinterpret the void pointer back to a PyObject pointer
         auto py_object = reinterpret_cast<PyObject*>(cb_ptr);
@@ -75,14 +62,12 @@ namespace pyjs
 
 
         
-        // class for loop context
-        py::class_<LoopContext>(pyjs_module, "LoopContext")
-            .def(py::init<py::object, bool>(), py::arg("callback"), py::arg("cancel_loop_on_error") = true)
-            .def_readwrite("exit_loop", &LoopContext::m_exit_loop)
-        ;
+        // // class for loop context
+        // py::class_<LoopContext>(pyjs_module, "LoopContext")
+        //     .def(py::init<py::object, bool>(), py::arg("callback"), py::arg("cancel_loop_on_error") = true)
+        //     .def_readwrite("exit_loop", &LoopContext::m_exit_loop)
+        // ;
         
-            
-
 
 
         // Export main loop callbacks
@@ -114,36 +99,6 @@ namespace pyjs
             // This will set a no-op main loop
             emscripten_set_main_loop(noop_callback, 1, false); // set a no-op loop to avoid errors
         });
-
-
-        // pyjs_module.def("set_main_loop_callback_hl", [](py::handle & callback, int fps) {
-            
-        //     // get a PyObject * from the handle
-        //     void * handle_ptr = reinterpret_cast<void*>(&callback);
-
-        
-
-        //     // create a lambda without any caputres taking the callback pointer
-        //     auto wrapped_callback = [](void* cb_ptr) {
-
-               
-        //         py::handle* handle = reinterpret_cast<py::handle*>(cb_ptr);
-
-
-        //         // We can use PyObject_CallObject to call the Python function
-
-        //     };
-
-        //     // use emscripten_set_main_loop_arg
-        //     emscripten_set_main_loop_arg(
-        //         wrapped_callback,
-        //         callback_ptr, // pass the callback pointer as argument
-        //         fps, // frames per second
-        //         false 
-        //     );
-        // });
-
-
                         
     }
 

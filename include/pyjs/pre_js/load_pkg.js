@@ -286,8 +286,10 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         if(verbose){
             console.log("fetchAndUntarAll");
         }
-        await Promise.all(all_mount_points.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)));
-        let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)));
+        let shared_libs = await Promise.all(
+            ...packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)),
+            ...all_mount_points.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose))
+        );
 
         if(verbose){
             console.log("init_phase_2");

@@ -82,6 +82,11 @@ def to_js(value, cache=None, depth=0, max_depth=None):
     elif isinstance(value, bytes):
         return internal.bytes_to_typed_array(value).buffer
 
+    elif hasattr(value, "explicit_to_js"):
+        return value.explicit_to_js()
+        
+    elif hasattr(value, "implicit_to_js"):
+        return value.implicit_to_js()
 
     else:
         raise RuntimeError(f"no registerd converted for {value} of type {type(value)}")

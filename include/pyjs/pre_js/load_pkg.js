@@ -260,7 +260,7 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         // fetch json with list of all packages
         let empack_env_meta = await fetchJson(packages_json_url);
         let all_packages = empack_env_meta.packages;
-        let all_mount_points = empack_env_meta.mounts;
+        let all_mount_points = empack_env_meta.mounts || [];
         let prefix = empack_env_meta.prefix;
 
         if(verbose){

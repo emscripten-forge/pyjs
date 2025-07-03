@@ -384,7 +384,7 @@ def test_custom_implicit_converter():
             self.the_value = -1
             self.value = value
 
-        def implicit_js(self):
+        def implicit_to_js(self):
             obj = pyjs.js_object()
             obj["the_value"] = self.value
             return obj
@@ -394,7 +394,7 @@ def test_custom_implicit_converter():
             self.value = value
             self.the_value  = -1
 
-        def explicit_js(self):
+        def explicit_to_js(self):
             obj = pyjs.js_object()
             obj["the_value"] = self.value
             return obj
@@ -405,12 +405,12 @@ def test_custom_implicit_converter():
             self.the_explicit_value = -1
             self.the_implicit_value = -1
 
-        def explicit_js(self):
+        def explicit_to_js(self):
             obj = pyjs.js_object()
             obj["the_explicit_value"] = self.value
             return obj
 
-        def implicit_js(self):
+        def implicit_to_js(self):
             obj = pyjs.js_object()
             obj["the_implicit_value"] = self.value
             return obj

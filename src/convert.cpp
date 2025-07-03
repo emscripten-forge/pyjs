@@ -48,9 +48,9 @@ namespace pyjs
         {
             return std::make_pair(em::val::module_property("_future_to_promise")(em::val(py_ret)),false);
         }
-        else if(py::hasattr(py_ret,"implicit_js")){
-            auto implicit_js = py_ret.attr("implicit_js");
-            py::object py_js_ret = implicit_js();
+        else if(py::hasattr(py_ret,"implicit_to_js")){
+            auto implicit_to_js = py_ret.attr("implicit_to_js");
+            py::object py_js_ret = implicit_to_js();
             return std::make_pair(py_js_ret.cast<em::val>(),false);
         }
         else

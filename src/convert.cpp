@@ -17,6 +17,7 @@ namespace pyjs
         // py::module_ pyjs = py::module_::import("pyjs_utils");
         // const std::string info = pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
 
+
         const std::string info = py_ret.get_type().attr("__name__").str();
         
         if (info == "int")
@@ -46,6 +47,11 @@ namespace pyjs
         else if(info == "Task" || info == "coroutine")
         {
             return std::make_pair(em::val::module_property("_future_to_promise")(em::val(py_ret)),false);
+        }
+        else if(py::hasattr(py_ret,"implicit_js")){
+            auto implicit_js = py_ret.attr("implicit_js");
+            py::object py_js_ret = implicit_js();
+            return std::make_pair(py_js_ret.cast<em::val>(),false);
         }
         else
         {

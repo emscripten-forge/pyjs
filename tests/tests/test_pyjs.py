@@ -376,6 +376,74 @@ def test_custom_converter():
     assert r.width == 20
 
 
+def test_custom_implicit_converter():
+
+    class Foo(object):
+        def __init__(self, value):
+
+            self.the_value = -1
+            self.value = value
+
+        def implicit_js(self):
+            obj = pyjs.js_object()
+            obj["the_value"] = self.value
+            return obj
+    
+    class Bar(object):
+        def __init__(self, value):
+            self.value = value
+            self.the_value  = -1
+
+        def explicit_js(self):
+            obj = pyjs.js_object()
+            obj["the_value"] = self.value
+            return obj
+    
+    class FooBarInstance(object):
+        def __init__(self, value):
+            self.value = value
+            self.the_explicit_value = -1
+            self.the_implicit_value = -1
+
+        def explicit_js(self):
+            obj = pyjs.js_object()
+            obj["the_explicit_value"] = self.value
+            return obj
+
+        def implicit_js(self):
+            obj = pyjs.js_object()
+            obj["the_implicit_value"] = self.value
+            return obj
+    
+    
+
+    foo_instance = Foo(42)
+    js_function = pyjs.js.Function("instance", """
+        return instance.the_value === 42;
+    """)
+    assert js_function(foo_instance) is True
+    assert js_function(pyjs.to_js(foo_instance)) is True
+
+    bar_instance = Bar(42)
+    assert js_function(bar_instance) is False
+    assert js_function(pyjs.to_js(bar_instance)) is True
+
+    foo_bar_instance = FooBarInstance(42)
+    js_function = pyjs.js.Function("instance", """
+        return instance.the_implicit_value === 42;
+    """)
+    assert js_function(foo_bar_instance) is True
+    assert js_function(pyjs.to_js(foo_bar_instance)) is False
+    
+    js_function = pyjs.js.Function("instance", """
+        return instance.the_explicit_value === 42;
+    """)
+    assert js_function(foo_bar_instance) is False
+    assert js_function(pyjs.to_js(foo_bar_instance)) is True
+
+
+    
+
 def test_del_attr():
     obj = eval_jsfunc(
         """{

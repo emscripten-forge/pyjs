@@ -260,6 +260,7 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         // fetch json with list of all packages
         let empack_env_meta = await fetchJson(packages_json_url);
         let all_packages = empack_env_meta.packages;
+        let all_mount_points = empack_env_meta.mounts || [];
         let prefix = empack_env_meta.prefix;
 
         if(verbose){
@@ -285,7 +286,10 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         if(verbose){
             console.log("fetchAndUntarAll");
         }
-        let shared_libs = await Promise.all(packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)));
+        let shared_libs = await Promise.all([
+            ...packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)),
+            ...all_mount_points.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose))
+        ]);
 
         if(verbose){
             console.log("init_phase_2");

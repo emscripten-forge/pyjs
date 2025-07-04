@@ -442,6 +442,29 @@ def test_custom_implicit_converter():
     assert js_function(pyjs.to_js(foo_bar_instance)) is True
 
 
+
+def test_literal_map():
+    py_dict = {
+        "foo": 1,
+        "bar": "bar",
+        "foobar": ["foo", "bar"],
+    }
+
+    func = pyjs.js.Function("converted","""
+        // ensure class name is LiteralMap
+        if (converted.constructor.name !== "LiteralMap") {
+            throw new Error("converted is not a LiteralMap");
+        }
+        // ensure that the keys are correct
+        if (converted.get("foo") !== 1 || converted.get("bar") !== "bar" || !converted.get("foobar").includes("foo") || !converted.get("foobar").includes("bar")) {
+            throw new Error("converted does not have the correct keys");
+        }
+        // ensure we can access the values via . 
+        if (converted.foo !== 2 || converted.bar !== "bar" || !converted.foobar.includes("foo") || !converted.foobar.includes("bar")) {
+            throw new Error("converted does not have the correct values when accessed via .");
+        }
+        return true;
+    """)
     
 
 def test_del_attr():

@@ -37,6 +37,7 @@ set(PREJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/dynload/dynload.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/fetch.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/load_pkg.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/literal_map.js
 )
 set(POSTJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/post_js/fixes.js

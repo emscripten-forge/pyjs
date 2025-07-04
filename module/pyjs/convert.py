@@ -134,6 +134,7 @@ _basic_to_py_converters = {
     "Array": _array_converter,
     "Set": _set_converter,
     "Map": _map_converter,
+    "LiteralMap": _map_converter,
     "7": lambda x, d, c, opts: x,
     "Promise": lambda x, d, c, opts: x._to_future(),
     "ArrayBuffer": lambda x, d, c, opts: to_py(new(js.Uint8Array, x), d, c, opts),

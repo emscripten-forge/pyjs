@@ -18,7 +18,7 @@ def _py_dict_like_to_js(value, cache, depth, max_depth):
     vid = id(value)
     if vid in cache:
         return cache[vid]
-    j_value = new(js.Map)
+    j_value = new(js.LiteralMap)
     cache[vid] = j_value
     for k, v in value.items():
         js_k = to_js(k, cache=cache, depth=depth + 1, max_depth=max_depth)

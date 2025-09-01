@@ -246,6 +246,11 @@ def test_to_js_dict():
     assert jsmap.get(1) == "a"
 
 
+def test_bytes_to_js():
+    pyjs.to_js(b"\x00").byteLength == 1   
+    
+
+
 def test_to_js_none():
 
     jsval = pyjs.to_js(None)

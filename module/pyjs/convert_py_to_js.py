@@ -80,7 +80,8 @@ def to_js(value, cache=None, depth=0, max_depth=None):
 
     # # bytestring
     elif isinstance(value, bytes):
-        return internal.bytes_to_typed_array(value).buffer
+        l = len(value)
+        return internal.bytes_to_typed_array(value, l).buffer
 
     elif hasattr(value, "explicit_to_js"):
         return value.explicit_to_js()

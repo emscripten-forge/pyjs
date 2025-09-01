@@ -21,7 +21,7 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
             -c https://repo.prefix.dev/emscripten-forge-dev\
             -c https://repo.prefix.dev/conda-forge \
             --yes \
-            python=$PYTHON_VERSION "pybind11" nlohmann_json pybind11_json numpy \
+            python=$PYTHON_VERSION "pybind11<3" nlohmann_json pybind11_json numpy \
             bzip2 sqlite zlib zstd libffi exceptiongroup\
             "xeus" "xeus-lite" xeus-python "xeus-javascript" xtl "ipython" "traitlets>=5.14.2" \
             openssl liblzma

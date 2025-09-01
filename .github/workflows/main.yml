@@ -23,7 +23,7 @@ jobs:
         include:
           - emsdk_ver: "3.1.73"
             python_version: "3.13"
-            pybind11_version: ""
+            pybind11_version: "<3"
     steps:
       - uses: actions/checkout@v2
 

@@ -205,10 +205,9 @@ namespace pyjs
     }
 
 
-    em::val bytes_to_js(char * binary_string)
+    em::val bytes_to_js(char * binary_string, std::size_t length)
     {
         // get the length of the string
-        std::size_t length = std::strlen(binary_string);
         em::val mem_view = em::val(em::typed_memory_view(length, binary_string));
         em::val mem_copy = em::val::global("Uint8Array").new_(mem_view);
         return mem_copy;

@@ -56,6 +56,6 @@ namespace pyjs
 
 
     em::val py_1d_buffer_to_typed_array(py::buffer buffer, bool view);
-    em::val bytes_to_js(char* data);
+    em::val bytes_to_js(char* data, std::size_t length);
 
 }

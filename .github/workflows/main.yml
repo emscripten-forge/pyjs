@@ -47,8 +47,8 @@ jobs:
             -c  https://repo.prefix.dev/emscripten-forge-4x\
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python=3.13 \
-            "pybind11<3 \
+            "python=3.13" \
+            "pybind11<3" \
             nlohmann_json pybind11_json numpy \
             pytest bzip2 sqlite zlib zstd libffi \
             exceptiongroup emscripten-abi>=4 \

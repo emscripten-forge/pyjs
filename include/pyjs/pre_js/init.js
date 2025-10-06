@@ -19,32 +19,59 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
     var p = await Module['_wait_run_dependencies']();
 
     if(prefix == "/"){
-        Module.setenv("PYTHONHOME", `/`);
-        Module.setenv("PYTHONPATH", `/lib/python${version_str}/site-packages:/usr/lib/python${version_str}`);
+        Module.setenv("LANG", "en_US.UTF-8");   
 
+        // LC_COLLATE="C"
+        // LC_CTYPE="UTF-8"
+        // LC_MESSAGES="C"
+        // LC_MONETARY="C"
+        // LC_NUMERIC="C"
+        // LC_TIME="C"
+        // Module.setenv("LC_COLLATE", "C");
+        // Module.setenv("LC_CTYPE", "UTF-8");
+        // Module.setenv("LC_MESSAGES", "C");
+        // Module.setenv("LC_MONETARY", "C");
+        // Module.setenv("LC_NUMERIC", "C");
+        // Module.setenv("LC_TIME", "C");
+
+        const pypath = `/lib/python${version_str}/site-packages:/usr/lib/python${version_str}/site-packages`;
         var side_path = `/lib/python${version_str}/site-packages`;
+
+        console.log("PYTHONPATH",pypath);
+        console.log("SIDE_PATH",side_path);
+        Module.setenv("PYTHONHOME", `/`);
+        Module.setenv("PYTHONPATH", pypath);
+        Module.create_directories(side_path);
     }
     else{
-        Module.setenv("PYTHONHOME", prefix);
-        Module.setenv("PYTHONPATH", `${prefix}/lib/python${version_str}/site-packages:/usr/lib/python${version_str}`);
-        var side_path = `${prefix}/lib/python${version_str}/site-packages`;
+        throw new Error("prefix must be / in wasm build");
     }
 
 
-    Module.create_directories(side_path);
     
 
-    Module["_interpreter"] = new Module["_Interpreter"]()
-    var default_scope = Module["main_scope"]()
-    Module["default_scope"] = default_scope;
+    // Module["_interpreter"] = new Module["_Interpreter"]()
+    console.log("initialize interpreter");
+    Module["_initialize_interpreter"]();
+    console.log("interpreter initialized");
 
-    Module['_py_objects'].push(Module["default_scope"]);
+
+
+    default_scope = Module["globals"]()
+    // Module["default_scope"] = default_scope;
+    // Module['_py_objects'].push(Module["default_scope"]);
+
+
     Module['_py_objects'].push(Module["_interpreter"]);
 
 
 
-    Module['exec'] = function(code, globals=default_scope, locals=default_scope) {
-        let ret = Module._exec(code, globals, locals)
+    Module['exec'] = function(code, globals=default_scope) {
+        if(globals === undefined){
+            globals = Module["globals"]()
+        }
+        let ret = Module._exec(code, globals)
+        // console.error("exec done");
         if (ret.has_err) {
             throw ret
         }
@@ -52,8 +79,11 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
 
 
-    Module['eval'] = function(code, globals=default_scope, locals=default_scope) {
-        let ret = Module._eval(code, globals, locals)
+    Module['eval'] = function(code, globals=default_scope) {
+        if(globals === undefined){
+            globals = Module["globals"]()
+        }
+        let ret = Module._eval(code, globals)
         if (ret.has_err) {
             throw ret
         } else {
@@ -61,8 +91,11 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
         }
     };
 
-    Module['eval_file'] = function(file, globals=default_scope, locals=default_scope) {
-        let ret = Module._eval_file(file, globals, locals)
+    Module['eval_file'] = function(file, globals=default_scope) {
+        if(globals === undefined){
+            globals = Module["globals"]()
+        }
+        let ret = Module._eval_file(file, globals)
         if (ret.has_err) {
             throw ret
         }
@@ -127,14 +160,14 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
 
         let types = keys.map(Module['_get_type_string'])
-        let ret = this._raw_getitem(keys, types, keys.length)
+        let ret = this._raw_getitem(keys, types, BigInt(keys.length))
         if (ret.has_err) {
             throw ret
         } else {
             return ret['ret']
         }
     };
-    if(verbose){console.log("in init phase 2 done");}    
+    if(verbose){console.log("in init phase 1 done!!");}    
 }
 
 Module['init_phase_2'] =  function(prefix, python_version, verbose) {
@@ -174,7 +207,7 @@ except Exception as e:
         return await Module._py_async_exec_eval.py_call(script, globals, locals)
     }
     if(verbose){console.log("assign pyobjects IV");}
-    Module._add_resolve_done_callback  = Module.exec_eval(`
+     Module.exec(`
 import asyncio
 def _add_resolve_done_callback(future, resolve, reject):
     ensured_future = asyncio.ensure_future(future)
@@ -185,8 +218,9 @@ def _add_resolve_done_callback(future, resolve, reject):
             reject(repr(err))
 
     ensured_future.add_done_callback(done)
-_add_resolve_done_callback
     `)
+    
+    Module._add_resolve_done_callback = Module.eval(`_add_resolve_done_callback`)
     Module._py_objects.push(Module._add_resolve_done_callback);
 
 

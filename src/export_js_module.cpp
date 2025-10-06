@@ -12,6 +12,9 @@
 #include <emscripten/bind.h>
 #include <pybind11/pybind11.h>
 
+#include <dlfcn.h>
+#include <emscripten/emscripten.h>
+
 
 namespace pyjs
 {
@@ -19,12 +22,13 @@ namespace pyjs
     namespace py = pybind11;
 
 
-    em::val eval(const  std::string & code, py::object & globals, py::object & locals)
-     {       em::val ret = em::val::object();
+    em::val eval(const  std::string & code, py::object & globals)
+     {   
+        em::val ret = em::val::object();;
+        ret.set("has_err", false);
         try
         {
-            py::object py_ret = py::eval(code, globals, locals);
-            ret.set("has_err",em::val(false));
+            py::object py_ret = py::eval(code, globals);
             auto [jsval, is_proxy] = implicit_py_to_js(py_ret);
             ret.set("ret",jsval);
             ret.set("is_proxy",is_proxy);
@@ -41,13 +45,13 @@ namespace pyjs
 
 
 
-    em::val exec(const  std::string & code, py::object & globals, py::object & locals)
+    em::val exec(const  std::string & code, py::object & globals)
     {
         em::val ret = em::val::object();
+        ret.set("has_err", false);
         try
         {
-            py::exec(code, globals, locals);
-            ret.set("has_err",em::val(false));
+            py::exec(code, globals);
             return ret;
         }
         catch (py::error_already_set& e)
@@ -55,17 +59,18 @@ namespace pyjs
            ret.set("has_err",em::val(true));
            ret.set("message",em::val(std::string(e.what())));
            ret.set("error",em::val(std::string(e.what())));
+
            return ret;
         }
     }
 
 
-    em::val eval_file(const  std::string & filename, py::object & globals, py::object & locals)
+    em::val eval_file(const  std::string & filename, py::object & globals)
     {
         em::val ret = em::val::object();
         try
         {
-            py::eval_file(filename, globals, locals);
+            py::eval_file(filename, globals);
             ret.set("has_err",em::val(false));
             return ret;
         }
@@ -111,6 +116,12 @@ namespace pyjs
             .constructor<>()
         ;
 
+        em::function("_initialize_interpreter", +[]()
+        {
+            py::initialize_interpreter(false, 0, nullptr, false);
+        }
+        );
+
         em::function("_eval", &eval);
         em::function("_exec", &exec);
         em::function("_eval_file", &eval_file);
@@ -126,14 +137,21 @@ namespace pyjs
         // py-object (proxy)
         export_py_object();
 
-        // main scope
-        em::function("main_scope",em::select_overload<py::object()>(
-            []()->py::object{
-                auto scope = py::module_::import("__main__").attr("__dict__");
-                //py::exec("import pyjs;import asyncio", scope);
-                return scope;
-            }
-        ));
+        // // main scope
+        // em::function("main_scope",em::select_overload<py::object()>(
+        //     []()->py::object{
+        //         std::cout<<"get scope"<<std::endl;
+        //         auto scope = py::module_::import("__main__").attr("__dict__");
+        //         //py::exec("import pyjs;import asyncio", scope);
+        //         std::cout<<"get scope DONE"<<std::endl;
+        //         return scope;
+        //     }
+        // ));
+
+
+        em::function("globals", +[]()->py::object{
+            return  py::globals();
+        });
 
         em::function("cout",
                      em::select_overload<void(const std::string&)>([](const std::string& val)
@@ -141,6 +159,16 @@ namespace pyjs
 
 
         em::function("extract_exception_message", &extract_exception_message);
+
+        // em::function("_emscripten_dlopen_promise", +[](const std::string& filename, int flags)
+        // {
+        //     return reinterpret_cast<int>(emscripten_dlopen_promise(filename.c_str(), flags));
+        // });
+
+        // em::function("_dlerror", +[]()
+        // {
+        //     return std::string(dlerror());
+        // });
 
     }
 

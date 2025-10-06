@@ -202,6 +202,7 @@ namespace pyjs
                 throw std::runtime_error("untar error: short read error: expected 512");
             }
             if (is_end_of_archive(buff)) {
+                std::cout<<"End of archive after "<<iter<<" entries."<<std::endl;
                 return   ;
             }
             if (!verify_checksum(buff)) {
@@ -250,6 +251,11 @@ namespace pyjs
                 f = create_file(buff, parseoct(buff + 100, 8), path);
                 break;
             }
+            if (filesize < 0 || filesize > (1 << 30)) { // >1GB is suspicious
+                std::cout<<"Invalid filesize in tar header: "<<filesize<<std::endl;
+                throw std::runtime_error("Invalid filesize in tar header");
+            }
+
             while (filesize > 0) {
                 bytes_read = fread(buff, 1, 512, a);
                 if (bytes_read < 512) {
@@ -277,6 +283,7 @@ namespace pyjs
                 f = NULL;
             }
         }
+        std::cout<<"HERE WE ARE"<<std::endl;
     }
 
 

@@ -1,7 +1,9 @@
 name: pyjs-wasm
 channels:
   - conda-forge
+  - /Users/thorstenbeier/src/recipes/output
   - https://repo.prefix.dev/emscripten-forge-dev
+
 dependencies:
   - cmake
   - pip
@@ -27,7 +29,7 @@ dependencies:
   - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
   # pyjs_code_runner dev deps
   - hatchling
-  - emscripten_emscripten-wasm32
+  - emscripten_emscripten-wasm32 == 4.0.9
   - pip:
     - JLDracula
     - pyjs_code_runner >= 3.0

@@ -19,8 +19,10 @@ Module["mkdirs"] = function (dirname) {
 
 
 Module["_untar_from_python"] = function(tarball_path, target_dir = "") {
+    Module.exec("print('lalalala')");
     Module.exec(`
 def _py_untar(tarball_path, target_dir):
+    print("1")
     import tarfile
     import json
     from pathlib import Path
@@ -28,13 +30,14 @@ def _py_untar(tarball_path, target_dir):
     import shutil
     import os
     import sys
+    print("2")
 
 
     def check_wasm_magic_number(file_path: Path) -> bool:
         WASM_BINARY_MAGIC = b"\\0asm"
         with file_path.open(mode="rb") as file:
             return file.read(4) == WASM_BINARY_MAGIC
-
+    print("3")
         
     target_dir = target_dir
     if target_dir == "":
@@ -63,8 +66,9 @@ def _py_untar(tarball_path, target_dir):
         raise e
     return s
 `)
+    console.log("calling into _py_untar")
     let shared_libs = Module.eval(`_py_untar("${tarball_path}", "${target_dir}")`)
-
+    
     return JSON.parse(shared_libs)
 }
 
@@ -247,8 +251,11 @@ Module["bootstrap_from_empack_packed_environment"] = async function
             let version = python_package.version.split(".").map(x => parseInt(x));
         
         
-            if(verbose){console.log("start init_phase_1");}
+
             await Module.init_phase_1(prefix, version, verbose);
+
+            console.log("bootstrapping python done")
+
         }
         
         
@@ -276,20 +283,46 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         let python_version = python_package.version.split(".").map(x => parseInt(x));
 
         // fetch init python itself
-        console.log("--bootstrap_python");
         if(verbose){
             console.log("bootstrap_python");
         }
-        let python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose);
+
+        let python_is_ready_promise = undefined;
+        try{
+            python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose);
+            console.log("waiting for python to be ready");
+            await python_is_ready_promise;
+            console.log("python is ready");
+        }
+        catch(e){
+            console.log("error while bootstrapping python", e)
+            throw e
+        }
 
         // create array with size 
         if(verbose){
             console.log("fetchAndUntarAll");
         }
-        let shared_libs = await Promise.all([
-            ...packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)),
-            ...all_mount_points.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose))
-        ]);
+        // let shared_libs = await Promise.all([
+        //     ...packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)),
+        //     ...all_mount_points.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose))
+        // ]);
+
+        // console.log("shared_libs:", shared_libs);
+
+
+        // same as above, but sequentially to debug better
+        let shared_libs = []
+        for(let pkg of packages){
+            console.log("fetching and untarring package", pkg.name)
+            let sl = await fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)
+            shared_libs.push(sl)
+        }
+        for(let pkg of all_mount_points){
+            console.log("fetching and untarring mount point", pkg.name) 
+            let sl = await fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)
+            shared_libs.push(sl)
+        }
 
         if(verbose){
             console.log("init_phase_2");
@@ -299,6 +332,14 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         if(verbose){
             console.log("init shared");
         }     
+
+
+        // in a worker we dont need to pre-load shared libraries
+        const is_worker = (typeof WorkerGlobalScope !== 'undefined') && (self instanceof WorkerGlobalScope);
+        if(is_worker){
+            // skip_loading_shared_libs = true;
+        }
+
         if(!skip_loading_shared_libs){
             // instantiate all packages
             for (let i = 0; i < packages.length; i++) {
@@ -309,16 +350,19 @@ Module["bootstrap_from_empack_packed_environment"] = async function
                     for (let j = 0; j < shared_libs[i].length; j++) {
                         let sl = shared_libs[i][j];
                     }
+                    console.log(`loading #${shared_libs[i].length} shared libraries for package ${packages[i].name}`);
                     await Module._loadDynlibsFromPackage(
                         prefix,
                         python_version,
                         packages[i].name,
-                        false,
                         shared_libs[i]
-                    )
+                    );
+                    console.log(`asd loading shared libraries for package ${packages[i].name} done`);
                 }
             }
         }
+        console.log("loading shared libraries done PUSH");
+        Module.runtimeKeepalivePush();
         if(verbose){
             console.log("done bootstrapping");}         
     }

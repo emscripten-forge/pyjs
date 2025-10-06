@@ -115,14 +115,16 @@ target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
 target_compile_options(pyjs
     PUBLIC --std=c++17
+    PUBLIC -msimd128
     PUBLIC -Wno-deprecated
-    PUBLIC "SHELL: -fexceptions"
+    PUBLIC "SHELL: -fwasm-exceptions"
 )
 
 target_link_options(pyjs
-    PRIVATE -lembind
     PUBLIC -Wno-unused-command-line-argument
-    PUBLIC "SHELL: -fexceptions"
+    PUBLIC "SHELL: -fwasm-exceptions"
+    PUBLIC "SHELL: -lembind"
+    # PUBLIC "SHELL: -fsanitize=address"
     #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
     #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
 )
@@ -198,42 +200,52 @@ target_link_libraries(pyjs_runtime_browser PRIVATE pyjs  pybind11::embed ${PYTHO
 target_compile_options(pyjs_runtime_browser
     PUBLIC --std=c++17
     PUBLIC -Wno-deprecated
+    PUBLIC -msimd128
     PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-    PUBLIC "SHELL: -fexceptions"
-    #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
+    PUBLIC "SHELL: -fwasm-exceptions"
+    PUBLIC "SHELL: -sSUPPORT_LONGJMP"
+    PUBLIC "SHELL: -s EXPORT_EXCEPTION_HANDLING_HELPERS"
     PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-    PUBLIC "SHELL: -s LZ4=1"
-    PUBLIC "SHELL: -flto"
-    # PUBLIC "SHELL: -s WASM_BIGINT"
+    PUBLIC "SHELL: -s EXPORT_ALL=1"
+    # PUBLIC "SHELL: -flto"
+    # PUBLIC "SHELL: -s MAXIMUM_MEMORY=2GB"
+    # PUBLIC "SHELL: -fsanitize=address"
 )
 
 target_link_options(pyjs_runtime_browser
-    PRIVATE -lembind
     PUBLIC -Wno-unused-command-line-argument
     PUBLIC "SHELL: -s MODULARIZE=1"
     PUBLIC "SHELL: -s EXPORT_NAME=\"createModule\""
-    PUBLIC "SHELL: -s EXPORT_ES6=0"
-    PUBLIC "SHELL: -s USE_ES6_IMPORT_META=0"
-    PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
-    PUBLIC "SHELL: -s ASSERTIONS=0"
+    PUBLIC "SHELL: -s EXPORT_ALL=1"
+    PUBLIC "SHELL: -s EXPORT_EXCEPTION_HANDLING_HELPERS"
+    # PUBLIC "SHELL: -s EXPORT_ES6=0"
+    # PUBLIC "SHELL: -s DEMANGLE_SUPPORT=0"
+    # PUBLIC "SHELL: -s ASSERTIONS=0"
     PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
-    PUBLIC "SHELL: -s EXIT_RUNTIME=1"
-    PUBLIC "SHELL: -s WASM=1"
+    # PUBLIC "SHELL: -s EXIT_RUNTIME=1"
+    PUBLIC "SHELL: -s INITIAL_MEMORY=20971520"
+    PUBLIC "SHELL: -s MAXIMUM_MEMORY=4GB"
+    # PUBLIC "SHELL: -s WASM=1"
     PUBLIC "SHELL: -s USE_PTHREADS=0"
     PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-    PUBLIC "SHELL: -fexceptions"
+    PUBLIC "SHELL: -fwasm-exceptions"
+    PUBLIC "SHELL: -sSUPPORT_LONGJMP"
     PUBLIC "SHELL: -s MAIN_MODULE=1"
-    PUBLIC "SHELL: -s ENVIRONMENT=${ENVIRONMENT}"
-    PUBLIC "SHELL: -s TOTAL_STACK=16mb"
-    PUBLIC "SHELL: -s INITIAL_MEMORY=64mb"
+    # PUBLIC "SHELL: -s MAXIMUM_MEMORY=2GB"
     PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-    PUBLIC "SHELL: -s LZ4=1"
     PUBLIC "SHELL: --post-js pyjs_post.js"
     PUBLIC "SHELL: --pre-js pyjs_pre.js"
-    PUBLIC "SHELL: -flto"
-    PUBLIC "SHELL: -lidbfs.js"
-    PUBLIC "SHELL: -s WASM_BIGINT"
+    # PUBLIC "SHELL: -flto"
+    # PUBLIC "SHELL: -lidbfs.js"
+    PUBLIC "SHELL: -lembind"
+    # PUBLIC "SHELL: -fsanitize=address"
 )
+
+
+# target_link_options(pyjs_runtime_browser PRIVATE
+#   "-sEXPORTED_FUNCTIONS=['_emscripten_dlopen_promise','_dlerror','FS']"
+# )
+
 
 
 install(TARGETS pyjs_runtime_browser

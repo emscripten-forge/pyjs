@@ -2,6 +2,13 @@
 [![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml)
 [![CI](https://img.shields.io/badge/pyjs-docs-yellow)](https://emscripten-forge.github.io/pyjs/)
 
+# Important Notice
+
+The main branch is already using emscripten >=4.x and the experimental channel https://prefix.dev/channels/emscripten-forge-4x.
+The old emscripten 3.1.73 based branch is available at https://github.com/emscripten-forge/pyjs/tree/emscripten-3.1.73
+
+
+
 ## What is pyjs
 
 pyjs is  modern [pybind11](https://github.com/pybind/pybind11) + emscripten [Embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html) based

@@ -57,20 +57,18 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
 
 
-    default_scope = Module["globals"]()
-    // Module["default_scope"] = default_scope;
-    // Module['_py_objects'].push(Module["default_scope"]);
-
+    var default_scope  = Module["main_scope"]()
+    Module["default_scope"] = default_scope;
 
     Module['_py_objects'].push(Module["_interpreter"]);
 
 
 
-    Module['exec'] = function(code, globals=default_scope) {
+    Module['exec'] = function(code, globals=default_scope, locals=default_scope) {
         if(globals === undefined){
             globals = Module["globals"]()
         }
-        let ret = Module._exec(code, globals)
+        let ret = Module._exec(code, globals, locals)
         // console.error("exec done");
         if (ret.has_err) {
             throw ret
@@ -79,11 +77,11 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
 
 
-    Module['eval'] = function(code, globals=default_scope) {
+    Module['eval'] = function(code, globals=default_scope, locals=default_scope) {
         if(globals === undefined){
             globals = Module["globals"]()
         }
-        let ret = Module._eval(code, globals)
+        let ret = Module._eval(code, globals, locals)
         if (ret.has_err) {
             throw ret
         } else {
@@ -91,11 +89,11 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
         }
     };
 
-    Module['eval_file'] = function(file, globals=default_scope) {
+    Module['eval_file'] = function(file, globals=default_scope, locals=default_scope) {
         if(globals === undefined){
             globals = Module["globals"]()
         }
-        let ret = Module._eval_file(file, globals)
+        let ret = Module._eval_file(file, globals, locals)
         if (ret.has_err) {
             throw ret
         }
@@ -160,7 +158,8 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
 
         let types = keys.map(Module['_get_type_string'])
-        let ret = this._raw_getitem(keys, types, BigInt(keys.length))
+        console.log("getitem keys", keys, types);
+        let ret = this._raw_getitem(keys, types, keys.length)
         if (ret.has_err) {
             throw ret
         } else {

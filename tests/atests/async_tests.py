@@ -12,7 +12,7 @@ async def test_stuff_2():
     assert 2 == 2
 
 
-async def test_callbacks_in_async():
+async def test_callbacks_in_async_1():
     def py_func(arg1, arg2):
         return arg1 * 2 + arg2
 
@@ -32,12 +32,15 @@ async def test_callbacks_in_async():
     cleanup.delete()
 
 
-async def test_callbacks_in_async():
+async def test_callbacks_in_async_2():
 
     async_js_function = pyjs.js.Function(
         """
         return async function(py_dict){
-            return py_dict.get('value')
+            console.log('call py: ')
+            const val = py_dict.get('value')
+            console.log('got value:', val)
+            return val
         }
     """
     )()

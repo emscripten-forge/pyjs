@@ -22,13 +22,13 @@ namespace pyjs
     namespace py = pybind11;
 
 
-    em::val eval(const  std::string & code, py::object & globals)
+    em::val eval(const  std::string & code, py::object & globals , py::object & locals)
      {   
         em::val ret = em::val::object();;
         ret.set("has_err", false);
         try
         {
-            py::object py_ret = py::eval(code, globals);
+            py::object py_ret = py::eval(code, globals, locals);
             auto [jsval, is_proxy] = implicit_py_to_js(py_ret);
             ret.set("ret",jsval);
             ret.set("is_proxy",is_proxy);
@@ -45,13 +45,13 @@ namespace pyjs
 
 
 
-    em::val exec(const  std::string & code, py::object & globals)
+    em::val exec(const  std::string & code, py::object & globals, py::object & locals)
     {
         em::val ret = em::val::object();
         ret.set("has_err", false);
         try
         {
-            py::exec(code, globals);
+            py::exec(code, globals, locals);
             return ret;
         }
         catch (py::error_already_set& e)
@@ -65,12 +65,12 @@ namespace pyjs
     }
 
 
-    em::val eval_file(const  std::string & filename, py::object & globals)
+    em::val eval_file(const  std::string & filename, py::object & globals, py::object & locals) 
     {
         em::val ret = em::val::object();
         try
         {
-            py::eval_file(filename, globals);
+            py::eval_file(filename, globals, locals);
             ret.set("has_err",em::val(false));
             return ret;
         }
@@ -138,15 +138,15 @@ namespace pyjs
         export_py_object();
 
         // // main scope
-        // em::function("main_scope",em::select_overload<py::object()>(
-        //     []()->py::object{
-        //         std::cout<<"get scope"<<std::endl;
-        //         auto scope = py::module_::import("__main__").attr("__dict__");
-        //         //py::exec("import pyjs;import asyncio", scope);
-        //         std::cout<<"get scope DONE"<<std::endl;
-        //         return scope;
-        //     }
-        // ));
+        em::function("main_scope",em::select_overload<py::object()>(
+            []()->py::object{
+                std::cout<<"get scope"<<std::endl;
+                auto scope = py::module_::import("__main__").attr("__dict__");
+                //py::exec("import pyjs;import asyncio", scope);
+                std::cout<<"get scope DONE"<<std::endl;
+                return scope;
+            }
+        ));
 
 
         em::function("globals", +[]()->py::object{

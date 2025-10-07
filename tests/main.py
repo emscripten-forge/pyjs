@@ -1,5 +1,13 @@
 import pyjs
 import time
+
+import sys
+sys.path.append("/tests")
+
+# print current cwd
+import os
+print("CWD:", os.getcwd())
+
 from atests import *
 from js_tests import main as js_main
 
@@ -42,6 +50,7 @@ async def main():
             return 1
 
     if run_sync_pytest_tests:
+        
         import pyjs
         import pytest
 

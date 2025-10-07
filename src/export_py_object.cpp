@@ -88,7 +88,6 @@ namespace pyjs
 
 
                         // implicit to py
-
                         py::list py_args;
                         for (std::size_t i = 0; i < n_keys; ++i)
                         {
@@ -141,6 +140,7 @@ namespace pyjs
                       em::select_overload<em::val(py::object&)>(
                           [](py::object& pyobject) -> em::val
                           {
+                            std::cout<<"call 0-ary"<<std::endl;
                               try
                               {
                                   py::gil_scoped_acquire acquire;
@@ -158,6 +158,7 @@ namespace pyjs
                       em::select_overload<em::val(py::object&, em::val)>(
                           [](py::object& pyobject, em::val arg1) -> em::val
                           {
+                              std::cout<<"call 1-ary"<<std::endl;
                               try
                               {
                                   py::gil_scoped_acquire acquire;

@@ -18,7 +18,7 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
     echo "Creating wasm env $WASM_ENV_NAME"
     micromamba create -n $WASM_ENV_NAME \
             --platform=emscripten-wasm32 \
-            -c https://repo.prefix.dev/emscripten-forge-dev\
+            -c https://repo.prefix.dev/emscripten-forge-4x\
             -c https://repo.prefix.dev/conda-forge \
             --yes \
             python=$PYTHON_VERSION "pybind11<3" nlohmann_json pybind11_json numpy \

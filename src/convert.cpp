@@ -15,14 +15,15 @@ namespace pyjs
     std::pair<em::val,bool> implicit_py_to_js(py::object& py_ret)
     {
         // py::module_ pyjs = py::module_::import("pyjs_utils");
-        // const std::string info = pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>();
+        // const std::string info = pyjs.attr("implicit_convert_info")(py_ret).cast<std::string>(); 
 
 
         const std::string info = py_ret.get_type().attr("__name__").str();
         
         if (info == "int")
         {
-            return std::make_pair(em::val(py_ret.cast<int>()),false);
+            auto emval = em::val(py_ret.cast<int>());
+            return std::make_pair(std::move(emval),false);
         }
         else if (info == "str")
         {

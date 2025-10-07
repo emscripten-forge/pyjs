@@ -19,11 +19,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - emsdk_ver: "3.1.73"
-            python_version: "3.13"
-            pybind11_version: "<3"
+
     steps:
       - uses: actions/checkout@v2
 
@@ -34,7 +30,7 @@ jobs:
           environment-name: pyjs-wasm 
           condarc: |
             channels:
-              - https://repo.prefix.dev/emscripten-forge-dev
+              - https://repo.prefix.dev/emscripten-forge-4x
               - conda-forge
 
 
@@ -48,14 +44,14 @@ jobs:
 
           micromamba create -n pyjs-build-wasm \
             --platform=emscripten-wasm32 \
-            -c  https://repo.prefix.dev/emscripten-forge-dev\
+            -c  https://repo.prefix.dev/emscripten-forge-4x \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            python=${{matrix.python_version}} \
-            "pybind11${{matrix.pybind11_version}}" \
+            "python=3.13" \
+            "pybind11<3" \
             nlohmann_json pybind11_json numpy \
             pytest bzip2 sqlite zlib zstd libffi \
-            exceptiongroup emscripten-abi==${{matrix.emsdk_ver}} \
+            exceptiongroup emscripten-abi>=4 \
             openssl liblzma
 
 
@@ -87,10 +83,10 @@ jobs:
           micromamba activate pyjs-wasm
           micromamba create -n pyjs-build-wasm-with-numpy \
             --platform=emscripten-wasm32 \
-            -c  https://repo.prefix.dev/emscripten-forge-dev\
+            -c  https://repo.prefix.dev/emscripten-forge-4x \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            "python=${{matrix.python_version}}" pytest numpy exceptiongroup
+            "python=3.13" pytest numpy exceptiongroup
 
 
       - name: Test in browser-main
@@ -100,7 +96,7 @@ jobs:
               browser-main \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-with-numpy  \
               --mount         $(pwd)/tests:/tests \
-              --mount         $(pwd)/module/pyjs:/lib/python${{matrix.python_version}}/site-packages/pyjs \
+              --mount         $(pwd)/module/pyjs:/lib/python3.13/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
@@ -116,7 +112,7 @@ jobs:
               browser-worker \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-with-numpy \
               --mount         $(pwd)/tests:/tests \
-              --mount         $(pwd)/module/pyjs:/lib/python${{matrix.python_version}}/site-packages/pyjs \
+              --mount         $(pwd)/module/pyjs:/lib/python3.13/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
@@ -128,10 +124,10 @@ jobs:
           micromamba activate pyjs-wasm
           micromamba create -n pyjs-build-wasm-no-numpy \
             --platform=emscripten-wasm32 \
-            -c  https://repo.prefix.dev/emscripten-forge-dev\
+            -c https://repo.prefix.dev/emscripten-forge-4x \
             -c https://repo.mamba.pm/conda-forge \
             --yes \
-            "python=${{matrix.python_version}}" pytest exceptiongroup
+            "python=3.13" pytest exceptiongroup
 
       - name: Test in browser-main-no-numpy
         run: |
@@ -142,7 +138,7 @@ jobs:
               browser-main \
               --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-no-numpy  \
               --mount         $(pwd)/tests:/tests \
-              --mount         $(pwd)/module/pyjs:/lib/python${{matrix.python_version}}/site-packages/pyjs \
+              --mount         $(pwd)/module/pyjs:/lib/python3.13/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \

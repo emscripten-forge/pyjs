@@ -88,9 +88,6 @@ namespace pyjs
 
 
                         // implicit to py
-
-                        std::cout<<"getitem n_keys "<<n_keys<<std::endl;
-
                         py::list py_args;
                         for (std::size_t i = 0; i < n_keys; ++i)
                         {

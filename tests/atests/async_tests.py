@@ -37,10 +37,7 @@ async def test_callbacks_in_async_2():
     async_js_function = pyjs.js.Function(
         """
         return async function(py_dict){
-            console.log('call py: ')
-            const val = py_dict.get('value')
-            console.log('got value:', val)
-            return val
+            return py_dict.get('value')
         }
     """
     )()

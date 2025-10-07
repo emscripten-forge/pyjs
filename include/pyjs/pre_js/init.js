@@ -156,9 +156,7 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
     Module['pyobject'].prototype.get = function(...keys) {
 
-
         let types = keys.map(Module['_get_type_string'])
-        console.log("getitem keys", keys, types);
         let ret = this._raw_getitem(keys, types, keys.length)
         if (ret.has_err) {
             throw ret

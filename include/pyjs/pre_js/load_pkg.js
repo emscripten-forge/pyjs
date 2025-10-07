@@ -19,10 +19,8 @@ Module["mkdirs"] = function (dirname) {
 
 
 Module["_untar_from_python"] = function(tarball_path, target_dir = "") {
-    Module.exec("print('lalalala')");
     Module.exec(`
 def _py_untar(tarball_path, target_dir):
-    print("1")
     import tarfile
     import json
     from pathlib import Path
@@ -30,14 +28,12 @@ def _py_untar(tarball_path, target_dir):
     import shutil
     import os
     import sys
-    print("2")
 
 
     def check_wasm_magic_number(file_path: Path) -> bool:
         WASM_BINARY_MAGIC = b"\\0asm"
         with file_path.open(mode="rb") as file:
             return file.read(4) == WASM_BINARY_MAGIC
-    print("3")
         
     target_dir = target_dir
     if target_dir == "":
@@ -66,7 +62,6 @@ def _py_untar(tarball_path, target_dir):
         raise e
     return s
 `)
-    console.log("calling into _py_untar")
     let shared_libs = Module.eval(`_py_untar("${tarball_path}", "${target_dir}")`)
     
     return JSON.parse(shared_libs)

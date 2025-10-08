@@ -112,7 +112,6 @@ async function loadDynlibsFromPackage(
         } catch (e) {
             throw e;
         } finally { 
-            console.log("release dynlib lock");
             releaseDynlibLock();
         }
 

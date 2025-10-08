@@ -356,7 +356,6 @@ Module["bootstrap_from_empack_packed_environment"] = async function
                 }
             }
         }
-        console.log("loading shared libraries done PUSH");
         Module.runtimeKeepalivePush();
         if(verbose){
             console.log("done bootstrapping");}         

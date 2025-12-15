@@ -14,11 +14,9 @@ function createLock() {
 
  _lock = createLock();
 
-
- 
  // * local
  // * global
- // * undefined // when we dont 
+ // * undefined // when we dont  know (ie almost always ^^)
  function libraryType (path) {
     if (path.includes("cpython-3") && path.includes("-wasm32-emscripten.so")) {
         return "local";
@@ -30,7 +28,6 @@ function createLock() {
     const parts = path.split("/");
     return parts[parts.length - 1];
  }
-
 
 async function loadDynlibsFromPackage(
     prefix,
@@ -79,19 +76,7 @@ async function loadDynlibsFromPackage(
                 Module.stackRestore(stack);
                 const promise = Module.getPromise(pid);
                 Module.promiseMap.free(pid);
-                // time it 
-                const start = performance.now();
-
-               
                 await promise;
-
-
-
-
-                const end = performance.now();
-
-
-
             } catch (e) {
                 const dll_error_ptr = Module._dlerror();
                 if (dll_error_ptr === 0) {

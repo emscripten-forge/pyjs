@@ -276,7 +276,7 @@ def _mock_webbrowser():
             window.open(url)
         except ImportError:
             # Assuming we're in a web worker
-            # This is sent to the main thread, which will do the window.open
+            # This is sent to the main thread, which will do the window.open if implemented
             obj = pyjs.js.Function("url","n",
             """
                     return {'OPEN_TAB':{'url': url, 'new': n}}

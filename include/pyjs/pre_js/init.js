@@ -236,6 +236,8 @@ def _add_resolve_done_callback(future, resolve, reject):
 import sys
 import types
 import time
+import pyjs
+from js import postMessage
 
 sys.modules["fcntl"] = types.ModuleType("fcntl")
 sys.modules["pexpect"] = types.ModuleType("pexpect")
@@ -262,17 +264,39 @@ _mock_termios()
 del _mock_termios
 
 def _mock_webbrowser():
+    webbrowser_mock = types.ModuleType("webbrowser")
+
+    def get():
+        webbrowser_mock
+
     def open(url, new=0, autoraise=True):
-        pass
+        try:
+            from js import window
+
+            window.open(url)
+        except ImportError:
+            # Assuming we're in a web worker
+            # This is sent to the main thread, which will do the window.open
+            obj = pyjs.js.Function("url","n",
+            """
+                    return {'OPEN_TAB':{'url': url, 'new': n}}
+            """
+            )(url, new)
+            postMessage(obj)
+
     def open_new(url):
         return open(url, 1)
+
     def open_new_tab(url):
         return open(url, 2)
 
-    webbrowser_mock = types.ModuleType("webbrowser")
+    # We cannot detect the current browser name from a web worker, we just pretend it's Firefox
+    webbrowser_mock.name = "firefox"
+    webbrowser_mock.get = get
     webbrowser_mock.open = open
     webbrowser_mock.open_new = open_new
     webbrowser_mock.open_new_tab = open_new_tab
+    webbrowser_mock.Error = RuntimeError
 
     sys.modules["webbrowser"] = webbrowser_mock
 _mock_webbrowser()

@@ -268,22 +268,19 @@ def _mock_webbrowser():
         webbrowser_mock
 
     def open(url, new=0, autoraise=True):
-        try:
-            from js import window
-
-            window.open(url)
-        except ImportError:
-            # Assuming we're in a web worker
+        import pyjs
+        is_main_thread = pyjs.js.Function("""return typeof WorkerGlobalScope === "undefined" || !(self instanceof WorkerGlobalScope);""")()
+        if is_main_thread:
+            pyjs.js.window.open(url)
+        else:
+            # we're in a web worker
             # This is sent to the main thread, which will do the window.open if implemented
-            import pyjs
-            from js import postMessage
-
             obj = pyjs.js.Function("url","n",
             """
                     return {'OPEN_TAB':{'url': url, 'new': n}}
             """
             )(url, new)
-            postMessage(obj)
+            pyjs.js.postMessage(obj)
 
     def open_new(url):
         return open(url, 1)

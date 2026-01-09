@@ -4,7 +4,7 @@ Module._is_initialized = false
 
 Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
-    if(verbose){console.log("in init phase 1");}    
+    if(verbose){console.log("in init phase 1");}
     let version_str = `${python_version[0]}.${python_version[1]}`;
 
     // list of python objects we need to delete when cleaning up
@@ -19,7 +19,7 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
     var p = await Module['_wait_run_dependencies']();
 
     if(prefix == "/"){
-        Module.setenv("LANG", "en_US.UTF-8");   
+        Module.setenv("LANG", "en_US.UTF-8");
 
         // LC_COLLATE="C"
         // LC_CTYPE="UTF-8"
@@ -48,7 +48,7 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
     }
 
 
-    
+
 
     // Module["_interpreter"] = new Module["_Interpreter"]()
     console.log("initialize interpreter");
@@ -164,7 +164,7 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
             return ret['ret']
         }
     };
-    if(verbose){console.log("in init phase 1 done!!");}    
+    if(verbose){console.log("in init phase 1 done!!");}
 }
 
 Module['init_phase_2'] =  function(prefix, python_version, verbose) {
@@ -216,7 +216,7 @@ def _add_resolve_done_callback(future, resolve, reject):
 
     ensured_future.add_done_callback(done)
     `)
-    
+
     Module._add_resolve_done_callback = Module.eval(`_add_resolve_done_callback`)
     Module._py_objects.push(Module._add_resolve_done_callback);
 
@@ -236,8 +236,6 @@ def _add_resolve_done_callback(future, resolve, reject):
 import sys
 import types
 import time
-import pyjs
-from js import postMessage
 
 sys.modules["fcntl"] = types.ModuleType("fcntl")
 sys.modules["pexpect"] = types.ModuleType("pexpect")
@@ -277,6 +275,9 @@ def _mock_webbrowser():
         except ImportError:
             # Assuming we're in a web worker
             # This is sent to the main thread, which will do the window.open if implemented
+            import pyjs
+            from js import postMessage
+
             obj = pyjs.js.Function("url","n",
             """
                     return {'OPEN_TAB':{'url': url, 'new': n}}

@@ -4,7 +4,7 @@ Module._is_initialized = false
 
 Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
-    if(verbose){console.log("in init phase 1");}    
+    if(verbose){console.log("in init phase 1");}
     let version_str = `${python_version[0]}.${python_version[1]}`;
 
     // list of python objects we need to delete when cleaning up
@@ -19,7 +19,7 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
     var p = await Module['_wait_run_dependencies']();
 
     if(prefix == "/"){
-        Module.setenv("LANG", "en_US.UTF-8");   
+        Module.setenv("LANG", "en_US.UTF-8");
 
         // LC_COLLATE="C"
         // LC_CTYPE="UTF-8"
@@ -48,7 +48,7 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
     }
 
 
-    
+
 
     // Module["_interpreter"] = new Module["_Interpreter"]()
     console.log("initialize interpreter");
@@ -164,7 +164,7 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
             return ret['ret']
         }
     };
-    if(verbose){console.log("in init phase 1 done!!");}    
+    if(verbose){console.log("in init phase 1 done!!");}
 }
 
 Module['init_phase_2'] =  function(prefix, python_version, verbose) {
@@ -216,7 +216,7 @@ def _add_resolve_done_callback(future, resolve, reject):
 
     ensured_future.add_done_callback(done)
     `)
-    
+
     Module._add_resolve_done_callback = Module.eval(`_add_resolve_done_callback`)
     Module._py_objects.push(Module._add_resolve_done_callback);
 
@@ -262,17 +262,43 @@ _mock_termios()
 del _mock_termios
 
 def _mock_webbrowser():
+    webbrowser_mock = types.ModuleType("webbrowser")
+
+    def get():
+        webbrowser_mock
+
     def open(url, new=0, autoraise=True):
-        pass
+        import pyjs
+        is_main_thread = pyjs.js.Function("""return typeof WorkerGlobalScope === "undefined" || !(self instanceof WorkerGlobalScope);""")()
+        if is_main_thread:
+            pyjs.js.window.open(url)
+        else:
+            # we're in a web worker
+            # This is sent to the main thread, which will do the window.open if implemented
+            obj = pyjs.js.Function("url","n",
+            """
+                    return {'OPEN_TAB':{'url': url, 'new': n}}
+            """
+            )(url, new)
+            pyjs.js.postMessage(obj)
+
     def open_new(url):
         return open(url, 1)
+
     def open_new_tab(url):
         return open(url, 2)
 
-    webbrowser_mock = types.ModuleType("webbrowser")
+    webbrowser_mock.name = pyjs.js.Function("""
+        return /firefox/i.test(navigator.userAgent) ? "firefox"
+          : /edg/i.test(navigator.userAgent) ? "edge"
+          : /chrome|crios/i.test(navigator.userAgent) ? "chrome"
+          : /safari/i.test(navigator.userAgent) ? "safari"
+          : "Unknown";""")()
+    webbrowser_mock.get = get
     webbrowser_mock.open = open
     webbrowser_mock.open_new = open_new
     webbrowser_mock.open_new_tab = open_new_tab
+    webbrowser_mock.Error = RuntimeError
 
     sys.modules["webbrowser"] = webbrowser_mock
 _mock_webbrowser()

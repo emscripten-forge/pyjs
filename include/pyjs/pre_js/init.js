@@ -288,8 +288,12 @@ def _mock_webbrowser():
     def open_new_tab(url):
         return open(url, 2)
 
-    # We cannot detect the current browser name from a web worker, we just pretend it's Firefox
-    webbrowser_mock.name = "firefox"
+    webbrowser_mock.name = pyjs.js.Function("""
+        return /firefox/i.test(navigator.userAgent) ? "firefox"
+          : /edg/i.test(navigator.userAgent) ? "edge"
+          : /chrome|crios/i.test(navigator.userAgent) ? "chrome"
+          : /safari/i.test(navigator.userAgent) ? "safari"
+          : "Unknown";""")()
     webbrowser_mock.get = get
     webbrowser_mock.open = open
     webbrowser_mock.open_new = open_new

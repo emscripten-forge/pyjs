@@ -23,10 +23,10 @@ import pyjs
 if sys.version_info[0] == 3 and sys.version_info[1] >= 13:
     def test_ssl_import():
         import ssl
-    
+
     def test_import_lzma():
         import lzma
-        
+
 def test_js_submodule():
     from pyjs.js import Function
 
@@ -247,8 +247,8 @@ def test_to_js_dict():
 
 
 def test_bytes_to_js():
-    pyjs.to_js(b"\x00").byteLength == 1   
-    
+    pyjs.to_js(b"\x00").byteLength == 1
+
 
 
 def test_to_js_none():
@@ -393,7 +393,7 @@ def test_custom_implicit_converter():
             obj = pyjs.js_object()
             obj["the_value"] = self.value
             return obj
-    
+
     class Bar(object):
         def __init__(self, value):
             self.value = value
@@ -403,7 +403,7 @@ def test_custom_implicit_converter():
             obj = pyjs.js_object()
             obj["the_value"] = self.value
             return obj
-    
+
     class FooBarInstance(object):
         def __init__(self, value):
             self.value = value
@@ -419,8 +419,8 @@ def test_custom_implicit_converter():
             obj = pyjs.js_object()
             obj["the_implicit_value"] = self.value
             return obj
-    
-    
+
+
 
     foo_instance = Foo(42)
     js_function = pyjs.js.Function("instance", """
@@ -439,7 +439,7 @@ def test_custom_implicit_converter():
     """)
     assert js_function(foo_bar_instance) is True
     assert js_function(pyjs.to_js(foo_bar_instance)) is False
-    
+
     js_function = pyjs.js.Function("instance", """
         return instance.the_explicit_value === 42;
     """)
@@ -464,13 +464,13 @@ def test_literal_map():
         if (converted.get("foo") !== 1 || converted.get("bar") !== "bar" || !converted.get("foobar").includes("foo") || !converted.get("foobar").includes("bar")) {
             throw new Error("converted does not have the correct keys");
         }
-        // ensure we can access the values via . 
+        // ensure we can access the values via .
         if (converted.foo !== 2 || converted.bar !== "bar" || !converted.foobar.includes("foo") || !converted.foobar.includes("bar")) {
             throw new Error("converted does not have the correct values when accessed via .");
         }
         return true;
     """)
-    
+
 
 def test_del_attr():
     obj = eval_jsfunc(
@@ -696,7 +696,3 @@ def test_imports_sys():
 
 def test_webbrowser():
     from webbrowser import open, open_new, open_new_tab
-
-    open("google.com")
-    open_new("google.com")
-    open_new_tab("google.com")

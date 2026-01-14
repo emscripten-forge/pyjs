@@ -3,7 +3,7 @@ channels:
   - https://repo.prefix.dev/emscripten-forge-4x
   - conda-forge
 dependencies:
-  - python == 3.13
+  - python=3.13
   - emscripten_emscripten-wasm32 >= 4.0
   - cmake
   - pip

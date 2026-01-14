@@ -70,6 +70,7 @@ jobs:
 
       - name: Copy pyjs binary
         run: |
+          ls -al $MAMBA_ROOT_PREFIX/envs/pyjs-docs-wasm/
           cp -v $MAMBA_ROOT_PREFIX/envs/pyjs-docs-wasm/lib_js/pyjs/* \
             docs_build/mkdocs/lite/xeus/bin/
 

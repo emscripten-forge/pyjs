@@ -17,21 +17,21 @@ So we assume there is a directory called `/path/to/deploy` where we will
 put all tools which  need to be served to the user.
 
 ### Define a conda environment
-Pyjs has a conda-like workflow. This means the first step 
+Pyjs has a conda-like workflow. This means the first step
 is to create a environment with the `pyjs` package installed
 and all packages required for the project.
 
 ```yaml
-name: my-pyjs-env 
+name: my-pyjs-env
 channels:
-  - https://repo.prefix.dev/emscripten-forge-dev
+  - https://repo.prefix.dev/emscripten-forge-4x
   - https://repo.prefix.dev/conda-forge
 dependencies:
   - pyjs
   - numpy
 ```
 
-The name of the environment can be choosen by the user.
+The name of the environment can be chosen by the user.
 The `channels` section specifies the conda channels to use.
 The `https://repo.mamba.pm/emscripten-forge` is mandatory to install the `pyjs` package.
 The `conda-forge` channel is used to install `noarch`.

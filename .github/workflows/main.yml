@@ -3,7 +3,11 @@ name: CI
 on:
   workflow_dispatch:
   push:
+    paths-ignore:
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
 
 env:
   PYTHON_VERSION: 3.13

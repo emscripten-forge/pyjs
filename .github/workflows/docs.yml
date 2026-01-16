@@ -75,9 +75,8 @@ jobs:
 
       - name: Copy pyjs binary
         run: |
-          ls -al docs_build/mkdocs/lite/xeus
           cp -v $MAMBA_ROOT_PREFIX/envs/pyjs-docs-wasm/lib_js/pyjs/* \
-            docs_build/mkdocs/lite/xeus/bin/
+            docs_build/mkdocs/lite/xeus/pyjs-docs-wasm/bin/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

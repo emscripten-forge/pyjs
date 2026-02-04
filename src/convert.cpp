@@ -128,25 +128,29 @@ namespace pyjs
     TypedArrayBuffer::TypedArrayBuffer(
        em::val js_array, const std::string & format_descriptor
     )
-    :   m_size(js_array["length"].as<unsigned>()),
-        m_bytes_per_element(js_array["BYTES_PER_ELEMENT"].as<unsigned>()),
-        m_format_descriptor(format_descriptor),
-        m_data( new uint8_t[m_size * m_bytes_per_element] )
+    : m_size(js_array["length"].as<unsigned>()),
+      m_bytes_per_element(js_array["BYTES_PER_ELEMENT"].as<unsigned>()),
+      m_format_descriptor(format_descriptor),
+      m_data(new uint8_t[m_size * m_bytes_per_element])
     {   
-        em::val js_array_buffer = js_array["buffer"].as<em::val>();
-
-        const unsigned byte_offset = js_array["byteOffset"].as<em::val>().as<unsigned>();
-
-        // this is a uint8 view of the array
+        // Get the ArrayBuffer backing the JS TypedArray
+        em::val js_array_buffer = js_array["buffer"];
+    
+        // Offset within the ArrayBuffer
+        const unsigned byte_offset = js_array["byteOffset"].as<unsigned>();
+    
+        // Create a Uint8Array view of the source JS array
         em::val js_uint8array = em::val::global("Uint8Array")
                                     .new_(js_array_buffer, byte_offset, m_size * m_bytes_per_element);
-                                    
-        em::val  wasm_heap_allocated =  js_uint8array["constructor"].new_(
-            em::val::module_property("HEAPU8")["buffer"], 
-            reinterpret_cast<uintptr_t>(m_data),
-            m_size * m_bytes_per_element
-        );
-        wasm_heap_allocated.call<void>("set", js_uint8array);
+    
+        // Create a typed_memory_view for the C++ buffer
+        em::val cpp_view = em::val(emscripten::typed_memory_view(
+            m_size * m_bytes_per_element,
+            m_data
+        ));
+    
+        // Copy data from JS array into C++ buffer
+        cpp_view.call<void>("set", js_uint8array);
     }
 
     TypedArrayBuffer::~TypedArrayBuffer(){

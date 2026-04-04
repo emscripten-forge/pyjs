@@ -693,6 +693,12 @@ def test_imports_sys():
     import pexpect
     import resource
 
+def test_fcntl():
+    import os, fcntl
+    import fcntl
+    print(fcntl)
+    print(dir(fcntl))
+    fcntl.fcntl(1, fcntl.F_GETFL)
 
 def test_webbrowser():
     from webbrowser import open, open_new, open_new_tab

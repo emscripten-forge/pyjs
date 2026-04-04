@@ -3,8 +3,16 @@ name: CI
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
 
+env:
+  PYTHON_VERSION: 3.13
 
 defaults:
   run:
@@ -21,124 +29,78 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
 
       - name: Install micromamba
-        uses: mamba-org/setup-micromamba@v1
+        uses: mamba-org/setup-micromamba@v2
         with:
-          environment-file: environment-dev.yml
-          environment-name: pyjs-wasm 
-          condarc: |
-            channels:
-              - https://repo.prefix.dev/emscripten-forge-4x
-              - conda-forge
-
+          environment-file: environments/environment-dev.yml
+          environment-name: pyjs-dev
 
       - name: Install Playwright
         run: |
           playwright install
 
-      - name: Build pyjs
+      - name: Create WASM environment to build pyjs
         run: |
-          micromamba activate pyjs-wasm
-
           micromamba create -n pyjs-build-wasm \
             --platform=emscripten-wasm32 \
-            -c  https://repo.prefix.dev/emscripten-forge-4x \
-            -c https://repo.mamba.pm/conda-forge \
-            --yes \
-            "python=3.13" \
-            "pybind11<3" \
-            nlohmann_json pybind11_json numpy \
-            pytest bzip2 sqlite zlib zstd libffi \
-            exceptiongroup emscripten-abi>=4 \
-            openssl liblzma
+            -f environments/environment-wasm.yml \
+            --yes
 
-
-          mkdir build
-          pushd build
-
-  
+      - name: Build pyjs
+        run: |
           export PREFIX=$MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm
-          export CMAKE_PREFIX_PATH=$PREFIX
-          export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX
+          ./scripts/build_pyjs.sh $PREFIX
 
-          # build pyjs
-          emcmake cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
-            -DBUILD_RUNTIME_BROWSER=ON \
-            -DBUILD_RUNTIME_NODE=OFF \
-            -DCMAKE_INSTALL_PREFIX=$PREFIX \
-            ..
-
-          make -j2
-
-          make install
-
-          popd
-
-      - name: setup env with numpy
+      - name: Create test environment with numpy
         run: |
-          micromamba activate pyjs-wasm
-          micromamba create -n pyjs-build-wasm-with-numpy \
+          micromamba create -n pyjs-wasm-test-with-numpy \
             --platform=emscripten-wasm32 \
-            -c  https://repo.prefix.dev/emscripten-forge-4x \
-            -c https://repo.mamba.pm/conda-forge \
-            --yes \
-            "python=3.13" pytest numpy exceptiongroup
+            -f environments/environment-wasm-test.yml \
+            numpy \
+            --yes
 
-
-      - name: Test in browser-main
+      - name: Test browser-main with numpy
         run: |
-          micromamba activate pyjs-wasm
           pyjs_code_runner run script \
               browser-main \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-with-numpy  \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-wasm-test-with-numpy  \
               --mount         $(pwd)/tests:/tests \
-              --mount         $(pwd)/module/pyjs:/lib/python3.13/site-packages/pyjs \
+              --mount         $(pwd)/module/pyjs:/lib/python${PYTHON_VERSION}/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
               --headless \
               --async-main
 
-      - name: Test in browser-worker
+      - name: Test browser-worker with numpy
         run: |
-          micromamba activate pyjs-wasm
-
-
           pyjs_code_runner run script \
               browser-worker \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-with-numpy \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-wasm-test-with-numpy \
               --mount         $(pwd)/tests:/tests \
-              --mount         $(pwd)/module/pyjs:/lib/python3.13/site-packages/pyjs \
+              --mount         $(pwd)/module/pyjs:/lib/python${PYTHON_VERSION}/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \
               --headless \
               --async-main
 
-      - name: setup minimal env without numpy
+      - name: Create test environment without numpy
         run: |
-          micromamba activate pyjs-wasm
-          micromamba create -n pyjs-build-wasm-no-numpy \
+          micromamba create -n pyjs-wasm-test-no-numpy \
             --platform=emscripten-wasm32 \
-            -c https://repo.prefix.dev/emscripten-forge-4x \
-            -c https://repo.mamba.pm/conda-forge \
-            --yes \
-            "python=3.13" pytest exceptiongroup
+            -f environments/environment-wasm-test.yml \
+            --yes
 
-      - name: Test in browser-main-no-numpy
+      - name: Test browser-main without numpy
         run: |
-          micromamba activate pyjs-wasm
-
-
           pyjs_code_runner run script \
               browser-main \
-              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-build-wasm-no-numpy  \
+              --conda-env     $MAMBA_ROOT_PREFIX/envs/pyjs-wasm-test-no-numpy  \
               --mount         $(pwd)/tests:/tests \
-              --mount         $(pwd)/module/pyjs:/lib/python3.13/site-packages/pyjs \
+              --mount         $(pwd)/module/pyjs:/lib/python${PYTHON_VERSION}/site-packages/pyjs \
               --script        main.py \
               --work-dir      /tests \
               --pyjs-dir      $(pwd)/build \

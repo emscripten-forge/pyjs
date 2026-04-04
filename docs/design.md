@@ -2,7 +2,7 @@
 
 ## Main Idea
 ### pybind11
-[Pybind11](https://github.com/pybind/pybind11) is a library that exposes C++ types in Python. It is a wrapper around the Python C API that allows for seamless integration of C++ and Python. 
+[Pybind11](https://github.com/pybind/pybind11) is a library that exposes C++ types in Python. It is a wrapper around the Python C API that allows for seamless integration of C++ and Python.
 To export a C++ class like the following to Python, you would use pybind11:
 
 ```C++
@@ -27,7 +27,7 @@ PYBIND11_MODULE(example, m) {
 }
 ```
 Not only can Python call C++ functions, but C++ can also call Python functions. In particular, one can interact
-with Python objects. An object is represented by the `py::object` type on the C++ side. 
+with Python objects. An object is represented by the `py::object` type on the C++ side.
 
 ```C++
 // main.cpp

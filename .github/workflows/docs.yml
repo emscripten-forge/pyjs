@@ -5,8 +5,11 @@ on:
   push:
     branches:
       - main
-  # pull_request:
-
+    paths:
+      - 'docs/**'
+  pull_request:
+    paths:
+      - 'docs/**'
 
 defaults:
   run:
@@ -19,42 +22,66 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - emsdk_ver: "3.1.73"
-            python_version: "3.13"
-
-
     steps:
-      - uses: actions/checkout@v2
-
-      - name: Get number of CPU cores
-        uses: SimenB/github-actions-cpu-cores@v1
+      - uses: actions/checkout@v6
 
       - name: Install micromamba
-        uses: mamba-org/setup-micromamba@v1
+        uses: mamba-org/setup-micromamba@v2
         with:
-          environment-file: environment-dev.yml
-          environment-name: pyjs-wasm 
-          condarc: |
-            channels:
-              - https://repo.mamba.pm/emscripten-forge-4x
-              - conda-forge
-      
-      - name: build the docs
-        shell: bash -el {0}
+          environment-file: environments/environment-docs.yml
+          environment-name: pyjs-docs
+
+      - name: Create build directory for docs
+        run: mkdir docs_build
+
+      - name: Convert *.py and *.js to *.ipynb using jupytext
         run: |
-          ./build_mkdocs.sh ${{matrix.emsdk_ver}} ${{ matrix.python_version }}
-  
-      ################################################################
-      # upload to github pages
-      ################################################################
+          mkdir -p docs_build/notebooks
+
+          for f in examples/*.py; do
+              #  get the filename without the extension and path
+              filename=$(basename -- "$f")
+              jupytext $f --to ipynb  --output docs_build/notebooks/${filename%.*}.ipynb \
+                --update-metadata '{"kernelspec": {"name": "xpython"}}'
+          done
+          for f in examples/*.js; do
+              #  get the filename without the extension and path
+              filename=$(basename -- "$f")
+              jupytext $f --to ipynb  --output docs_build/notebooks/${filename%.*}.ipynb \
+                --update-metadata '{"kernelspec": {"name": "xjavascript"}}'
+          done
+
+      - name: Create WASM environment for docs
+        run: |
+          micromamba create -n pyjs-docs-wasm \
+            --platform=emscripten-wasm32 \
+            -f environments/environment-docs-wasm.yml \
+            --yes
+
+      - name: Build the docs
+        run: |
+          mkdir docs_build/mkdocs
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/stubs:$(pwd)/module
+          mkdocs build --site-dir=docs_build/mkdocs
+
+      - name: Build JupyterLite
+        run: |
+          jupyter lite build \
+            --contents=docs_build/notebooks \
+            --output-dir docs_build/mkdocs/lite \
+            --XeusAddon.default_channels=https://repo.prefix.dev/emscripten-forge-4x \
+            --XeusAddon.default_channels=https://repo.prefix.dev/conda-forge \
+            --XeusAddon.prefix=$MAMBA_ROOT_PREFIX/envs/pyjs-docs-wasm
+
+      - name: Copy pyjs binary
+        run: |
+          cp -v $MAMBA_ROOT_PREFIX/envs/pyjs-docs-wasm/lib_js/pyjs/* \
+            docs_build/mkdocs/lite/xeus/pyjs-docs-wasm/bin/
+
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
-          path: docs_build/mkdocs 
+          path: docs_build/mkdocs
 
 
   deploy:

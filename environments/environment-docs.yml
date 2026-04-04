@@ -1,0 +1,20 @@
+name: pyjs-docs
+channels:
+  - conda-forge
+dependencies:
+  - jupytext
+  - mkdocs
+  - mkdocstrings
+  - mkdocstrings-python
+  - mkdocs-material
+  - empack >=6.0.0
+  - jupyter_server  # to enable contents
+  - jupyterlite
+  - jupyterlite-xeus >= 3.1.8
+  - jupyterlite-sphinx
+  - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
+  # pyjs_code_runner dev deps
+  - hatchling
+  - pip:
+    - JLDracula
+    - pyjs_code_runner >= 3.0

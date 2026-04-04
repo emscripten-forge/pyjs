@@ -10,7 +10,7 @@ EMSDK_VERSION=$1
 PYTHON_VERSION=$2
 
 
- 
+
 
 PYJS_PROBE_FILE=$WASM_ENV_PREFIX/lib_js/pyjs/pyjs_runtime_browser.js
 
@@ -18,13 +18,9 @@ if [ ! -d "$WASM_ENV_PREFIX" ]; then
     echo "Creating wasm env $WASM_ENV_NAME"
     micromamba create -n $WASM_ENV_NAME \
             --platform=emscripten-wasm32 \
-            -c https://repo.prefix.dev/emscripten-forge-4x\
-            -c https://repo.prefix.dev/conda-forge \
-            --yes \
-            python=$PYTHON_VERSION "pybind11<3" nlohmann_json pybind11_json numpy \
-            bzip2 sqlite zlib zstd libffi exceptiongroup\
-            "xeus" "xeus-lite" xeus-python "xeus-javascript" xtl "ipython" "traitlets>=5.14.2" \
-            openssl liblzma
+            -f environment-wasm.yml \
+            -n $WASM_ENV_NAME \
+            --yes
 
 else
     echo "Wasm env $WASM_ENV_NAME already exists"

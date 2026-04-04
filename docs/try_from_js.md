@@ -1,7 +1,7 @@
 
 
-# Try pyjs from JavaScript 
-For a full fledged example have a look at the [jupyterlite-deployment](../lite).
+# Try pyjs from JavaScript
+For a full-fledged example have a look at the [jupyterlite-deployment](../lite).
 
 <iframe
   src="../lite/repl/index.html?kernel=xjavascript&theme=JLDracula&code=importScripts(`../../../../xeus/bin/pyjs_runtime_browser.js`);%0A

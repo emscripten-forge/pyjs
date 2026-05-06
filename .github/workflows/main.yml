@@ -52,7 +52,7 @@ jobs:
             nlohmann_json pybind11_json numpy \
             pytest bzip2 sqlite zlib zstd libffi \
             exceptiongroup emscripten-abi>=4 \
-            openssl liblzma
+            "openssl<4" liblzma
 
 
           mkdir build

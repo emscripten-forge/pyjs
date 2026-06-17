@@ -1,8 +1,5 @@
-
-let _lock;
-
 function createLock() {
-    _lock = Promise.resolve();
+    let _lock = Promise.resolve();
 
     async function acquireLock() {
         const old_lock = _lock;
@@ -14,7 +11,7 @@ function createLock() {
     return acquireLock;
 }
 
- _lock = createLock();
+ const _lock = createLock();
 
  // * local
  // * global

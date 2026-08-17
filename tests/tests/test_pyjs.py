@@ -207,6 +207,18 @@ def test_to_py(test_input, expected_type, expected_value, comperator):
 
 
 @pytest.mark.parametrize(
+    "test_input,expected_length",
+    [
+        ("new Uint8Array([1,2,3])", 3),
+        ("new Uint16Array([1,2,3,4])", 4),
+        ("new Float64Array([])", 0),
+    ],
+)
+def test_typed_array_buffer_len(test_input, expected_length):
+    assert len(pyjs.to_py(ensure_js(test_input))) == expected_length
+
+
+@pytest.mark.parametrize(
     "test_input",
     [
         True,

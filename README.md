@@ -14,7 +14,7 @@ The old emscripten 3.1.73 based branch is available at https://github.com/emscri
 pyjs is  modern [pybind11](https://github.com/pybind/pybind11) + emscripten [Embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html) based
 Python <-> JavaScript foreign function interface (FFI) for wasm/emscripten compiled Python.
 
-The API is loosly based on the  FFI of [pyodide](https://pyodide.org/en/stable/usage/type-conversions.html).
+The API is loosely based on the  FFI of [pyodide](https://pyodide.org/en/stable/usage/type-conversions.html).
 
 ## Full Documentation
 See the [documentation](https://emscripten-forge.github.io/pyjs/) for a full documentation.
@@ -31,7 +31,7 @@ Access Javascript from Python:
 ```python
 import pyjs
 
-# hello world 
+# hello world
 pyjs.js.console.log("Hello, World!")
 
 # create a JavaScript function to add two numbers
@@ -44,7 +44,7 @@ js_function = pyjs.js.Function("a", "b", """
 result = js_function(1, 2)
 ```
 
-Access Python from Javascript:
+Access Python from JavaScript:
 
 ```JavaScript
 // hello world
@@ -53,6 +53,6 @@ pyjs.eval("print('Hello, World!')")
 // eval a python expression and get the result
 const py_list = pyjs.eval("[i for i in range(10)]")
 
-/// access 
+// access
 console.log(py_list.get(0)) // same as py_list[0] on the python side
 ```

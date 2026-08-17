@@ -298,7 +298,7 @@ namespace pyjs
 
 
         py::class_<TypedArrayBuffer>(m, "TypedArrayBuffer", py::buffer_protocol())
-            //.def("__len__", [](const TypedArrayBuffer& self) { return self.m_size; })
+            .def("__len__", [](const TypedArrayBuffer& self) { return self.m_size; })
             .def_buffer([](TypedArrayBuffer& self) -> py::buffer_info
             {
                 return py::buffer_info(self.m_data, self.m_bytes_per_element, self.m_format_descriptor,

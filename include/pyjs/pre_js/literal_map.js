@@ -16,11 +16,13 @@ const handler = {
   deleteProperty: (map, k) => (map.has(k) ? map.delete(k) : delete map[k]),
   get(map, k, proxy) {
     if (k === _) return map;
+    // Stored keys must win over Map.prototype members (e.g. a key named
+    // "size" would otherwise shadow the entry count getter `map.size`).
+    if (map.has(k)) return map.get(k);
     let v = map[k];
     if (typeof v === "function" && k !== "constructor") {
       v = v.bind(map);
     }
-    v ||= map.get(k);
     return v;
   },
   getOwnPropertyDescriptor(map, k) {

@@ -212,8 +212,7 @@ namespace pyjs
 
         m_internal.def("val_bind",
                        [](em::val* v, em::val arg1) { return v->call<em::val>("bind", arg1); });
-
-
+        
         // m_internal.def("val_new",[](em::val  v){
         //     return  v.new_();
         // });

@@ -18,9 +18,9 @@ def merge(*filenames):
                     outfile.write(line)
             outfile.write("\n")
 
-    with open(filename_timestamp, "w") as outfile:
-        timestamp = str(datetime.datetime.utcnow())
-        outfile.write(f'#define PYJS_JS_UTC_TIMESTAMP "{timestamp}"')
+    # with open(filename_timestamp, "w") as outfile:
+    #     timestamp = str(datetime.datetime.utcnow())
+    #     outfile.write(f'#define PYJS_JS_UTC_TIMESTAMP "{timestamp}"')
 
 
 if __name__ == "__main__":

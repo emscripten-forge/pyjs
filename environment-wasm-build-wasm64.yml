@@ -1,0 +1,32 @@
+name: pyjs-wasm-build
+channels:
+  - microsoft
+  - conda-forge
+  - https://repo.prefix.dev/emscripten-forge-bot/emscripten-forge-6x
+
+dependencies:
+  - cmake
+  - pip
+  - python =3.14
+  - yarn
+  - click
+  - ninja
+  - nodejs
+  - emscripten_emscripten-wasm64 == 6.0.8
+  - microsoft::playwright
+  - pyjs_code_runner
+  - exceptiongroup
+  # documentation
+  - jupytext
+  - mkdocs
+  - mkdocstrings
+  - mkdocstrings-python
+  - mkdocs-material
+  - empack >=6.0.0
+  - jupyter_server  # to enable contents  
+  - jupyterlite
+  - jupyterlite-xeus >= 3.1.8
+  - jupyterlite-sphinx
+  - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
+  # pyjs_code_runner dev deps
+  - hatchling

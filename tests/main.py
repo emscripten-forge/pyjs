@@ -52,28 +52,31 @@ async def main():
     if run_sync_pytest_tests:
         
         import pyjs
-        import pytest
-
         import os
+        import pytest
 
         dir_path = os.path.dirname(os.path.realpath(__file__))
         os.chdir(dir_path)
 
-        # import pytest_asyncio
-
-        # start the tests
         os.environ["NO_COLOR"] = "1"
 
         specific_test = None
-        args = []
-        args = ["-s", f"{dir_path}/tests"]
+
+        args = [
+            "-s",
+            "-vvv",
+            "-p", "no:faulthandler",
+            f"{dir_path}/tests",
+        ]
+
         if specific_test is not None:
             args += ["-k", str(specific_test)]
 
-        # args += ["-p", "pytest_asyncio"]
-
         retcode = pytest.main(args, plugins=[])
+
         if retcode != pytest.ExitCode.OK:
             raise RuntimeError(f"pytest failed with return code: {retcode}")
+
+
 
     return 0

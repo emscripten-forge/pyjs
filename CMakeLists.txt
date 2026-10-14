@@ -1,17 +1,18 @@
-cmake_minimum_required(VERSION 3.9)
-
+cmake_minimum_required(VERSION 4.0)
 project(pyjs VERSION 4.0.6 DESCRIPTION "pyjs")
 
-option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
-option(WITH_NODE_TESTS "With node tests" OFF)
-option(LINK_LIBEXPAT "Link libexpat" OFF)
-option(LINK_LIBMPDEC "Link libmpdec" OFF)
 
-option(LINK_LIBLZMA "Link liblzma" OFF)
+# cmake module directory
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# set PY_VERSION to 3.11 if the user has not set it
+
+option(WASM64 "Enable WebAssembly 64-bit support" OFF)
+
+
+
 if (NOT DEFINED PY_VERSION)
-    set(PY_VERSION 3.11)
+    # raise an error if the user has not set PY_VERSION
+    message(FATAL_ERROR "PY_VERSION is not set. Please set it to the desired Python version (e.g., 3.14) before running CMake.")
 endif()
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
@@ -19,7 +20,7 @@ file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pycpp_includes)
 ##########################################################
 # generate prejs and postjs
 ##########################################################
-set(PREJS_FILES
+set(PREJS_FILES 
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/constants.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/get_type_string.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/wrap_result.js
@@ -43,13 +44,11 @@ set(POSTJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/post_js/fixes.js
 )
 
-
 add_custom_target(merge_pyjs ALL
     DEPENDS
         "pyjs_pre.js"
         "pyjs_post.js"
     )
-
 
 add_custom_command(OUTPUT "pyjs_pre.js"
     COMMAND $ENV{CONDA_PREFIX}/bin/python
@@ -68,7 +67,6 @@ add_custom_command(OUTPUT "pyjs_post.js"
         ${CMAKE_CURRENT_SOURCE_DIR}/src/js_timestamp.cpp
     DEPENDS  ${POSTJS_FILES})
 
-
 ##########################################################
 # headers to install
 ##########################################################
@@ -85,17 +83,8 @@ set(PYJS_HEADERS
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js
 )
 
-
-
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-
-set(pybind11_REQUIRED_VERSION 2.6.1)
-
-if (NOT TARGET pybind11::headers)
-    find_package(pybind11 ${pybind11_REQUIRED_VERSION} REQUIRED)
-endif ()
 
 
 add_library(pyjs STATIC
@@ -108,10 +97,12 @@ add_library(pyjs STATIC
     src/inflate.cpp
     src/untar.cpp
     src/install_conda_file.cpp
-    ${PYCPPSOURCES}
 )
+if(WASM64)
+    target_compile_options(pyjs PUBLIC -m64)
+    target_link_options(pyjs PUBLIC -m64)
+endif()
 
-target_link_libraries(pyjs PRIVATE ${PYTHON_UTIL_LIBS} pybind11::embed)
 
 target_compile_options(pyjs
     PUBLIC --std=c++17
@@ -124,20 +115,15 @@ target_link_options(pyjs
     PUBLIC -Wno-unused-command-line-argument
     PUBLIC "SHELL: -fwasm-exceptions"
     PUBLIC "SHELL: -lembind"
-    # PUBLIC "SHELL: -fsanitize=address"
-    #PUBLIC "SHELL:-s EXPORT_EXCEPTION_HANDLING_HELPERS"
-    #PUBLIC "SHELL:-s EXCEPTION_CATCHING_ALLOWED=['we only want to allow exception handling in side modules']"
 )
-
 
 set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
-    # DEPENDS "pyjs_pre.js" "pyjs_post.js"
 )
 
 add_dependencies(pyjs merge_pyjs)
 
-target_link_libraries(pyjs PRIVATE pybind11::pybind11)
+target_link_libraries(pyjs PRIVATE )
 target_compile_options(pyjs PRIVATE -fPIC)
 
 
@@ -147,33 +133,33 @@ target_include_directories(pyjs
     $<INSTALL_INTERFACE:include>
 )
 
-SET(PYTHON_UTIL_LIBS
+SET(PYTHON_LIBRARIES
     ${CMAKE_INSTALL_PREFIX}/lib/libbz2.a
     ${CMAKE_INSTALL_PREFIX}/lib/libz.a
     ${CMAKE_INSTALL_PREFIX}/lib/libsqlite3.a
     ${CMAKE_INSTALL_PREFIX}/lib/libffi.a
     ${CMAKE_INSTALL_PREFIX}/lib/libzstd.a
-    # ssl
     ${CMAKE_INSTALL_PREFIX}/lib/libssl.a
-    # crypto
     ${CMAKE_INSTALL_PREFIX}/lib/libcrypto.a
-    # lzma
     ${CMAKE_INSTALL_PREFIX}/lib/liblzma.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libpython${PY_VERSION}.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libexpat.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libmpdec.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_BLAKE2.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_MD5.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_SHA1.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_SHA2.a
+    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_SHA3.a
 )
 
-
-if (LINK_LIBEXPAT)
-    SET(PYTHON_UTIL_LIBS ${PYTHON_UTIL_LIBS} ${CMAKE_INSTALL_PREFIX}/lib/libexpat.a)
-endif()
-
-if (LINK_LIBMPDEC)
-    SET(PYTHON_UTIL_LIBS ${PYTHON_UTIL_LIBS} ${CMAKE_INSTALL_PREFIX}/lib/libmpdec.a)
-endif()
 
 set_target_properties(pyjs
     PROPERTIES
     CXX_STANDARD 17
 )
+
+find_package(pybind11 CONFIG)
+
 
 
 add_executable(pyjs_runtime_browser src/runtime.cpp )
@@ -193,7 +179,11 @@ set_target_properties(pyjs_runtime_browser
 )
 target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
 target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
-target_link_libraries(pyjs_runtime_browser PRIVATE pyjs  pybind11::embed ${PYTHON_UTIL_LIBS})
+
+# include the dir where pybind11 is installed, so that we can find the pybind11Config.cmake file
+include_directories(${pybind11_INCLUDE_DIRS})
+
+target_link_libraries(pyjs_runtime_browser PRIVATE    ${PYTHON_LIBRARIES} pyjs)
 
 
 
@@ -207,9 +197,6 @@ target_compile_options(pyjs_runtime_browser
     PUBLIC "SHELL: -s EXPORT_EXCEPTION_HANDLING_HELPERS"
     PUBLIC "SHELL: -s FORCE_FILESYSTEM"
     PUBLIC "SHELL: -s EXPORT_ALL=1"
-    # PUBLIC "SHELL: -flto"
-    # PUBLIC "SHELL: -s MAXIMUM_MEMORY=2GB"
-    # PUBLIC "SHELL: -fsanitize=address"
 )
 
 target_link_options(pyjs_runtime_browser

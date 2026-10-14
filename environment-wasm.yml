@@ -1,0 +1,15 @@
+name: pyjs-wasm-run
+channels:
+  - /Users/thorstenbeier/src/recipes/output 
+  - conda-forge
+  - https://repo.prefix.dev/emscripten-forge-bot/emscripten-forge-6x
+
+dependencies:
+  - libpython-static
+  - python
+  - pybind11
+  - emscripten-abi==6.0.8
+  - numpy
+  - zlib-static
+  - libsqlite-static
+  - libbzip2-static

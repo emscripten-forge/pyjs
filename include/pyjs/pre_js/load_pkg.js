@@ -49,7 +49,7 @@ def _py_untar(tarball_path, target_dir):
                     else:
                         shared_libs.append(f"{target_dir}/{file.name}")
 
-            tar.extractall(target_dir)
+            tar.extractall(target_dir, filter="fully_trusted")
             actual_shared_libs = []
             for file in shared_libs:
                 if not check_wasm_magic_number(Path(file)):
@@ -108,7 +108,7 @@ def _py_unbz2(tarball_path, target_dir):
     prefix = Path(sys.prefix)
     try:
         with tarfile.open(tarball_path) as tar:
-            tar.extractall(target_dir)
+            tar.extractall(target_dir, filter="fully_trusted")
 
         src = target / "site-packages"
         dest = prefix / "lib/python3.11/site-packages"

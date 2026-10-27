@@ -225,6 +225,25 @@ def _add_resolve_done_callback(future, resolve, reject):
     Module._py_to_js = Module.eval("pyjs.to_js")
     Module._py_objects.push(Module._py_to_js);
 
+    // helpers to iterate over python objects from JavaScript (see make_proxy.js)
+    Module.exec(`
+def _pyjs_is_iterable(obj):
+    return hasattr(type(obj), "__iter__")
+
+def _pyjs_next(it, done):
+    try:
+        return next(it)
+    except StopIteration:
+        return done
+    `)
+
+    Module._py_is_iterable = Module.eval("_pyjs_is_iterable")
+    Module._py_objects.push(Module._py_is_iterable);
+    Module._py_iter = Module.eval("iter")
+    Module._py_objects.push(Module._py_iter);
+    Module._py_next = Module.eval("_pyjs_next")
+    Module._py_objects.push(Module._py_next);
+
     Module["to_js"] = function(obj){
         return Module._py_to_js.py_call(obj)
     }

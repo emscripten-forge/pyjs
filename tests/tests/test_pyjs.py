@@ -258,6 +258,24 @@ def test_to_js_dict():
     assert jsmap.get(1) == "a"
 
 
+def test_to_js_dict_converter():
+    pydict = {"a": 1, "b": [2, {"c": "three"}]}
+    jsobj = pyjs.to_js(pydict, dict_converter=pyjs.js.Object.fromEntries)
+    assert pyjs.js.JSON.stringify(jsobj) == '{"a":1,"b":[2,{"c":"three"}]}'
+
+
+def test_iterate_py_object_in_js():
+    # python objects passed to js are proxies that implement Symbol.iterator
+    blob = pyjs.js.Blob.new(["hello", "world"])
+    assert blob.size == 10
+
+    jsarray = getattr(pyjs.js.Array, "from")([1, "two", 3.5])
+    assert pyjs.js.JSON.stringify(jsarray) == '[1,"two",3.5]'
+
+    jsarray = getattr(pyjs.js.Array, "from")({"a": 1, "b": 2})
+    assert pyjs.js.JSON.stringify(jsarray) == '["a","b"]'
+
+
 def test_bytes_to_js():
     pyjs.to_js(b"\x00").byteLength == 1
 

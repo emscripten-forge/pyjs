@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.9)
 
-project(pyjs VERSION 4.0.7 DESCRIPTION "pyjs")
+project(pyjs VERSION 4.1.0 DESCRIPTION "pyjs")
 
 option(BUILD_RUNTIME_BROWSER "Build runtime" ON)
 option(WITH_NODE_TESTS "With node tests" OFF)
@@ -32,7 +32,7 @@ set(PREJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/platform.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/wait_for_dependencies.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/init.js
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/cleanup.js
+
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/make_proxy.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/dynload/dynload.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/fetch.js

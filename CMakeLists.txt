@@ -143,13 +143,13 @@ SET(PYTHON_LIBRARIES
     ${CMAKE_INSTALL_PREFIX}/lib/libcrypto.a
     ${CMAKE_INSTALL_PREFIX}/lib/liblzma.a
     ${CMAKE_INSTALL_PREFIX}/lib/libpython${PY_VERSION}.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libexpat.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libmpdec.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_BLAKE2.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_MD5.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_SHA1.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_SHA2.a
-    ${CMAKE_INSTALL_PREFIX}/lib/libHacl_Hash_SHA3.a
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PY_VERSION}/static/libexpat.a
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PY_VERSION}/static/libmpdec.a
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PY_VERSION}/static/libHacl_Hash_BLAKE2.a
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PY_VERSION}/static/libHacl_Hash_MD5.a
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PY_VERSION}/static/libHacl_Hash_SHA1.a
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PY_VERSION}/static/libHacl_Hash_SHA2.a
+    ${CMAKE_INSTALL_PREFIX}/lib/python${PY_VERSION}/static/libHacl_Hash_SHA3.a
 )
 
 

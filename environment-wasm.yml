@@ -13,4 +13,3 @@ dependencies:
   - zlib-static
   - libsqlite-static
   - libbzip2-static
-  - libexpat-static

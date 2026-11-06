@@ -1,18 +1,22 @@
 #!/bin/bash
 # Local build of pyjs
 #
-# Usage: ./build_local.sh [wasm32|wasm64] [--fresh]
+# Usage: ./build_local.sh [wasm32|wasm64] [--fresh] [--test]
 #
-#   --fresh   delete and recreate the build + host environments
+#   --fresh   delete and recreate the environments and the build dir
+#   --test    run the browser tests (main thread) with pyjs_code_runner
 #
-# Env overrides: EMSDK_VERSION, PYTHON_VERSION, NUM_JOBS, MAMBA_EXE,
+# Env overrides: NUM_JOBS, MAMBA_EXE,
 #                SRC_DIR (pyjs source tree, default: this dir)
 #
-# Layout (all under build_root/):
-#   build_prefix_<wasm>/   native env: python, cmake, make, emscripten
-#                          compiler (emscripten_emscripten-<wasm>)
-#   host_prefix_<wasm>/    emscripten env: libpython-static, pybind11, ...
-#                          (pyjs is installed into this prefix)
+# Environments (all under build_root/):
+#   build_prefix_<wasm>/   native env      environment-wasm-build-<wasm>.yml
+#                          (emscripten compiler, cmake, pyjs_code_runner, ...)
+#   host_prefix_<wasm>/    emscripten env  environment-wasm.yml
+#                          (libpython-static, pybind11, ...; pyjs is
+#                          installed into this prefix)
+#   deploy_prefix_<wasm>/  emscripten env  environment-wasm-deploy.yml
+#                          (runtime env the built pyjs runs against)
 #   build_<wasm>/          cmake build dir
 set -euo pipefail
 
@@ -21,12 +25,14 @@ set -euo pipefail
 ########################################
 WASM_TYPE="wasm32"
 FRESH=0
+RUN_TESTS=0
 for arg in "$@"; do
     case "$arg" in
         wasm32|wasm64) WASM_TYPE="$arg" ;;
         --fresh)       FRESH=1 ;;
+        --test)        RUN_TESTS=1 ;;
         *)
-            echo "Usage: $0 [wasm32|wasm64] [--fresh]"
+            echo "Usage: $0 [wasm32|wasm64] [--fresh] [--test]"
             exit 1
             ;;
     esac
@@ -37,18 +43,18 @@ done
 ########################################
 THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SRC_DIR="${SRC_DIR:-$THIS_DIR}"
-
-EMSDK_VERSION="${EMSDK_VERSION:-6.0.8}"
-PYTHON_VERSION="${PYTHON_VERSION:-3.14}"
 NUM_JOBS="${NUM_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}"
 
 PLATFORM="emscripten-$WASM_TYPE"
-EMSCRIPTEN_FORGE_CHANNEL="https://repo.prefix.dev/emscripten-forge/6x"
-CONDA_FORGE_CHANNEL="conda-forge"
+
+BUILD_ENV_FILE="$SRC_DIR/environment-wasm-build-$WASM_TYPE.yml"
+HOST_ENV_FILE="$SRC_DIR/environment-wasm.yml"
+DEPLOY_ENV_FILE="$SRC_DIR/environment-wasm-deploy.yml"
 
 BUILD_ROOT="$THIS_DIR/build_root"
 BUILD_PREFIX="$BUILD_ROOT/build_prefix_$WASM_TYPE"
 HOST_PREFIX="$BUILD_ROOT/host_prefix_$WASM_TYPE"
+DEPLOY_PREFIX="$BUILD_ROOT/deploy_prefix_$WASM_TYPE"
 BUILD_DIR="$BUILD_ROOT/build_$WASM_TYPE"
 
 ########################################
@@ -64,38 +70,24 @@ fi
 
 if [ "$FRESH" = "1" ]; then
     echo "Removing existing environments and build dir"
-    rm -rf "$BUILD_PREFIX" "$HOST_PREFIX" "$BUILD_DIR"
+    rm -rf "$BUILD_PREFIX" "$HOST_PREFIX" "$DEPLOY_PREFIX" "$BUILD_DIR"
 fi
 
-########################################
-# build environment (native)
-########################################
-if [ ! -d "$BUILD_PREFIX" ]; then
-    echo "Creating build environment at $BUILD_PREFIX"
-    # same as the recipe's build requirements:
-    # compiler("c"), compiler("cxx"), cmake, make (+ python for merge_js.py)
-    "$MAMBA_EXE" create -p "$BUILD_PREFIX" --yes \
-        -c "$EMSCRIPTEN_FORGE_CHANNEL" \
-        -c "$CONDA_FORGE_CHANNEL" \
-        "python=$PYTHON_VERSION" \
-        cmake \
-        make \
-        "emscripten_emscripten-$WASM_TYPE==$EMSDK_VERSION"
-fi
+# create_env <prefix> <env-file> [extra micromamba args...]
+create_env() {
+    local prefix="$1" env_file="$2"
+    shift 2
+    if [ ! -d "$prefix" ]; then
+        echo "Creating environment at $prefix from $(basename "$env_file") $*"
+        "$MAMBA_EXE" create -p "$prefix" -f "$env_file" --yes "$@"
+    fi
+}
 
 ########################################
-# host environment (emscripten)
+# build (native) + host (emscripten) environments
 ########################################
-if [ ! -d "$HOST_PREFIX" ]; then
-    echo "Creating host environment at $HOST_PREFIX ($PLATFORM)"
-    "$MAMBA_EXE" create -p "$HOST_PREFIX" --yes \
-        --platform "$PLATFORM" \
-        -c "$EMSCRIPTEN_FORGE_CHANNEL" \
-        -c "$CONDA_FORGE_CHANNEL" \
-        "libpython-static=$PYTHON_VERSION" \
-        pybind11 \
-        "emscripten-abi==$EMSDK_VERSION"
-fi
+create_env "$BUILD_PREFIX" "$BUILD_ENV_FILE"
+create_env "$HOST_PREFIX"  "$HOST_ENV_FILE" --platform "$PLATFORM"
 
 ########################################
 # activate build env
@@ -137,7 +129,7 @@ echo "emcc: $(command -v emcc)"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# CMAKE_ARGS (from emscripten-core activation) sets the emscripten toolchain
+# CMAKE_ARGS (from the emscripten activation) sets the emscripten toolchain
 # file, CMAKE_PREFIX_PATH / CMAKE_FIND_ROOT_PATH and CMAKE_INSTALL_PREFIX.
 # shellcheck disable=SC2086
 emmake cmake ${CMAKE_ARGS:-} "$SRC_DIR" \
@@ -167,3 +159,32 @@ echo ""
 echo "pyjs built and installed into $PREFIX"
 echo "  runtime: $PREFIX/lib_js/pyjs/pyjs_runtime_browser.{js,wasm}"
 echo "  library: $PREFIX/lib/libpyjs.a"
+
+########################################
+# deploy (run) environment
+########################################
+create_env "$DEPLOY_PREFIX" "$DEPLOY_ENV_FILE" --platform "$PLATFORM"
+
+########################################
+# tests
+########################################
+if [ "$RUN_TESTS" = "1" ]; then
+    cd "$THIS_DIR"
+    playwright install chromium
+    mkdir -p "$BUILD_DIR/host_work_dir"
+    # the pyjs python module is mounted from the source tree,
+    # the runtime (js/wasm) is taken from the build dir
+    pyjs_code_runner run script \
+        browser-main \
+        --conda-env     "$DEPLOY_PREFIX" \
+        --mount         "$SRC_DIR/tests:/tests" \
+        --mount         "$SRC_DIR/module/pyjs:/lib/python${PY_VER}/site-packages/pyjs" \
+        --script        main.py \
+        --work-dir      /tests \
+        --host-work-dir "$BUILD_DIR/host_work_dir" \
+        --headless \
+        --no-cache \
+        --slow-mo 0 \
+        --async-main \
+        --pyjs-dir      "$BUILD_DIR"
+fi

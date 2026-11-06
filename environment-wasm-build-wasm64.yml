@@ -12,7 +12,7 @@ dependencies:
   - click
   - ninja
   - nodejs
-  - emscripten_emscripten-wasm32 == 6.0.8
+  - emscripten_emscripten-wasm64 == 6.0.8
   - playwright
   - playwright-python
   - pyjs_code_runner >= 2.0.1

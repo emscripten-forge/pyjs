@@ -133,9 +133,6 @@ jupyterlite_bind_ipynb_suffix = False
 # xeus-python kernel (xpython.wasm).
 
 
-_httpx2_jsfetch = os.environ.get("PYJS_DOCS_HTTPX2_JSFETCH")
-
-
 def _write_lite_config(prefix, path):
     py_ver = next(Path(prefix, "include").glob("python3.*")).name  # e.g. python3.14
     config = {
@@ -145,12 +142,7 @@ def _write_lite_config(prefix, path):
                 "https://repo.prefix.dev/conda-forge",
                 "https://repo.prefix.dev/emscripten-forge/6x"
             ],
-            "mounts": [f"{ROOT / 'module' / 'pyjs'}:/lib/{py_ver}/site-packages/pyjs"] + (
-                # the httpx2 fetch transport (pure python), see build_local.sh
-                [f"{_httpx2_jsfetch}:/lib/{py_ver}/site-packages/httpx2_jsfetch"]
-                if _httpx2_jsfetch
-                else []
-            ),
+            "mounts": [f"{ROOT / 'module' / 'pyjs'}:/lib/{py_ver}/site-packages/pyjs"],
         }
     }
     path.write_text(json.dumps(config, indent=2))

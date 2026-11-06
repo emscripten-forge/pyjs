@@ -44,22 +44,6 @@ print("_".join(["SMOKE", "DONE"]))
 """
 
 
-# httpx2 with the mounted fetch transport, async + sync, downloading a file of
-# the docs themselves (the kernel worker runs from <html>/lite(64)/extensions/)
-HTTPX2_CODE = """\
-import httpx2, httpx2_jsfetch, pyjs
-url = pyjs.js.location.href.split("/extensions/")[0].rsplit("/", 1)[0] + "/index.html"
-async with httpx2.AsyncClient(timeout=httpx2.Timeout(5.0, read=60.0)) as client:
-    async with client.stream("GET", url) as r:
-        assert r.status_code == 200, r.status_code
-        body = b"".join([chunk async for chunk in r.aiter_bytes()])
-assert b"<html" in body.lower(), body[:100]
-with httpx2.Client() as client:
-    assert client.get(url).content == body
-print("_".join(["SMOKE", "DONE"]))
-"""
-
-
 def serve(directory):
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
     handler.log_message = lambda *args: None
@@ -118,7 +102,6 @@ async def main(html_dir, browser_name):
         checks += [
             (f"python repl ({lite})", lite, "xpython", PYTHON_CODE),
             (f"run_sync notebook ({lite})", lite, "xpython", python_notebook_code(html_dir, "run_sync.ipynb")),
-            (f"httpx2 ({lite})", lite, "xpython", HTTPX2_CODE),
         ]
     checks += [
         ("javascript tour (IFrame, pyjs wasm32)", "lite", "javascript", js_tour_code(html_dir, "wasm32")),

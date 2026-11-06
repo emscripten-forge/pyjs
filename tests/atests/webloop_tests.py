@@ -342,7 +342,7 @@ async def test_webloop_await_js_rejected_promise():
 
 async def test_webloop_await_js_rejected_promise_abort_error():
     # what fetch / stream reads reject with when an AbortController aborts
-    # (httpx2-jsfetch turns it into a timeout via its `name`)
+    # (code built on that, e.g. timeouts, checks the error's `name`)
     p = js.Function("return Promise.reject(new DOMException('aborted', 'AbortError'))")()
     try:
         await p

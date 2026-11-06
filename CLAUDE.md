@@ -30,7 +30,7 @@ Useful env vars: `BROWSERS` (chromium firefox webkit; webkit = Safari engine),
 (e.g. `environment-wasm-deploy-no-numpy.yml`), `PYJS_CODE_RUNNER_DIR` (local
 pyjs-code-runner checkout, pip -e installed into the build env),
 `PLAYWRIGHT_INSTALL_ARGS` (`--with-deps` on CI), `DOCS_OUT_DIR`, `DISABLE_JSPI=1`,
-`EXTRA_CHANNELS` (channels searched first when creating envs), `HTTPX2_JSFETCH_REPO` / `HTTPX2_JSFETCH_REF`.
+`EXTRA_CHANNELS` (channels searched first when creating envs).
 
 Everything lives in `build_root/` (gitignored, never commit):
 
@@ -115,17 +115,6 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
 `AbortError`), which is also a `RuntimeError` (it used to be a plain
 `RuntimeError` with a JSON string). `module/pyjs/extend_js_val.py`,
 `include/pyjs/pre_js/promise.js`.
-
-httpx2: `tests/atests/httpx_tests.py` (async) + `tests/tests/test_httpx_sync.py`
-(httpx2 from conda-forge in the deploy env, the pure python transport
-`httpx2_jsfetch` is cloned by build_local.sh and mounted:
-`HTTPX2_JSFETCH_REPO` / `HTTPX2_JSFETCH_REF`, default the pyjs version
-davidbrochart/httpx2-jsfetch-emscripten-forge 0.1.2; the pyodide original
-hoodmane/httpx2-jsfetch main also passes, via the `pyodide.ffi` polyfill, its
-sync client uses `run_sync` with JSPI and XHR without). Cross-origin servers may
-only allow https origins (CORS): the local test server is http, simulate an
-https origin with playwright routing. httpx2's default timeout (5 s per read)
-aborts downloads from servers that stall longer (seen with data.hydrosheds.org).
 
 ## asyncio event loop (`module/pyjs/webloop.py`)
 

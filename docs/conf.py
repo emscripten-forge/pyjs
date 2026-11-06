@@ -5,6 +5,7 @@
 # jupyterlite-xeus (via PYJS_DOCS_KERNEL_PREFIX), so the interactive parts of
 # the docs run the pyjs from this repository.
 
+import json
 import os
 import re
 from pathlib import Path
@@ -119,31 +120,52 @@ _make_notebooks()
 jupyterlite_contents = [str(p) for p in sorted(NOTEBOOK_DIR.glob("*.ipynb"))]
 jupyterlite_bind_ipynb_suffix = False
 
-# the kernel environment: xeus-python + pyjs built from this repository.
+# the kernel environments: xeus-python + pyjs built from this repository.
+# Two independent jupyterlite deployments, each with one kernel env (`xpython`):
+#   lite/    wasm32, PYJS_DOCS_KERNEL_PREFIX, built by jupyterlite-sphinx
+#   lite64/  wasm64, PYJS_DOCS_KERNEL_PREFIX_WASM64, built afterwards by
+#            build_local.sh (`jupyter lite build` with the config written here)
 # (jupyterlite-xeus cannot detect the channels of an environment created from
 # environment files, hence the default channel)
 # Only files of conda packages (and the kernel) are packed from the prefix, so
 # the pyjs python module (installed into the prefix by `make install`, not by a
 # package) is mounted from the source tree. Its C++ part is linked into the
 # xeus-python kernel (xpython.wasm).
+
+
+def _write_lite_config(prefix, path):
+    py_ver = next(Path(prefix, "include").glob("python3.*")).name  # e.g. python3.14
+    config = {
+        "XeusAddon": {
+            "prefix": [prefix],
+            "default_channels": ["https://repo.prefix.dev/emscripten-forge/6x"],
+            "mounts": [f"{ROOT / 'module' / 'pyjs'}:/lib/{py_ver}/site-packages/pyjs"],
+        }
+    }
+    path.write_text(json.dumps(config, indent=2))
+    return str(path)
+
+
 _kernel_prefix = os.environ.get("PYJS_DOCS_KERNEL_PREFIX")
 if _kernel_prefix:
-    _py_ver = next(Path(_kernel_prefix, "include").glob("python3.*")).name  # e.g. python3.14
-    jupyterlite_build_command_options = {
-        "XeusAddon.prefix": _kernel_prefix,
-        "XeusAddon.default_channels": "https://repo.prefix.dev/emscripten-forge/6x",
-        "XeusAddon.mounts": f"{ROOT / 'module' / 'pyjs'}:/lib/{_py_ver}/site-packages/pyjs",
-    }
+    jupyterlite_config = _write_lite_config(
+        _kernel_prefix, HERE / "_generated" / "jupyter_lite_config.json"
+    )
 else:
     print(
         "WARNING: PYJS_DOCS_KERNEL_PREFIX is not set, there is no python kernel "
         "for the jupyterlite in the docs and its build will fail "
         "(build the docs with `./build_local.sh wasm32 --docs`)"
     )
+_kernel_prefix_wasm64 = os.environ.get("PYJS_DOCS_KERNEL_PREFIX_WASM64")
+if _kernel_prefix_wasm64:
+    _write_lite_config(
+        _kernel_prefix_wasm64, HERE / "_generated" / "jupyter_lite_config_wasm64.json"
+    )
 
-# the pyjs runtime (js / wasm) + a packed environment for the javascript kernel,
+# the pyjs runtimes (js / wasm) + packed environments for the javascript kernel,
 # prepared by build_local.sh --docs and deployed next to the jupyterlite:
-# <html root>/pyjs-runtime/ (see examples/js_api_tour.js)
+# <html root>/pyjs-runtime/{wasm32,wasm64}/ (see examples/js_api_tour.js)
 _extra_dir = os.environ.get("PYJS_DOCS_EXTRA_DIR")
 if _extra_dir:
     html_extra_path = [_extra_dir]

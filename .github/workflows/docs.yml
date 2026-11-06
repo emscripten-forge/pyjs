@@ -19,6 +19,7 @@ jobs:
   build_pyjs_docs:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
@@ -33,9 +34,11 @@ jobs:
           cache-environment: true
           init-shell: bash
 
-      # builds pyjs, xeus-python (from source, against this pyjs) and the
+      # builds pyjs, xeus-python (from source, against this pyjs) for wasm32 and
+      # wasm64 (build_local.sh creates the wasm64 build env itself) and the
       # sphinx docs with jupyterlite, then smoke tests the docs in a headless
-      # browser (pyjs in the xeus-python and javascript kernels)
+      # browser (pyjs in the xeus-python kernels and the javascript kernel with
+      # the wasm32 and the wasm64 pyjs runtime)
       - name: Build and test the docs
         env:
           PLAYWRIGHT_INSTALL_ARGS: --with-deps

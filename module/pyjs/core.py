@@ -355,3 +355,91 @@ def cancel_main_loop():
         _callback_entry_point = None
     else:
         warnings.warn("No main loop callback is set to cancel.", UserWarning)
+
+def jspi_enabled() -> bool:
+    """Whether JSPI (JavaScript Promise Integration) is used: the browser supports
+    it (``WebAssembly.Suspending`` / ``WebAssembly.promising``) and it was not
+    switched off. Without JSPI, `run_sync` is not available."""
+    return bool(pyjs_core.internal.module_property("_jspi_enabled")())
+
+
+def _disable_jspi():
+    """Switch JSPI off at runtime: pyjs then behaves like in a browser without
+    JSPI (used by the tests to run the same build with and without JSPI)."""
+    pyjs_core.internal.module_property("_jspi_disable")()
+
+
+def can_run_sync() -> bool:
+    """Whether `run_sync` can be used here.
+
+    True if JSPI is used (see `jspi_enabled`) and the current Python code was
+    entered from JavaScript in a way that allows suspending: e.g. a step of an
+    asyncio task (the event loop enters via ``py_apply_promising``), but not a
+    plain synchronous callback (event handler, `create_callable`, `pyjs.exec`, ...).
+    Only one Python call stack can be suspended at a time, so this is False
+    while another `run_sync` is waiting.
+    """
+    if not jspi_enabled():
+        return False
+    return bool(pyjs_core.internal.module_property("_jspi_can_run_sync")())
+
+
+def _run_sync_python_awaitable(awaitable):
+    # result / exception stay in python, the js promise only signals "done"
+    import asyncio
+
+    future = asyncio.ensure_future(awaitable)
+
+    def executor(resolve, reject):
+        future.add_done_callback(lambda f: resolve(None))
+
+    _run_sync_js(promise(executor))
+    return future.result()
+
+
+def _run_sync_js(js_promise):
+    # while this stack is suspended the event loop runs other tasks: asyncio
+    # only allows one "current task" (per thread), so leave / re-enter it
+    import asyncio
+    from asyncio import tasks as _tasks
+
+    loop = asyncio.events._get_running_loop()
+    task = asyncio.current_task(loop) if loop is not None else None
+    if task is not None:
+        _tasks._leave_task(loop, task)
+    try:
+        ret, _ = pyjs_core.internal.run_sync(js_promise)
+    finally:
+        if task is not None:
+            _tasks._enter_task(loop, task)
+    return ret
+
+
+def run_sync(awaitable):
+    """Block until `awaitable` is done and return its result (JSPI only).
+
+    `awaitable` is a JavaScript promise (or thenable) or a Python awaitable.
+    The WebAssembly stack is suspended (JavaScript Promise Integration) until it
+    settles: the browser event loop keeps running in the meantime.
+    A rejected promise raises the corresponding `JsException`.
+    Requires `can_run_sync()`, raises a ``RuntimeError`` otherwise.
+
+    Example:
+    ```python
+    response = pyjs.run_sync(pyjs.js.fetch(url))
+    ```
+    """
+    if not jspi_enabled():
+        raise RuntimeError(
+            "run_sync requires JSPI (WebAssembly.Suspending / WebAssembly.promising), "
+            "which this browser does not support"
+        )
+    if not can_run_sync():
+        raise RuntimeError(
+            "run_sync cannot be used here: python was not entered via a "
+            "promising call (e.g. it runs in a synchronous JavaScript callback) "
+            "or another run_sync is already waiting"
+        )
+    if not isinstance(awaitable, JsValue):
+        return _run_sync_python_awaitable(awaitable)
+    return _run_sync_js(awaitable)

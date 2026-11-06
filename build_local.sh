@@ -1,15 +1,20 @@
 #!/bin/bash
 # Local build of pyjs
 #
-# Usage: ./build_local.sh [wasm32|wasm64] [--fresh] [--test] [--bench] [--docs]
+# Usage: ./build_local.sh [wasm32|wasm64] [--fresh] [--test] [--bench] [--docs] [--docs-kernel]
 #
 #   --fresh   delete and recreate the environments and the build dir
-#   --docs    build the documentation (sphinx + jupyterlite, wasm32 only):
+#   --docs    build the documentation (sphinx + jupyterlite, run with wasm32):
 #             pyjs is built into a separate docs host env, xeus-python is
-#             built from source against it (the docs kernel), the html ends
-#             up in build_root/docs_html (or DOCS_OUT_DIR).
-#             With --test: smoke test of the docs instead of the pyjs tests
-#             (build_utils/docs_smoke_test.py, for each of BROWSERS)
+#             built from source against it (the docs kernels, two independent
+#             jupyterlite deployments: lite/ wasm32, lite64/ wasm64; the wasm64
+#             kernel is built first by running this script with
+#             `wasm64 --docs-kernel`, skip it with DOCS_WASM64=0), the html
+#             ends up in build_root/docs_html (or
+#             DOCS_OUT_DIR). With --test: smoke test of the docs instead of
+#             the pyjs tests (build_utils/docs_smoke_test.py, for each of BROWSERS)
+#   --docs-kernel  only the kernel part of --docs for the given wasm type
+#             (pyjs + xeus-python + build_root/docs_extra/pyjs-runtime/<wasm>/)
 #   --test    run the browser tests with pyjs_code_runner
 #   --bench   run the benchmarks in benchmarks/ and store the output in
 #             build_root/benchmarks/<wasm>/<stamp>_<browser>_<backend>.{log,json}
@@ -33,6 +38,14 @@
 #                contains this substring)
 #                XEUS_PYTHON_REF (xeus-python tag used by --docs)
 #                DOCS_OUT_DIR (html output of --docs)
+#                DOCS_WASM64=0 (--docs: without the wasm64 kernel / pyjs runtime)
+#                DOCS_WASM64_BUILD_ENV_PREFIX (--docs: existing wasm64 build env,
+#                like BUILD_ENV_PREFIX)
+#                EXTRA_CHANNELS (space separated channels searched first when
+#                creating envs, e.g. a local rattler-build output dir; only
+#                affects envs that do not exist yet, see --fresh)
+#                DISABLE_JSPI=1 (--test: switch JSPI off at runtime, ie. test
+#                like in a browser without JSPI; the same build either way)
 #
 # Environments (all under build_root/):
 #   build_prefix_<wasm>/   native env      environment-wasm-build-<wasm>.yml
@@ -56,6 +69,7 @@ FRESH=0
 RUN_TESTS=0
 RUN_BENCH=0
 RUN_DOCS=0
+DOCS_KERNEL_ONLY=0
 for arg in "$@"; do
     case "$arg" in
         wasm32|wasm64) WASM_TYPE="$arg" ;;
@@ -63,16 +77,30 @@ for arg in "$@"; do
         --test)        RUN_TESTS=1 ;;
         --bench)       RUN_BENCH=1 ;;
         --docs)        RUN_DOCS=1 ;;
+        --docs-kernel) RUN_DOCS=1; DOCS_KERNEL_ONLY=1 ;;
         *)
-            echo "Usage: $0 [wasm32|wasm64] [--fresh] [--test] [--bench] [--docs]"
+            echo "Usage: $0 [wasm32|wasm64] [--fresh] [--test] [--bench] [--docs] [--docs-kernel]"
             exit 1
             ;;
     esac
 done
 
-if [ "$RUN_DOCS" = "1" ] && [ "$WASM_TYPE" != "wasm32" ]; then
-    echo "Error: --docs is only supported for wasm32"
+if [ "$RUN_DOCS" = "1" ] && [ "$DOCS_KERNEL_ONLY" = "0" ] && [ "$WASM_TYPE" != "wasm32" ]; then
+    echo "Error: run --docs with wasm32 (the wasm64 kernel is built by it, see --docs-kernel)"
     exit 1
+fi
+
+# --docs: first the wasm64 kernel, in a separate process (own build env
+# activation); BUILD_ENV_PREFIX is a wasm32 build env, not passed on
+if [ "$RUN_DOCS" = "1" ] && [ "$DOCS_KERNEL_ONLY" = "0" ] && [ "${DOCS_WASM64:-1}" = "1" ]; then
+    DOCS_WASM64_ARGS=(wasm64 --docs-kernel)
+    if [ "$FRESH" = "1" ]; then
+        DOCS_WASM64_ARGS+=(--fresh)
+    fi
+    echo "========================================"
+    echo "docs: wasm64 kernel"
+    echo "========================================"
+    BUILD_ENV_PREFIX="${DOCS_WASM64_BUILD_ENV_PREFIX:-}" "$0" "${DOCS_WASM64_ARGS[@]}"
 fi
 
 ########################################
@@ -146,9 +174,15 @@ fi
 create_env() {
     local prefix="$1" env_file="$2"
     shift 2
+    # EXTRA_CHANNELS: searched before the channels of the env file
+    local channel_args=()
+    local channel
+    for channel in ${EXTRA_CHANNELS:-}; do
+        channel_args+=(-c "$channel")
+    done
     if [ ! -d "$prefix" ]; then
-        echo "Creating environment at $prefix from $(basename "$env_file") $*"
-        "$MAMBA_EXE" create -p "$prefix" -f "$env_file" --yes "$@"
+        echo "Creating environment at $prefix from $(basename "$env_file") ${channel_args[*]:-} $*"
+        "$MAMBA_EXE" create -p "$prefix" -f "$env_file" --yes ${channel_args[@]+"${channel_args[@]}"} "$@"
     fi
 }
 
@@ -292,11 +326,11 @@ if [ "$RUN_DOCS" = "1" ]; then
     echo "xeus-python $XEUS_PYTHON_REF built against this pyjs and installed into $PREFIX"
 
     # pyjs runtime + packed environment for the javascript kernel of the docs
-    # jupyterlite, deployed as <html root>/pyjs-runtime/ (see docs/conf.py)
+    # jupyterlite, deployed as <html root>/pyjs-runtime/<wasm>/ (see docs/conf.py)
     create_env "$DEPLOY_PREFIX" "$DEPLOY_ENV_FILE" --platform "$PLATFORM"
     DOCS_EXTRA_DIR="$BUILD_ROOT/docs_extra"
-    PYJS_RUNTIME_DIR="$DOCS_EXTRA_DIR/pyjs-runtime"
-    rm -rf "$DOCS_EXTRA_DIR"
+    PYJS_RUNTIME_DIR="$DOCS_EXTRA_DIR/pyjs-runtime/$WASM_TYPE"
+    rm -rf "$PYJS_RUNTIME_DIR"
     mkdir -p "$PYJS_RUNTIME_DIR"
     cp "$BUILD_DIR/pyjs_runtime_browser.js" "$BUILD_DIR/pyjs_runtime_browser.wasm" "$PYJS_RUNTIME_DIR/"
     empack pack env \
@@ -312,12 +346,44 @@ if [ "$RUN_DOCS" = "1" ]; then
     empack pack append \
         --env-meta "$PYJS_RUNTIME_DIR/empack_env_meta.json" \
         --tarfile "$PYJS_RUNTIME_DIR/pyjs_module.tar.gz"
+    if [ "$DOCS_KERNEL_ONLY" = "1" ]; then
+        echo "docs kernel ($WASM_TYPE): $PREFIX, pyjs runtime: $PYJS_RUNTIME_DIR"
+        exit 0
+    fi
     export PYJS_DOCS_EXTRA_DIR="$DOCS_EXTRA_DIR"
 
-    # docs/conf.py passes this env to jupyterlite-xeus as kernel env
+    # docs/conf.py passes these envs to jupyterlite-xeus as kernel envs:
+    # two independent jupyterlite deployments, lite/ (wasm32, built by sphinx)
+    # and lite64/ (wasm64, built below)
     export PYJS_DOCS_KERNEL_PREFIX="$PREFIX"
+    if [ "${DOCS_WASM64:-1}" = "1" ]; then
+        export PYJS_DOCS_KERNEL_PREFIX_WASM64="$BUILD_ROOT/host_docs_prefix_wasm64"
+    else
+        unset PYJS_DOCS_KERNEL_PREFIX_WASM64
+        rm -rf "$DOCS_EXTRA_DIR/pyjs-runtime/wasm64"
+    fi
     rm -rf "$DOCS_OUT_DIR"
     sphinx-build -b html "$SRC_DIR/docs" "$DOCS_OUT_DIR"
+
+    if [ "${DOCS_WASM64:-1}" = "1" ]; then
+        # same notebooks, wasm64 kernel env (config written by docs/conf.py);
+        # an own lite dir: jupyterlite keeps its build state there
+        LITE64_DIR="$BUILD_ROOT/lite64_dir"
+        rm -rf "$LITE64_DIR"
+        mkdir -p "$LITE64_DIR"
+        LITE64_CONTENTS=()
+        for notebook in "$SRC_DIR"/docs/_generated/notebooks/*.ipynb; do
+            LITE64_CONTENTS+=(--contents "$notebook")
+        done
+        (
+            cd "$LITE64_DIR"
+            jupyter lite build \
+                --config "$SRC_DIR/docs/_generated/jupyter_lite_config_wasm64.json" \
+                "${LITE64_CONTENTS[@]}" \
+                --output-dir "$DOCS_OUT_DIR/lite64" \
+                --lite-dir "$LITE64_DIR"
+        )
+    fi
     echo ""
     echo "docs: $DOCS_OUT_DIR/index.html"
 
@@ -364,6 +430,11 @@ if [ "$RUN_TESTS" = "1" ]; then
         echo "tests: $BROWSER / $BACKEND"
         echo "========================================"
         mkdir -p "$BUILD_DIR/host_work_dir_${BROWSER}_$BACKEND"
+        # config read by tests/main.py (mounted at /test_config)
+        mkdir -p "$BUILD_DIR/test_config"
+        printf '{"disable_jspi": %s}\n' \
+            "$([ "${DISABLE_JSPI:-0}" = "1" ] && echo true || echo false)" \
+            > "$BUILD_DIR/test_config/config.json"
         # the pyjs python module is mounted from the source tree,
         # the runtime (js/wasm) is taken from the build dir
         set +e
@@ -372,6 +443,7 @@ if [ "$RUN_TESTS" = "1" ]; then
             --browser       "$BROWSER" \
             --conda-env     "$DEPLOY_PREFIX" \
             --mount         "$SRC_DIR/tests:/tests" \
+            --mount         "$BUILD_DIR/test_config:/test_config" \
             --mount         "$SRC_DIR/module/pyjs:/lib/python${PY_VER}/site-packages/pyjs" \
             --script        main.py \
             --work-dir      /tests \

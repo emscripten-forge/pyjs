@@ -8,6 +8,18 @@ sys.path.append("/tests")
 import os
 print("CWD:", os.getcwd())
 
+# config written by build_local.sh (DISABLE_JSPI=1: test like in a browser
+# without JSPI, with the same build)
+import json
+try:
+    with open("/test_config/config.json") as f:
+        _test_config = json.load(f)
+except FileNotFoundError:
+    _test_config = {}
+if _test_config.get("disable_jspi"):
+    pyjs.core._disable_jspi()
+print("JSPI enabled:", pyjs.jspi_enabled())
+
 from atests import *
 from js_tests import main as js_main
 

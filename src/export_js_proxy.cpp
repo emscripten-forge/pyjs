@@ -15,6 +15,25 @@
 namespace py = pybind11;
 namespace em = emscripten;
 
+// The suspend point of pyjs.run_sync (JSPI): a wasm import that is wrapped in
+// WebAssembly.Suspending when the browser supports JSPI. The wrapping happens
+// here, in the JS emitted for this function, which runs before the wasm module
+// is instantiated (same pattern as pyodide's suspenders.c). Without JSPI the
+// plain function stays in place; it is never called then, since
+// pyjs.can_run_sync() is False (see include/pyjs/pre_js/jspi.js).
+// The suspending version awaits the promise and returns the same
+// {has_err, err, has_ret, ret, type_string} object as the *_try_catch helpers.
+// Handles are passed as int (not EM_VAL, a pointer type: BigInt on wasm64).
+EM_JS(int, pyjs_jspi_await, (int promise_handle), {
+    throw new Error("pyjs: run_sync without JSPI support");
+}
+if (typeof WebAssembly !== "undefined" && typeof WebAssembly.Suspending === "function") {
+    pyjs_jspi_await = new WebAssembly.Suspending(async function (promise_handle) {
+        return Emval.toHandle(await Module._jspi_await(Emval.toValue(promise_handle)));
+    });
+}
+);
+
 
 namespace pyjs
 {
@@ -107,6 +126,16 @@ namespace pyjs
     void export_js_proxy(py::module_& m)
     {
         py::module_ m_internal = m.def_submodule("internal", "implementation details of of pyjs");
+
+        // block until the promise settles (requires can_run_sync(), checked in python)
+        m_internal.def("run_sync",
+                       [m](em::val* promise) -> py::object {
+                           const int handle = pyjs_jspi_await(
+                               static_cast<int>(reinterpret_cast<std::intptr_t>(promise->as_handle())));
+                           em::val wrapped = em::val::take_ownership(
+                               reinterpret_cast<em::EM_VAL>(static_cast<std::intptr_t>(handle)));
+                           return wrap_result(m, wrapped);
+                       });
 
         m_internal.def("global_property",
                        [](const std::string& arg)

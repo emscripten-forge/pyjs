@@ -8,6 +8,14 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 option(WASM64 "Enable WebAssembly 64-bit support" OFF)
 
+# upper limit of the memory of the runtime (emscripten's default is 2GB, also
+# for wasm64)
+if(WASM64)
+    set(PYJS_MAXIMUM_MEMORY "16GB" CACHE STRING "-sMAXIMUM_MEMORY of the pyjs runtime")
+else()
+    set(PYJS_MAXIMUM_MEMORY "4GB" CACHE STRING "-sMAXIMUM_MEMORY of the pyjs runtime")
+endif()
+
 
 
 if (NOT DEFINED PY_VERSION)
@@ -28,6 +36,7 @@ set(PREJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/get_set_attr.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/promise.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/create_once_callable.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/jspi.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/shortcuts.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/operators.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/platform.js
@@ -205,6 +214,7 @@ target_link_options(pyjs_runtime_browser
     PUBLIC "SHELL: -s EXPORT_ALL=1"
     PUBLIC "SHELL: -s EXPORT_EXCEPTION_HANDLING_HELPERS"
     PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
+    PUBLIC "SHELL: -s MAXIMUM_MEMORY=${PYJS_MAXIMUM_MEMORY}"
     PUBLIC "SHELL: -s STACK_SIZE=32mb"
     PUBLIC "SHELL: -s INITIAL_MEMORY=64MB"
     PUBLIC "SHELL: -s USE_PTHREADS=0"

@@ -1,0 +1,167 @@
+"""Async tests for JSPI support: pyjs.run_sync / pyjs.can_run_sync.
+
+Async, because run_sync works in asyncio task steps (the event loop enters
+Python via a promising call in JSPI builds), see include/pyjs/pre_js/jspi.js.
+In builds without JSPI (cmake option PYJS_JSPI=OFF) only the fallback
+behaviour is tested.
+"""
+
+import asyncio
+
+import pyjs
+from pyjs import js
+
+
+def _delayed_promise(value, ms=20):
+    return js.Function(
+        "value", "ms", "return new Promise((resolve) => setTimeout(() => resolve(value), ms));"
+    )(value, ms)
+
+
+def _call_from_sync_js(py_function):
+    js_callable, handle = pyjs.create_callable(py_function)
+    try:
+        return js.Function("f", "return f();")(js_callable)
+    finally:
+        handle.delete()
+
+
+async def test_jspi_without_jspi_support():
+    if pyjs.jspi_enabled():
+        return
+    assert not pyjs.can_run_sync()
+    try:
+        pyjs.run_sync(js.Promise.resolve(1))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("run_sync must raise without JSPI support")
+    # urllib3 / pyodide-http fall back to XMLHttpRequest
+    from pyodide.ffi import can_run_sync
+
+    assert not can_run_sync()
+
+
+async def test_jspi_can_run_sync_in_task():
+    if not pyjs.jspi_enabled():
+        return
+    assert pyjs.can_run_sync()
+
+
+async def test_jspi_run_sync_resolved_promise():
+    if not pyjs.jspi_enabled():
+        return
+    assert pyjs.run_sync(js.Promise.resolve(42)) == 42
+
+
+async def test_jspi_run_sync_delayed_promise():
+    if not pyjs.jspi_enabled():
+        return
+    assert pyjs.run_sync(_delayed_promise("hello", 30)) == "hello"
+    # still allowed afterwards
+    assert pyjs.can_run_sync()
+    assert pyjs.run_sync(_delayed_promise(7, 1)) == 7
+
+
+async def test_jspi_run_sync_rejected_promise():
+    if not pyjs.jspi_enabled():
+        return
+    rejected = js.Function("return Promise.reject(new TypeError('nope'));")()
+    try:
+        pyjs.run_sync(rejected)
+    except pyjs.JsException as err:
+        assert "nope" in str(err), str(err)
+    else:
+        raise AssertionError("expected a JsException")
+
+
+async def test_jspi_run_sync_fetch():
+    if not pyjs.jspi_enabled():
+        return
+    # the runtime is served next to the page / worker
+    url = js.URL.new("pyjs_runtime_browser.wasm", js.location.href).href
+    response = pyjs.run_sync(js.fetch(url))
+    assert response.status == 200
+    buffer = pyjs.run_sync(response.arrayBuffer())
+    data = buffer.to_py().tobytes()
+    assert data[:4] == b"\x00asm"
+
+
+async def test_jspi_run_sync_python_coroutine():
+    if not pyjs.jspi_enabled():
+        return
+
+    async def coro():
+        await asyncio.sleep(0.01)
+        return "done"
+
+    assert pyjs.run_sync(coro()) == "done"
+
+
+async def test_jspi_run_sync_python_coroutine_raises():
+    if not pyjs.jspi_enabled():
+        return
+
+    async def coro():
+        await asyncio.sleep(0)
+        raise KeyError("k")
+
+    try:
+        pyjs.run_sync(coro())
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("expected KeyError")
+
+
+async def test_jspi_no_run_sync_in_sync_js_callback():
+    if not pyjs.jspi_enabled():
+        return
+    # a JS frame between the promising entry and python: no suspending
+    assert not _call_from_sync_js(pyjs.can_run_sync)
+    # and back in the task it works again
+    assert pyjs.can_run_sync()
+
+
+async def test_jspi_no_nested_run_sync():
+    if not pyjs.jspi_enabled():
+        return
+    # while this task is suspended other python code runs, but can not suspend
+
+    async def inner():
+        await asyncio.sleep(0)
+        return pyjs.can_run_sync()
+
+    assert pyjs.run_sync(inner()) is False
+
+
+async def test_jspi_concurrent_tasks():
+    if not pyjs.jspi_enabled():
+        return
+    seen = []
+
+    async def waiter():
+        seen.append(("waiter start", pyjs.can_run_sync()))
+        value = pyjs.run_sync(_delayed_promise("w", 50))
+        seen.append(("waiter end", value))
+
+    async def other():
+        for i in range(3):
+            await asyncio.sleep(0.005)
+            # waiter is suspended: no second suspended stack
+            seen.append((f"other {i}", pyjs.can_run_sync()))
+
+    await asyncio.gather(waiter(), other())
+    assert seen[0] == ("waiter start", True), seen
+    assert seen[-1] == ("waiter end", "w"), seen
+    others = [s for s in seen if s[0].startswith("other")]
+    assert len(others) == 3 and all(ok is False for _, ok in others), seen
+    assert pyjs.can_run_sync()
+
+
+async def test_jspi_urllib3_uses_jspi():
+    try:
+        from urllib3.contrib.emscripten.fetch import has_jspi
+    except ImportError:
+        return
+    assert has_jspi() == pyjs.jspi_enabled()

@@ -3,11 +3,13 @@
 Serves the html output and checks in a headless browser (playwright) that the
 JupyterLite embedded in the docs works with pyjs:
 
-* the xeus-python kernel imports pyjs (the python module from this repository)
-  and calls JavaScript from Python
+* the xeus-python kernels (two jupyterlite deployments: lite/ wasm32,
+  lite64/ wasm64) import pyjs
+  (the python module from this repository), call JavaScript from Python and,
+  if the browser supports JSPI, use pyjs.run_sync
 * all code cells of the JavaScript API tour (examples/js_api_tour.js) run in
   both runtimes of the javascript kernel (IFrame and Web Worker), ie pyjs can be
-  loaded from the `pyjs-runtime/` deployed next to the JupyterLite
+  loaded from the `pyjs-runtime/{wasm32,wasm64}/` deployed next to the JupyterLite
 
 Usage: python docs_smoke_test.py <html dir> [--browser chromium|firefox|webkit]
 """
@@ -30,9 +32,14 @@ DONE = '["SMOKE", "DONE"].join("_")'
 DONE_TEXT = "SMOKE_DONE"
 
 PYTHON_CODE = """\
-import pyjs
+import pyjs, sys
 assert pyjs.__file__.startswith("/lib/python3"), pyjs.__file__
 assert pyjs.js.Function("a", "b", "return a + b")(40, 2) == 42
+# cells run as coroutines (webloop task steps): run_sync works with JSPI
+if pyjs.jspi_enabled():
+    assert pyjs.can_run_sync()
+    assert pyjs.run_sync(pyjs.js.Promise.resolve(41)) == 41
+print("pointer size", 8 if sys.maxsize > 2**32 else 4, "jspi", pyjs.jspi_enabled())
 print("_".join(["SMOKE", "DONE"]))
 """
 
@@ -45,12 +52,12 @@ def serve(directory):
     return server, f"http://127.0.0.1:{server.server_address[1]}"
 
 
-async def run_in_repl(browser, base_url, kernel, code):
-    """Run `code` in the JupyterLite REPL, return (ok, page text)."""
+async def run_in_repl(browser, base_url, kernel, code, lite="lite"):
+    """Run `code` in the REPL of the JupyterLite deployment `lite`, return (ok, page text)."""
     page = await browser.new_page()
     try:
         query = urllib.parse.urlencode({"kernel": kernel, "execute": "1", "code": code})
-        await page.goto(f"{base_url}/lite/repl/index.html?{query}")
+        await page.goto(f"{base_url}/{lite}/repl/index.html?{query}")
         try:
             await page.wait_for_function(
                 f"() => /{DONE_TEXT}|Error:|Traceback/.test(document.body.innerText)",
@@ -65,29 +72,48 @@ async def run_in_repl(browser, base_url, kernel, code):
         await page.close()
 
 
-def js_tour_code(html_dir):
-    notebook = json.loads((Path(html_dir) / "lite" / "files" / "js_api_tour.ipynb").read_text())
-    cells = [
+def notebook_code_cells(html_dir, name):
+    notebook = json.loads((Path(html_dir) / "lite" / "files" / name).read_text())
+    return [
         cell["source"] if isinstance(cell["source"], str) else "".join(cell["source"])
         for cell in notebook["cells"]
         if cell["cell_type"] == "code"
     ]
-    return "\n;\n".join(cells + [DONE])
+
+
+def python_notebook_code(html_dir, name):
+    # all code cells of a python notebook, then the done marker
+    return "\n".join(notebook_code_cells(html_dir, name) + ['print("_".join(["SMOKE", "DONE"]))'])
+
+
+def js_tour_code(html_dir, wasm_type=None):
+    cells = notebook_code_cells(html_dir, "js_api_tour.ipynb")
+    # force the wasm32 / wasm64 pyjs runtime (default: wasm64 if memory64 works)
+    prelude = [f'globalThis.PYJS_WASM = "{wasm_type}"'] if wasm_type else []
+    return "\n;\n".join(prelude + cells + [DONE])
 
 
 async def main(html_dir, browser_name):
     server, base_url = serve(html_dir)
-    checks = [
-        ("python repl (xpython)", "xpython", PYTHON_CODE),
-        ("javascript tour (IFrame)", "javascript", js_tour_code(html_dir)),
-        ("javascript tour (Web Worker)", "javascript-worker", js_tour_code(html_dir)),
+    # two independent jupyterlite deployments: lite/ (wasm32), lite64/ (wasm64)
+    lites = ["lite"] + (["lite64"] if (Path(html_dir) / "lite64").is_dir() else [])
+    checks = []
+    for lite in lites:
+        checks += [
+            (f"python repl ({lite})", lite, "xpython", PYTHON_CODE),
+            (f"run_sync notebook ({lite})", lite, "xpython", python_notebook_code(html_dir, "run_sync.ipynb")),
+        ]
+    checks += [
+        ("javascript tour (IFrame, pyjs wasm32)", "lite", "javascript", js_tour_code(html_dir, "wasm32")),
+        ("javascript tour (IFrame, pyjs wasm64)", "lite", "javascript", js_tour_code(html_dir, "wasm64")),
+        ("javascript tour (Web Worker)", "lite", "javascript-worker", js_tour_code(html_dir)),
     ]
     failed = 0
     try:
         async with async_playwright() as p:
             browser = await getattr(p, browser_name).launch(headless=True)
-            for name, kernel, code in checks:
-                ok, text = await run_in_repl(browser, base_url, kernel, code)
+            for name, lite, kernel, code in checks:
+                ok, text = await run_in_repl(browser, base_url, kernel, code, lite)
                 print(f"{'PASSED' if ok else 'FAILED'}  {name}", flush=True)
                 if not ok:
                     failed += 1

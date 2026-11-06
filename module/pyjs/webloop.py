@@ -74,11 +74,16 @@ class _MacrotaskQueue:
         return bool(cls._js_is_supported())
 
     def __init__(self):
-        from .core import create_callable
+        from .core import create_callable, jspi_enabled
 
         self._queue = collections.deque()
         # never deleted: the queue lives as long as its loop, ie forever
         self._js_on_message, self._js_on_message_handle = create_callable(self._run_next)
+        if jspi_enabled():
+            # task steps may suspend (pyjs.run_sync), see pre_js/jspi.js
+            self._js_on_message = self._js_on_message_handle["py_call_promising"].bind(
+                self._js_on_message_handle
+            )
         self._post = self._js_make_poster(self._js_on_message)
 
     def push(self, fn: Callable[[], None]) -> None:
@@ -116,6 +121,15 @@ class WebLoop(asyncio.AbstractEventLoop):
         self._exception_handler = None
         self._current_handle = None
         self._set_timeout = js.setTimeout
+        from .core import jspi_enabled
+
+        # with JSPI the callbacks are entered via a promising call, so that
+        # task steps may suspend (pyjs.run_sync), see pre_js/jspi.js
+        self._create_once_callable_void_void = pyjs_core.internal.module_property(
+            "_create_once_callable_promising_void_void"
+            if jspi_enabled()
+            else "_create_once_callable_unsave_void_void"
+        )
         self._macrotask_queue = _MacrotaskQueue() if _MacrotaskQueue.is_supported() else None
 
     def get_debug(self):
@@ -245,9 +259,7 @@ class WebLoop(asyncio.AbstractEventLoop):
         # use an internal optimized function, that does not allow for
         # any arguments, does not return anything, and does assume
         # that the function does not throw
-        once_callable =  pyjs_core.internal.module_property("_create_once_callable_unsave_void_void")(
-            pyjs_core.JsValue(run_handle)
-        )
+        once_callable = self._create_once_callable_void_void(pyjs_core.JsValue(run_handle))
         self._set_timeout(once_callable, delay * 1000)
         return h
 

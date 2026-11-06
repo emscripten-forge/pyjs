@@ -6,9 +6,11 @@
 // # Loading the pyjs module
 // In this deployment, the pyjs runtime (`pyjs_runtime_browser.js` / `.wasm`) and a
 // packed environment (python, numpy, ...) are deployed next to the JupyterLite,
-// in `pyjs-runtime/`. This works with both JavaScript kernels: the IFrame kernel
-// (code runs in an iframe of the JupyterLite page) and the Web Worker kernel
-// (code runs in a worker started from the kernel extension in `lite/extensions/`).
+// in `pyjs-runtime/wasm32/` and `pyjs-runtime/wasm64/`. The wasm64 build is used
+// when the browser supports 64 bit memory (memory64), it can use more than 4 GB.
+// This works with both JavaScript kernels: the IFrame kernel (code runs in an
+// iframe of the JupyterLite page) and the Web Worker kernel (code runs in a
+// worker started from the kernel extension in `lite/extensions/`).
 
 // %% [code]
 // locate the JupyterLite root and the pyjs runtime next to it
@@ -17,7 +19,11 @@ const liteRoot = globalThis.document
     ? new URL("../", document.baseURI).href
     // Web Worker kernel: the worker script lives in lite/extensions/...
     : location.href.slice(0, location.href.indexOf("/extensions/") + 1);
-const pyjsRuntimeUrl = new URL("../pyjs-runtime/", liteRoot).href;
+// wasm64 if the browser supports memory64 (a module with a 64 bit memory validates)
+const memory64 = WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 0]));
+const wasmType = globalThis.PYJS_WASM ?? (memory64 ? "wasm64" : "wasm32");
+console.log("pyjs runtime:", wasmType);
+const pyjsRuntimeUrl = new URL(`../pyjs-runtime/${wasmType}/`, liteRoot).href;
 
 // pyjs_runtime_browser.js is a classic script (not an ES module):
 // evaluate it in the global scope, which defines `createModule`

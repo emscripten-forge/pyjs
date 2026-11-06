@@ -51,6 +51,10 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
 
     // Module["_interpreter"] = new Module["_Interpreter"]()
+    if (Module["_jspi_state"].supported) {
+        Module["_jspi_install"]();
+    }
+
     console.log("initialize interpreter");
     Module["_initialize_interpreter"]();
     console.log("interpreter initialized");

@@ -253,3 +253,24 @@ def error_to_py_and_raise(err):
 
 def buffer_to_js_typed_array(buffer, view=False):
     return internal.py_1d_buffer_to_typed_array(buffer, bool(view))
+
+
+def _extend_typed_array_buffer():
+    # `to_py()` of a typed array returns a TypedArrayBuffer (a copy of the data,
+    # buffer protocol). pyodide returns a memoryview, so code written for
+    # pyodide (e.g. urllib3's emscripten backend) indexes / slices it.
+    from pyjs_core import TypedArrayBuffer
+
+    def __getitem__(self, key):
+        # the memoryview references (and keeps alive) this buffer
+        return memoryview(self)[key]
+
+    def tolist(self):
+        return memoryview(self).tolist()
+
+    TypedArrayBuffer.__getitem__ = __getitem__
+    TypedArrayBuffer.tolist = tolist
+
+
+_extend_typed_array_buffer()
+del _extend_typed_array_buffer

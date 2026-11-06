@@ -1,6 +1,7 @@
 from typing import Any
 from .convert_py_to_js import to_js
 from .error_handling import JsException
+from .core import can_run_sync, run_sync
 import sys
 import types
 
@@ -20,6 +21,9 @@ def install_pyodide_polyfill():
     pyodide.ffi.JsException = JsException
     pyodide.ffi.JsArray = object
     pyodide.ffi.JsProxy = object
+    # urllib3 (contrib/emscripten) uses fetch + run_sync when can_run_sync()
+    pyodide.ffi.can_run_sync = can_run_sync
+    pyodide.ffi.run_sync = run_sync
     pyodide.__getattr__ = _pyodide__getattr__
     pyodide.ffi.__getattr__ = _pyodide__getattr__
 

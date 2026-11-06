@@ -22,6 +22,8 @@ jobs:
     name: test ${{ matrix.wasm }} / ${{ matrix.browser }}
 
     runs-on: ubuntu-latest
+    # a failed JSPI suspension can hang the browser instead of failing
+    timeout-minutes: 90
 
     strategy:
       fail-fast: false
@@ -54,7 +56,18 @@ jobs:
             https://github.com/emscripten-forge/pyjs-code-runner \
             "$PYJS_CODE_RUNNER_DIR"
 
+      # one build for all browsers: JSPI (pyjs.run_sync) is used when the browser
+      # supports it (needs python with the wasm-gc call trampoline,
+      # emscripten-forge python >= build 6)
       - name: Build and test (browser main thread + worker)
+        run: |
+          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
+          ./build_local.sh ${{ matrix.wasm }} --test
+
+      # the same build, JSPI switched off at runtime (like a browser without JSPI)
+      - name: Test without JSPI (browser main thread + worker)
+        env:
+          DISABLE_JSPI: "1"
         run: |
           export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
           ./build_local.sh ${{ matrix.wasm }} --test

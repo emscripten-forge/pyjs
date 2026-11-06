@@ -1,3 +1,4 @@
+#include <emscripten.h>
 #include <emscripten/val.h>
 #include <emscripten/bind.h>
 #include <pyjs/convert.hpp>
@@ -70,6 +71,34 @@ namespace pyjs
     }
 
 
+}  // namespace pyjs
+
+// JSPI entry: like pyobject._raw_apply, but a plain wasm export, so that the JS
+// glue can wrap it with WebAssembly.promising at runtime when the browser
+// supports JSPI (include/pyjs/pre_js/jspi.js). The called python code may then
+// suspend (pyjs.run_sync).
+// `handle`: emval handle (int, also on wasm64) of the JS array
+// [pyobject, args, args_types, n_args, kwargs_keys, kwargs_values,
+//  kwargs_values_types, n_kwargs]; the wrapped result of raw_apply is stored
+// at index 8 of that array.
+extern "C" EMSCRIPTEN_KEEPALIVE void pyjs_raw_apply_promising(int handle)
+{
+    em::val call = em::val::take_ownership(
+        reinterpret_cast<em::EM_VAL>(static_cast<std::intptr_t>(handle)));
+    py::object* self = call[0].as<py::object*>(em::allow_raw_pointers());
+    em::val ret = pyjs::raw_apply(*self,
+                                  call[1],
+                                  call[2],
+                                  call[3].as<std::size_t>(),
+                                  call[4],
+                                  call[5],
+                                  call[6],
+                                  call[7].as<std::size_t>());
+    call.set(8, ret);
+}
+
+namespace pyjs
+{
     void export_py_object()
     {
         em::class_<py::object>("pyobject")

@@ -1,32 +1,57 @@
 # pyjs
 [![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml)
-[![CI](https://img.shields.io/badge/pyjs-docs-yellow)](https://emscripten-forge.github.io/pyjs/)
+[![docs](https://img.shields.io/badge/pyjs-docs-yellow)](https://emscripten-forge.github.io/pyjs/)
 
-# Important Notice
+pyjs is a modern [pybind11](https://github.com/pybind/pybind11) + emscripten
+[embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html)
+based Python <-> JavaScript foreign function interface (FFI) for wasm/emscripten
+compiled Python. The API is loosely based on the FFI of
+[pyodide](https://pyodide.org/en/stable/usage/type-conversions.html).
 
-The main branch is already using emscripten >=4.x and the experimental channel https://prefix.dev/channels/emscripten-forge-4x.
-The old emscripten 3.1.73 based branch is available at https://github.com/emscripten-forge/pyjs/tree/emscripten-3.1.73
+* Python 3.14, emscripten 6, `wasm32` and `wasm64`
+* runs in the browser main thread and in web workers
+* asyncio support: `await` JavaScript promises from Python and Python
+  coroutines from JavaScript
+* tested in Chromium, Firefox and WebKit (Safari)
+* distributed via [emscripten-forge](https://github.com/emscripten-forge/recipes)
 
+## Documentation
 
-
-## What is pyjs
-
-pyjs is  modern [pybind11](https://github.com/pybind/pybind11) + emscripten [Embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html) based
-Python <-> JavaScript foreign function interface (FFI) for wasm/emscripten compiled Python.
-
-The API is loosely based on the  FFI of [pyodide](https://pyodide.org/en/stable/usage/type-conversions.html).
-
-## Full Documentation
-See the [documentation](https://emscripten-forge.github.io/pyjs/) for a full documentation.
+See the [documentation](https://emscripten-forge.github.io/pyjs/).
 
 ## Try it out
-* To try it out, you can use the [playground](https://emscripten-forge.github.io/pyjs/lite/).
-* To create your own jupyterlite deployments use
+
+* the [Python REPL](https://emscripten-forge.github.io/pyjs/try.html) in the docs
+* the [JupyterLite playground](https://emscripten-forge.github.io/pyjs/lite/)
+* to create your own JupyterLite deployments, use
   [xeus-lite-demo](https://github.com/jupyterlite/xeus-lite-demo)
+
+## Installation
+
+pyjs is installed into an emscripten-forge environment:
+
+```yaml
+# environment.yml
+name: my-pyjs-env
+channels:
+  - https://repo.prefix.dev/emscripten-forge/6x
+  - conda-forge
+dependencies:
+  - pyjs-dev
+  - numpy
+```
+
+```bash
+micromamba create -f environment.yml --platform emscripten-wasm32 --prefix /path/to/env
+```
+
+See [deploying pyjs](https://emscripten-forge.github.io/pyjs/installation.html)
+for how to pack the environment with [empack](https://github.com/emscripten-forge/empack)
+and load it in the browser.
 
 ## Quickstart
 
-Access Javascript from Python:
+Access JavaScript from Python:
 
 ```python
 import pyjs
@@ -46,7 +71,7 @@ result = js_function(1, 2)
 
 Access Python from JavaScript:
 
-```JavaScript
+```javascript
 // hello world
 pyjs.eval("print('Hello, World!')")
 
@@ -56,3 +81,20 @@ const py_list = pyjs.eval("[i for i in range(10)]")
 // access
 console.log(py_list.get(0)) // same as py_list[0] on the python side
 ```
+
+## Development
+
+Building, testing, benchmarking and building the docs all go through
+`build_local.sh` (only [micromamba](https://mamba.readthedocs.io) is needed),
+the CI uses the same script:
+
+```bash
+./build_local.sh wasm32                 # build pyjs
+./build_local.sh wasm64 --test          # build + run the tests in the browser
+BROWSERS="chromium firefox webkit" ./build_local.sh wasm32 --test
+./build_local.sh wasm32 --bench         # FFI / asyncio benchmarks
+./build_local.sh wasm32 --docs          # sphinx docs + jupyterlite
+```
+
+See [development](https://emscripten-forge.github.io/pyjs/development.html)
+for details.

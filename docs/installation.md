@@ -2,8 +2,8 @@
 
 ## Prerequisites:
 
-Before we start, lets introduce a few concepts and tools that are used in the pyjs workflow.
-### Conda-forge Emscripten-Forge
+Before we start, let's introduce a few concepts and tools that are used in the pyjs workflow.
+### Emscripten-forge
 
 [Emscripten-forge](https://github.com/emscripten-forge/recipes) is similar to [conda-forge](https://conda-forge.org/) and provides packages compiled to webassembly using emscripten.
 
@@ -14,28 +14,30 @@ https://github.com/emscripten-forge/empack is a tool to "pack" conda environment
 ## Installation Steps
 
 So we assume there is a directory called `/path/to/deploy` where we will
-put all tools which  need to be served to the user.
+put all files which need to be served to the user.
 
 ### Define a conda environment
 Pyjs has a conda-like workflow. This means the first step 
-is to create a environment with the `pyjs` package installed
+is to create an environment with the `pyjs` package installed
 and all packages required for the project.
 
 ```yaml
-name: my-pyjs-env 
+name: my-pyjs-env
 channels:
-  - https://repo.prefix.dev/emscripten-forge-dev
-  - https://repo.prefix.dev/conda-forge
+  - https://repo.prefix.dev/emscripten-forge/6x
+  - conda-forge
 dependencies:
-  - pyjs
+  - pyjs-dev
   - numpy
 ```
 
-The name of the environment can be choosen by the user.
+The name of the environment can be chosen by the user.
 The `channels` section specifies the conda channels to use.
-The `https://repo.mamba.pm/emscripten-forge` is mandatory to install the `pyjs` package.
-The `conda-forge` channel is used to install `noarch`.
-All compiled packages need to be available in the `emscripten-forge` channel.
+The emscripten-forge channel (`https://repo.prefix.dev/emscripten-forge/6x`)
+is mandatory, it provides `pyjs` and all other packages compiled to WebAssembly.
+The `conda-forge` channel is used for `noarch` (pure Python) packages.
+`pyjs-dev` contains the pyjs Python module (`pyjs`) and the pyjs runtime
+(`libpyjs-static`, with `lib_js/pyjs/pyjs_runtime_browser.{js,wasm}`).
 
 ### Create the environment
 Assuming the yaml file above is called `environment.yml` and is in the current directory, the  environment can be created using `micromamba`:
@@ -102,4 +104,5 @@ The last step is to create a html file that loads the pyjs runtime and the packe
   <body>
     <h1>Pyjs Example</h1>
   </body>
+</html>
 ```

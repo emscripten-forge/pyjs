@@ -5,7 +5,8 @@ on:
   push:
     branches:
       - main
-  # pull_request:
+  # build (but do not deploy) the docs for pull requests
+  pull_request:
 
 
 defaults:
@@ -19,42 +20,37 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - emsdk_ver: "6.0.8"
-            python_version: "3.14"
-
-
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Get number of CPU cores
-        uses: SimenB/github-actions-cpu-cores@v1
-
-      - name: Install micromamba
-        uses: mamba-org/setup-micromamba@v1
+      # creates (and caches) the build env (incl. sphinx / jupyterlite),
+      # build_local.sh uses it via BUILD_ENV_PREFIX
+      - name: Install micromamba and the build env
+        uses: mamba-org/setup-micromamba@v2
         with:
-          environment-file: environment-dev.yml
-          environment-name: pyjs-wasm 
-          condarc: |
-            channels:
-              - https://repo.mamba.pm/emscripten-forge-4x
-              - conda-forge
-      
-      - name: build the docs
-        shell: bash -el {0}
+          environment-file: environment-wasm-build-wasm32.yml
+          environment-name: pyjs-build
+          cache-environment: true
+          init-shell: bash
+
+      # builds pyjs, xeus-python (from source, against this pyjs) and the
+      # sphinx docs with jupyterlite, then smoke tests the docs in a headless
+      # browser (pyjs in the xeus-python and javascript kernels)
+      - name: Build and test the docs
+        env:
+          PLAYWRIGHT_INSTALL_ARGS: --with-deps
         run: |
-          ./build_mkdocs.sh ${{matrix.emsdk_ver}} ${{ matrix.python_version }}
-  
+          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
+          export DOCS_OUT_DIR="$GITHUB_WORKSPACE/docs_build/html"
+          ./build_local.sh wasm32 --docs --test
+
       ################################################################
       # upload to github pages
       ################################################################
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs_build/mkdocs 
+          path: docs_build/html
 
 
   deploy:

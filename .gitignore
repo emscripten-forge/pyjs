@@ -1,6 +1,5 @@
 **__pycache__
 sandbox
-build_local.sh
 build
 build_repl
 build_tests/
@@ -14,3 +13,5 @@ xeus-python/
 emsdk_*
 docs_build/
 empack_config.yaml
+build_root/
+docs/_generated/

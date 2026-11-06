@@ -42,7 +42,7 @@ std::cout << "Python version: " << version_string << std::endl;
 
 
 ### embind
-There is a simmilar for emscripten called [embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html). It allows you to expose C++ types to JavaScript.
+There is a similar library for emscripten called [embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html). It allows you to expose C++ types to JavaScript.
 
 ```C++
 // main.cpp
@@ -57,7 +57,7 @@ EMSCRIPTEN_BINDINGS(my_class_example) {
     ;
 }
 ```
-To access JavasScript from C++, you would use the `emscripten::val` type. This is the pendant to `py::object` in pybind11.
+To access JavaScript from C++, you would use the `emscripten::val` type. This is the counterpart of `py::object` in pybind11.
 
 ```C++
 emscripten::val console = emscripten::val::global("console");
@@ -65,7 +65,7 @@ console.call<void>("log", "Hello, World!");
 ```
 
 ### pyjs
-The main idea of pyjs is, to export emscripten `emscripten::val` objects to Python with pybind11 and to export pybind11 `py::object` objects to JavaScript with embind. 
+The main idea of pyjs is to export emscripten `emscripten::val` objects to Python with pybind11 and to export pybind11 `py::object` objects to JavaScript with embind. 
 
 That way, we get a seamless integration of Python and JavaScript with relatively little effort and high level C++
 code.
@@ -86,12 +86,14 @@ Therefore all `py::object` objects that are created from javascript objects need
 
 ## Performance
 
-Compared to pyodide, pyjs is slowwer when crossing the language barrier. Yet itm is fast enough for all practical purposes. 
+Compared to pyodide, pyjs is slower when crossing the language barrier. Yet it is fast enough for all practical purposes.
+The FFI and the asyncio event loop are benchmarked, see [benchmarks](development.md#benchmarks).
 
 ## Packaging
 
-Pyjs is exclusively via [emscripten-forge](https://github.com/emscripten-forge/recipes).
+Pyjs is distributed exclusively via [emscripten-forge](https://github.com/emscripten-forge/recipes).
 
 ## Testing
 
-To test pyjs without manually inspecting a web page, we use [pyjs-code-runner](https://github.com/emscripten-forge/pyjs-code-runner). This is a tool that runs a Python script in a headless browser and returns the output. 
+To test pyjs without manually inspecting a web page, we use [pyjs-code-runner](https://github.com/emscripten-forge/pyjs-code-runner). This is a tool that runs a Python script in a headless browser and returns the output.
+See [tests](development.md#tests).

@@ -34,13 +34,13 @@ target_link_libraries(my_target PRIVATE pyjs)
 
 target_link_options(my_target
     PUBLIC "SHELL: -s LZ4=1"
-    PUBLIC "SHELL: --post-js  ${pyjs_PRO_JS_PATH}"
+    PUBLIC "SHELL: --post-js  ${pyjs_POST_JS_PATH}"
     PUBLIC "SHELL: --pre-js   ${pyjs_PRE_JS_PATH}"
     PUBLIC "SHELL: -s MAIN_MODULE=1"
     PUBLIC "SHELL: -s WASM_BIGINT"
     PUBLIC "-s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=\"['\$Browser', '\$ERRNO_CODES']\" "
 )
 ```
-As described in the [deployment](../installation) section, the needs to be packed.
-See the [pack the environment](../installation/#pack-the-environment)-section for instructions on to pack the environment with [`empack`](https://github.com/emscripten-forge/empack).
+As described in the [deployment](installation.md) section, the environment needs to be packed.
+See the [pack the environment](installation.md#pack-the-environment) section for instructions on how to pack the environment with [`empack`](https://github.com/emscripten-forge/empack).
 

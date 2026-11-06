@@ -1,7 +1,7 @@
 name: pyjs-wasm-deploy
 channels:
   - conda-forge
-  - https://repo.prefix.dev/emscripten-forge-bot/emscripten-forge-6x
+  - https://repo.prefix.dev/emscripten-forge/6x
 
 dependencies:
   - python

@@ -2,8 +2,24 @@ import asyncio
 import functools
 import pyjs_core
 from pyjs_core import _module, JsValue
-from .convert import to_py
+from .convert import to_py, error_to_py
+from .error_handling import JsException
 from .core import apply, japply
+
+
+def _rejection_to_exception(err):
+    """The exception for a rejected JS promise: a JsException subclass (JsError,
+    JsTypeError, ... like for errors thrown by synchronous JS calls, pyodide
+    compatible), also for rejections with non-Error values."""
+    if isinstance(err, JsValue):
+        try:
+            exc = error_to_py(err)
+        except Exception:
+            exc = None
+        if isinstance(exc, BaseException):
+            return exc
+    # e.g. reject("text"), reject(undefined) (arrive as python values)
+    return JsException(err, message=f"promise rejected with {err!r}")
 
 
 def extend_val():
@@ -34,9 +50,8 @@ def extend_val():
                 val = cb(val)
             future.set_result(val)
 
-        def _catch(str_err):
-            str_err = to_py(str_err)
-            future.set_exception(RuntimeError(str_err))
+        def _catch(err):
+            future.set_exception(_rejection_to_exception(err))
 
         binded_then = functools.partial(_then, cb=callback)
         pyjs_core._module._set_promise_then_catch(self, JsValue(binded_then), JsValue(_catch))

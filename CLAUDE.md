@@ -110,6 +110,12 @@ via `pyjs.error_to_py_and_raise` (`module/pyjs/convert.py`) -> `JsException` sub
 (`module/pyjs/error_handling.py`). The `js` module / `pyodide.ffi` polyfill:
 `module/pyjs/core.py`, `module/pyjs/pyodide_polyfill.py`.
 
+Awaiting a rejected JS promise raises a `JsException` subclass (`error_to_py`,
+like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
+`AbortError`), which is also a `RuntimeError` (it used to be a plain
+`RuntimeError` with a JSON string). `module/pyjs/extend_js_val.py`,
+`include/pyjs/pre_js/promise.js`.
+
 ## asyncio event loop (`module/pyjs/webloop.py`)
 
 - `WebLoop.call_soon` runs callbacks via the private `_MacrotaskQueue`:

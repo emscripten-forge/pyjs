@@ -331,10 +331,39 @@ async def test_webloop_await_js_rejected_promise():
     p = js.Function("return Promise.reject(new Error('nope'))")()
     try:
         await p
-    except Exception as e:
+    except pyjs.JsError as e:
+        # a JsException (pyodide compatible), still a RuntimeError (as before)
+        assert isinstance(e, pyjs.JsException) and isinstance(e, RuntimeError)
+        assert e.name == "Error"
         assert "nope" in str(e)
     else:
         raise AssertionError("expected an exception")
+
+
+async def test_webloop_await_js_rejected_promise_abort_error():
+    # what fetch / stream reads reject with when an AbortController aborts
+    # (code built on that, e.g. timeouts, checks the error's `name`)
+    p = js.Function("return Promise.reject(new DOMException('aborted', 'AbortError'))")()
+    try:
+        await p
+    except pyjs.JsException as e:
+        assert e.name == "AbortError", e.name
+    else:
+        raise AssertionError("expected an exception")
+
+
+async def test_webloop_await_js_rejected_promise_non_error_values():
+    for js_code, text in [
+        ("return Promise.reject('just a string')", "just a string"),
+        ("return Promise.reject(undefined)", "None"),
+        ("return Promise.reject(42)", "42"),
+    ]:
+        try:
+            await js.Function(js_code)()
+        except pyjs.JsException as e:
+            assert text in str(e), (js_code, str(e))
+        else:
+            raise AssertionError(f"expected an exception for {js_code}")
 
 
 async def test_webloop_js_awaits_python_coroutine_result():

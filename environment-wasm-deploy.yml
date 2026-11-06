@@ -8,3 +8,8 @@ dependencies:
   - emscripten-abi==6.0.8
   - numpy
   - pytest
+  # http stack (tests/tests/test_http.py): what scipy.datasets uses to download
+  - urllib3
+  - requests
+  - pyodide-http
+  - pooch

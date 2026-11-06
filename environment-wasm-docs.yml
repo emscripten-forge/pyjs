@@ -16,3 +16,7 @@ dependencies:
   - pybind11_json
   - xtl
   - xeus-python-shell-lite >=0.8,<0.9
+  # httpx2 in the docs kernels; its fetch transport httpx2_jsfetch is mounted
+  # from a git checkout (the conda package would pull in the pyjs package),
+  # see build_local.sh / docs/conf.py
+  - httpx2

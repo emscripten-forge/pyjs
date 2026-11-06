@@ -181,6 +181,21 @@ if [ "$FRESH" = "1" ]; then
 fi
 
 # create_env <prefix> <env-file> [extra micromamba args...]
+# httpx2_jsfetch (pure python httpx2 transport via JS fetch), cloned once,
+# mounted into the tests and the docs kernels; sets HTTPX2_JSFETCH_PKG
+get_httpx2_jsfetch() {
+    if [ ! -d "$HTTPX2_JSFETCH_SRC" ]; then
+        mkdir -p "$(dirname "$HTTPX2_JSFETCH_SRC")"
+        git clone --depth 1 --branch "$HTTPX2_JSFETCH_REF" "$HTTPX2_JSFETCH_REPO" "$HTTPX2_JSFETCH_SRC"
+    fi
+    # src layout (emscripten-forge version) or flat (pyodide original)
+    HTTPX2_JSFETCH_PKG="$HTTPX2_JSFETCH_SRC/src/httpx2_jsfetch"
+    if [ ! -d "$HTTPX2_JSFETCH_PKG" ]; then
+        HTTPX2_JSFETCH_PKG="$HTTPX2_JSFETCH_SRC/httpx2_jsfetch"
+    fi
+    echo "httpx2_jsfetch: $HTTPX2_JSFETCH_REPO @ $HTTPX2_JSFETCH_REF"
+}
+
 create_env() {
     local prefix="$1" env_file="$2"
     shift 2
@@ -362,6 +377,10 @@ if [ "$RUN_DOCS" = "1" ]; then
     fi
     export PYJS_DOCS_EXTRA_DIR="$DOCS_EXTRA_DIR"
 
+    # mounted into the docs kernels next to module/pyjs (docs/conf.py)
+    get_httpx2_jsfetch
+    export PYJS_DOCS_HTTPX2_JSFETCH="$HTTPX2_JSFETCH_PKG"
+
     # docs/conf.py passes these envs to jupyterlite-xeus as kernel envs:
     # two independent jupyterlite deployments, lite/ (wasm32, built by sphinx)
     # and lite64/ (wasm64, built below)
@@ -433,16 +452,7 @@ fi
 if [ "$RUN_TESTS" = "1" ]; then
     cd "$THIS_DIR"
     TEST_SUMMARY=()
-    if [ ! -d "$HTTPX2_JSFETCH_SRC" ]; then
-        mkdir -p "$(dirname "$HTTPX2_JSFETCH_SRC")"
-        git clone --depth 1 --branch "$HTTPX2_JSFETCH_REF" "$HTTPX2_JSFETCH_REPO" "$HTTPX2_JSFETCH_SRC"
-    fi
-    # src layout (emscripten-forge version) or flat (pyodide original)
-    HTTPX2_JSFETCH_PKG="$HTTPX2_JSFETCH_SRC/src/httpx2_jsfetch"
-    if [ ! -d "$HTTPX2_JSFETCH_PKG" ]; then
-        HTTPX2_JSFETCH_PKG="$HTTPX2_JSFETCH_SRC/httpx2_jsfetch"
-    fi
-    echo "httpx2_jsfetch: $HTTPX2_JSFETCH_REPO @ $HTTPX2_JSFETCH_REF"
+    get_httpx2_jsfetch
     TEST_RET=0
     for BROWSER in $BROWSERS; do
     for BACKEND in $BACKENDS; do

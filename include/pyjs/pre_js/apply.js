@@ -15,6 +15,7 @@ function isPromise(p) {
 }
 
 
+
 Module['_apply_try_catch'] = function(obj, args, is_generated_proxy) {
     try {
         let res = obj(...args);

@@ -55,7 +55,6 @@ add_custom_command(OUTPUT "pyjs_pre.js"
         ${CMAKE_SOURCE_DIR}/build_utils/merge_js.py
         ${PREJS_FILES}
         pyjs_pre.js
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/js_timestamp.cpp
     DEPENDS ${PREJS_FILES}
 )
 
@@ -64,7 +63,6 @@ add_custom_command(OUTPUT "pyjs_post.js"
         ${CMAKE_SOURCE_DIR}/build_utils/merge_js.py
         ${POSTJS_FILES}
         pyjs_post.js
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/js_timestamp.cpp
     DEPENDS  ${POSTJS_FILES})
 
 ##########################################################
@@ -93,7 +91,6 @@ add_library(pyjs STATIC
     src/export_py_object.cpp
     src/convert.cpp
     src/export_pyjs_module.cpp
-    src/js_timestamp.cpp
     src/inflate.cpp
     src/untar.cpp
     src/install_conda_file.cpp
@@ -176,6 +173,8 @@ target_include_directories(pyjs_runtime_browser
 set_target_properties(pyjs_runtime_browser
     PROPERTIES
         CXX_STANDARD 17
+        # relink when the merged --pre-js / --post-js files change
+        LINK_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js;${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js"
 )
 target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYJS_WEB)
 target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)

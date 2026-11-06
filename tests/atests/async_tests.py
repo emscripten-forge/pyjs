@@ -47,6 +47,48 @@ async def test_callbacks_in_async_2():
     assert result == 42
 
 
+async def test_js_webgpu():
+
+    has_webgpu = pyjs.to_py(
+        pyjs.js.Function(
+            "return typeof navigator !== 'undefined' && navigator.gpu !== undefined"
+        )()
+    )
+    assert has_webgpu, "this browser does not expose navigator.gpu"
+
+    async_js_function = pyjs.js.Function(
+        """
+        return async function(){
+            const format = navigator.gpu.getPreferredCanvasFormat()
+            const adapter = await navigator.gpu.requestAdapter()
+            if (adapter === null){
+                return {status: "no adapter", format: format}
+            }
+            const device = await adapter.requestDevice()
+            if (device === null){
+                return {status: "no device", format: format}
+            }
+            return {
+                status: "ok",
+                format: format,
+                maxComputeWorkgroupSizeX: device.limits.maxComputeWorkgroupSizeX,
+            }
+        }
+    """
+    )()
+
+    result = pyjs.to_py(await async_js_function())
+
+    # no adapter needed to query the preferred canvas format
+    assert result["format"] in ("bgra8unorm", "rgba8unorm")
+
+    if result["status"] != "ok":
+        print(f"skip adapter/device part of the browser webgpu test: {result['status']}")
+        return
+
+    assert result["maxComputeWorkgroupSizeX"] >= 1
+
+
 async def trigger_js_tests():
 
     js_test_path = Path(__file__).parents[1] / "jtests" / "test_main.js"

@@ -8,6 +8,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 option(WASM64 "Enable WebAssembly 64-bit support" OFF)
 
+option(PYJS_WEBGPU "Enable WebGPU support (emdawnwebgpu port)" OFF)
 
 
 if (NOT DEFINED PY_VERSION)
@@ -218,6 +219,11 @@ target_link_options(pyjs_runtime_browser
     PUBLIC "SHELL: --pre-js pyjs_pre.js"
     PUBLIC "SHELL: -lembind"
 )
+
+if(PYJS_WEBGPU)
+    target_compile_options(pyjs_runtime_browser PUBLIC "SHELL: --use-port=emdawnwebgpu")
+    target_link_options(pyjs_runtime_browser PUBLIC "SHELL: --use-port=emdawnwebgpu")
+endif()
 
 
 # target_link_options(pyjs_runtime_browser PRIVATE

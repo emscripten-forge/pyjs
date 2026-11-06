@@ -71,6 +71,7 @@ jobs:
           -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
           -DBUILD_RUNTIME_BROWSER=ON \
           -DBUILD_RUNTIME_NODE=OFF \
+          -DPYJS_WEBGPU=ON \
           -DCMAKE_INSTALL_PREFIX=$PREFIX \
           -DLINK_LIBLZMA=ON \
           -DPY_VERSION=$PY_VER \

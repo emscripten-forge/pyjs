@@ -37,6 +37,10 @@
 #                BENCH_FILTER (only run benchmarks whose "module::name"
 #                contains this substring)
 #                XEUS_PYTHON_REF (xeus-python tag used by --docs)
+#                HTTPX2_JSFETCH_REPO / HTTPX2_JSFETCH_REF (git repo / tag of the
+#                httpx2 fetch transport mounted into the tests, default
+#                httpx2-jsfetch-emscripten-forge 0.1.2; the pyodide original:
+#                https://github.com/hoodmane/httpx2-jsfetch main)
 #                DOCS_OUT_DIR (html output of --docs)
 #                DOCS_WASM64=0 (--docs: without the wasm64 kernel / pyjs runtime)
 #                DOCS_WASM64_BUILD_ENV_PREFIX (--docs: existing wasm64 build env,
@@ -138,6 +142,12 @@ if [ "$RUN_DOCS" = "1" ]; then
     BUILD_DIR="$BUILD_ROOT/build_docs_$WASM_TYPE"
 fi
 XEUS_PYTHON_REF="${XEUS_PYTHON_REF:-0.19.1}"
+# httpx2 transport via JS fetch (pure python), mounted into the tests.
+# default: the pyjs version (emscripten-forge); the pyodide original works too
+# (HTTPX2_JSFETCH_REPO=https://github.com/hoodmane/httpx2-jsfetch HTTPX2_JSFETCH_REF=main)
+HTTPX2_JSFETCH_REPO="${HTTPX2_JSFETCH_REPO:-https://github.com/davidbrochart/httpx2-jsfetch-emscripten-forge}"
+HTTPX2_JSFETCH_REF="${HTTPX2_JSFETCH_REF:-0.1.2}"
+HTTPX2_JSFETCH_SRC="$BUILD_ROOT/src/$(basename "$HTTPX2_JSFETCH_REPO")-$HTTPX2_JSFETCH_REF"
 XEUS_PYTHON_SRC="$BUILD_ROOT/src/xeus-python-$XEUS_PYTHON_REF"
 XEUS_PYTHON_BUILD_DIR="$BUILD_ROOT/build_xeus_python_$WASM_TYPE"
 DOCS_OUT_DIR="${DOCS_OUT_DIR:-$BUILD_ROOT/docs_html}"
@@ -423,6 +433,16 @@ fi
 if [ "$RUN_TESTS" = "1" ]; then
     cd "$THIS_DIR"
     TEST_SUMMARY=()
+    if [ ! -d "$HTTPX2_JSFETCH_SRC" ]; then
+        mkdir -p "$(dirname "$HTTPX2_JSFETCH_SRC")"
+        git clone --depth 1 --branch "$HTTPX2_JSFETCH_REF" "$HTTPX2_JSFETCH_REPO" "$HTTPX2_JSFETCH_SRC"
+    fi
+    # src layout (emscripten-forge version) or flat (pyodide original)
+    HTTPX2_JSFETCH_PKG="$HTTPX2_JSFETCH_SRC/src/httpx2_jsfetch"
+    if [ ! -d "$HTTPX2_JSFETCH_PKG" ]; then
+        HTTPX2_JSFETCH_PKG="$HTTPX2_JSFETCH_SRC/httpx2_jsfetch"
+    fi
+    echo "httpx2_jsfetch: $HTTPX2_JSFETCH_REPO @ $HTTPX2_JSFETCH_REF"
     TEST_RET=0
     for BROWSER in $BROWSERS; do
     for BACKEND in $BACKENDS; do
@@ -444,6 +464,7 @@ if [ "$RUN_TESTS" = "1" ]; then
             --conda-env     "$DEPLOY_PREFIX" \
             --mount         "$SRC_DIR/tests:/tests" \
             --mount         "$BUILD_DIR/test_config:/test_config" \
+            --mount         "$HTTPX2_JSFETCH_PKG:/lib/python${PY_VER}/site-packages/httpx2_jsfetch" \
             --mount         "$SRC_DIR/module/pyjs:/lib/python${PY_VER}/site-packages/pyjs" \
             --script        main.py \
             --work-dir      /tests \

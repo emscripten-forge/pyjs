@@ -13,3 +13,7 @@ dependencies:
   - requests
   - pyodide-http
   - pooch
+  # httpx2 (tests/atests/httpx_tests.py); its pyjs fetch transport
+  # httpx2-jsfetch is mounted from a git checkout by build_local.sh (the conda
+  # package would also pull in the pyjs package)
+  - httpx2

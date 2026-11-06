@@ -11,7 +11,6 @@
 
 import asyncio
 import collections
-import contextlib
 import contextvars
 import os
 import sys
@@ -117,7 +116,6 @@ class WebLoop(asyncio.AbstractEventLoop):
         self._exception_handler = None
         self._current_handle = None
         self._set_timeout = js.setTimeout
-        self._n_unfinished = 0
         self._macrotask_queue = _MacrotaskQueue() if _MacrotaskQueue.is_supported() else None
 
     def get_debug(self):
@@ -192,18 +190,15 @@ class WebLoop(asyncio.AbstractEventLoop):
             # fallback for environments without a fast macrotask primitive
             return self.call_later(0, callback, *args, context=context)
 
-        self._n_unfinished += 1
         h = asyncio.Handle(callback, args, self, context=context)
         self._macrotask_queue.push(self._make_handle_runner(h))
         return h
 
-    def _make_handle_runner(self, h: asyncio.Handle) -> Callable[[], None]:
+    @staticmethod
+    def _make_handle_runner(h: asyncio.Handle) -> Callable[[], None]:
         def run_handle():
-            try:
-                if not h.cancelled():
-                    h._run()
-            finally:
-                self._n_unfinished -= 1
+            if not h.cancelled():
+                h._run()
 
         return run_handle
 
@@ -243,7 +238,6 @@ class WebLoop(asyncio.AbstractEventLoop):
         if delay < 0:
             raise ValueError("Can't schedule in the past")
 
-        self._n_unfinished += 1
         h = asyncio.Handle(callback, args, self, context=context)
         run_handle = self._make_handle_runner(h)
 

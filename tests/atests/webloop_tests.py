@@ -130,13 +130,19 @@ async def test_webloop_call_soon_exception_goes_to_handler():
 
 
 async def test_webloop_call_soon_before_call_later():
-    order = []
     loop = _loop()
+    if loop._macrotask_queue is None:
+        # setTimeout fallback (Safari): call_soon is setTimeout(0), which is
+        # clamped to >= 4ms when nested, so the browser may run the earlier
+        # scheduled 5ms timer first. The ordering is only guaranteed on the
+        # fast path.
+        return
+    order = []
     loop.call_later(0.005, order.append, "later")
     for i in range(5):
         loop.call_soon(order.append, i)
     await _wait_for(lambda: len(order) == 6)
-    assert order == [0, 1, 2, 3, 4, "later"]
+    assert order == [0, 1, 2, 3, 4, "later"], order
 
 
 async def test_webloop_call_soon_many():

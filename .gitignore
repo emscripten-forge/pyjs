@@ -14,3 +14,4 @@ emsdk_*
 docs_build/
 empack_config.yaml
 build_root/
+docs/_generated/

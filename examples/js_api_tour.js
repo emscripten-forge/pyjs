@@ -4,34 +4,39 @@
 
 // %% [markdown]
 // # Loading the pyjs module
+// In this deployment, the pyjs runtime (`pyjs_runtime_browser.js` / `.wasm`) and a
+// packed environment (python, numpy, ...) are deployed next to the JupyterLite,
+// in `pyjs-runtime/`. This works with both JavaScript kernels: the IFrame kernel
+// (code runs in an iframe of the JupyterLite page) and the Web Worker kernel
+// (code runs in a worker started from the kernel extension in `lite/extensions/`).
 
 // %% [code]
-// load the pyjs runtime by importing the pyjs_runtime_browser.js file
-// the url differs depending on the deployment
-importScripts("../../../../xeus/bin/pyjs_runtime_browser.js");
+// locate the JupyterLite root and the pyjs runtime next to it
+const liteRoot = globalThis.document
+    // IFrame kernel: the iframe has the url of the JupyterLite page (lite/<app>/index.html)
+    ? new URL("../", document.baseURI).href
+    // Web Worker kernel: the worker script lives in lite/extensions/...
+    : location.href.slice(0, location.href.indexOf("/extensions/") + 1);
+const pyjsRuntimeUrl = new URL("../pyjs-runtime/", liteRoot).href;
 
-// the locateFile function is used to locate the wasm file
-// which sits next to the pyjs_runtime_browser.js file 
-// in thism deployment
-let locateFile = function(filename){
-    if(filename.endsWith('pyjs_runtime_browser.wasm')){
-        return `../../../../xeus/bin/pyjs_runtime_browser.wasm`;
-    }
-};
+// pyjs_runtime_browser.js is a classic script (not an ES module):
+// evaluate it in the global scope, which defines `createModule`
+const runtimeSource = await (await fetch(pyjsRuntimeUrl + "pyjs_runtime_browser.js")).text();
+(0, eval)(runtimeSource);
 
-// the createModule function in from the pyjs runtime
-// is used to create the pyjs module
-let pyjs = await createModule({locateFile:locateFile});
+// create the pyjs module, the wasm file sits next to the js file
+const pyjs = await createModule({
+    locateFile: (filename) => pyjsRuntimeUrl + filename,
+});
 
-// load the python packages (includung the python standard library)
-// from the empack environment 
-packages_json_url = "../../../../xeus/kernels/xpython/empack_env_meta.json"
-package_tarballs_root_url = "../../../../xeus/kernel_packages/"          
+// load the python packages (including the python standard library)
+// from the packed environment
 await pyjs.bootstrap_from_empack_packed_environment(
-    packages_json_url,
-    package_tarballs_root_url
+    pyjsRuntimeUrl + "empack_env_meta.json", // the environment meta data
+    pyjsRuntimeUrl                           // where the package tarballs are
 );
-
+globalThis.pyjs = pyjs;
+"pyjs is ready";
 
 // %% [markdown]
 // # Evaluating Python expressions:

@@ -17,12 +17,12 @@ dependencies:
   - playwright-python
   - pyjs_code_runner >= 2.0.1
   - exceptiongroup
-  # documentation
+  # documentation (sphinx + jupyterlite, see build_local.sh --docs)
   - jupytext
-  - mkdocs
-  - mkdocstrings
-  - mkdocstrings-python
-  - mkdocs-material
+  - sphinx
+  - sphinx-autoapi
+  - myst-parser
+  - pydata-sphinx-theme
   - empack >=6.0.0
   - jupyter_server  # to enable contents  
   - jupyterlite
@@ -34,3 +34,6 @@ dependencies:
   - pip:
     - JLDracula
     - pyjs_code_runner >= 3.0
+    # javascript kernel for the docs jupyterlite (iframe + web worker runtime,
+    # top level await), only available as pre-release
+    - jupyterlite-javascript-kernel == 0.4.0a5

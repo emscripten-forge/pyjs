@@ -138,7 +138,10 @@ def _write_lite_config(prefix, path):
     config = {
         "XeusAddon": {
             "prefix": [prefix],
-            "default_channels": ["https://repo.prefix.dev/emscripten-forge/6x"],
+            "default_channels": [
+                "https://repo.prefix.dev/conda-forge",
+                "https://repo.prefix.dev/emscripten-forge/6x"
+            ],
             "mounts": [f"{ROOT / 'module' / 'pyjs'}:/lib/{py_ver}/site-packages/pyjs"],
         }
     }

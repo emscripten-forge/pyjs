@@ -241,6 +241,17 @@ echo "  library: $PREFIX/lib/libpyjs.a"
 # docs: xeus-python (built against this pyjs) + sphinx / jupyterlite
 ########################################
 if [ "$RUN_DOCS" = "1" ]; then
+    # xeus-python must be built against the pyjs from this repository (installed
+    # into the prefix above): the env must not contain a pyjs package
+    for pkg in pyjs pyjs-dev libpyjs-static; do
+        if compgen -G "$PREFIX/conda-meta/$pkg-[0-9]*.json" > /dev/null; then
+            echo "Error: the docs host env $PREFIX contains the conda package '$pkg'"
+            echo "       (pulled in by environment-wasm.yml / environment-wasm-docs.yml),"
+            echo "       xeus-python would not be built against the pyjs from this repository."
+            exit 1
+        fi
+    done
+
     if [ ! -d "$XEUS_PYTHON_SRC" ]; then
         mkdir -p "$(dirname "$XEUS_PYTHON_SRC")"
         git clone --depth 1 --branch "$XEUS_PYTHON_REF" \

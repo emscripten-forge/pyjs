@@ -1,8 +1,16 @@
-# webloop impl is from pyodide:
-# see webloop_LICENSE for license
-# and webloop_README for more info
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+# (a copy is distributed next to this file as webloop_LICENSE)
+#
+# Adapted from pyodide (https://github.com/pyodide/pyodide), modified for pyjs:
+#   - WebLoop:          src/py/pyodide/webloop.py
+#   - _MacrotaskQueue:  src/js/scheduler.ts (zero-delay scheduling via
+#                       MessageChannel / setImmediate, Safari exclusion)
+# see webloop_README.md for more info
 
 import asyncio
+import collections
 import contextlib
 import contextvars
 import os
@@ -16,6 +24,72 @@ import pyjs_core._module
 from typing import Any, Dict, List, Tuple, Union
 
 
+class _MacrotaskQueue:
+    """Run python callables as separate macrotasks, as soon as possible.
+
+    Private implementation detail of ``WebLoop.call_soon``.
+
+    ``setTimeout(cb, 0)`` is clamped to >= 4ms by browsers once timeouts are
+    nested 5 or more levels deep, which an asyncio loop does all the time
+    (every ``await asyncio.sleep(0)``, every task wake-up, ...). Instead, each
+    ``push`` posts one message on a private ``MessageChannel`` (in node:
+    ``setImmediate``). These run as macrotasks (so the browser can still
+    render / handle events in between) and in order, so the pushed callables
+    run FIFO, one per macrotask.
+
+    Safari is excluded: MessageChannel is slow there and messes up the event
+    loop (see pyodide/pyodide#4583); ``is_supported()`` is False and the loop
+    falls back to ``setTimeout``.
+
+    The JS side only exists inside a closure, nothing is added to any global
+    namespace and nothing is observable from the outside.
+    """
+
+    _js_is_supported = js.Function(
+        """
+        if (typeof process === "object" && process.versions && process.versions.node) {
+            return typeof setImmediate === "function";
+        }
+        const is_safari =
+            typeof navigator === "object" &&
+            typeof navigator.userAgent === "string" &&
+            navigator.userAgent.indexOf("Chrome") === -1 &&
+            navigator.userAgent.indexOf("Safari") > -1;
+        return !is_safari && typeof MessageChannel === "function";
+        """
+    )
+    _js_make_poster = js.Function(
+        "on_message",
+        """
+        if (typeof process === "object" && process.versions && process.versions.node) {
+            return () => { setImmediate(() => on_message()); };
+        }
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => on_message();
+        return () => channel.port2.postMessage(undefined);
+        """,
+    )
+
+    @classmethod
+    def is_supported(cls) -> bool:
+        return bool(cls._js_is_supported())
+
+    def __init__(self):
+        from .core import create_callable
+
+        self._queue = collections.deque()
+        # never deleted: the queue lives as long as its loop, ie forever
+        self._js_on_message, self._js_on_message_handle = create_callable(self._run_next)
+        self._post = self._js_make_poster(self._js_on_message)
+
+    def push(self, fn: Callable[[], None]) -> None:
+        self._queue.append(fn)
+        self._post()
+
+    def _run_next(self) -> None:
+        self._queue.popleft()()
+
+
 class WebLoop(asyncio.AbstractEventLoop):
     """A custom event loop for use in pyodide
 
@@ -26,11 +100,12 @@ class WebLoop(asyncio.AbstractEventLoop):
     because we only have one thread so blocking would stall the browser event loop
     and prevent anything from ever happening.
 
-    We defer all work to the browser event loop using the setTimeout function.
-    To ensure that this event loop doesn't stall out UI and other browser handling,
-    we want to make sure that each task is scheduled on the browser event loop as a
-    task not as a microtask. ``setTimeout(callback, 0)`` enqueues the callback as a
-    task so it works well for our purposes.
+    We defer all work to the browser event loop. To ensure that this event loop
+    doesn't stall out UI and other browser handling, each callback is scheduled on
+    the browser event loop as a task (not as a microtask): ``call_soon`` runs the
+    callback as a separate browser task as soon as possible (without the >= 4ms
+    clamping of nested ``setTimeout(callback, 0)``), ``call_later`` uses
+    ``setTimeout(callback, delay)``.
 
     See `Event Loop Methods
         <https://docs.python.org/3/library/asyncio-eventloop.html#asyncio-event-loop>`_.
@@ -43,6 +118,7 @@ class WebLoop(asyncio.AbstractEventLoop):
         self._current_handle = None
         self._set_timeout = js.setTimeout
         self._n_unfinished = 0
+        self._macrotask_queue = _MacrotaskQueue() if _MacrotaskQueue.is_supported() else None
 
     def get_debug(self):
         return False
@@ -109,10 +185,27 @@ class WebLoop(asyncio.AbstractEventLoop):
         Any positional arguments after the callback will be passed to
         the callback when it is called.
 
-        This schedules the callback on the browser event loop using ``setTimeout(callback, 0)``.
+        The callback is run as a separate task on the browser event loop.
+        Callbacks are run in the order in which they are registered.
         """
-        delay = 0
-        return self.call_later(delay, callback, *args, context=context)
+        if self._macrotask_queue is None:
+            # fallback for environments without a fast macrotask primitive
+            return self.call_later(0, callback, *args, context=context)
+
+        self._n_unfinished += 1
+        h = asyncio.Handle(callback, args, self, context=context)
+        self._macrotask_queue.push(self._make_handle_runner(h))
+        return h
+
+    def _make_handle_runner(self, h: asyncio.Handle) -> Callable[[], None]:
+        def run_handle():
+            try:
+                if not h.cancelled():
+                    h._run()
+            finally:
+                self._n_unfinished -= 1
+
+        return run_handle
 
     def call_soon_threadsafe(
         self, callback: Callable, *args, context: contextvars.Context = None
@@ -152,17 +245,7 @@ class WebLoop(asyncio.AbstractEventLoop):
 
         self._n_unfinished += 1
         h = asyncio.Handle(callback, args, self, context=context)
-
-        @contextlib.contextmanager
-        def decrementor():
-            yield
-            self._n_unfinished -= 1
-
-        def run_handle():
-            with decrementor():
-                if h.cancelled():
-                    return
-                h._run()
+        run_handle = self._make_handle_runner(h)
 
         # instead of using `pyjs.create_once_callable` we
         # use an internal optimized function, that does not allow for

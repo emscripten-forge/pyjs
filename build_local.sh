@@ -1,13 +1,19 @@
 #!/bin/bash
 # Local build of pyjs
 #
-# Usage: ./build_local.sh [wasm32|wasm64] [--fresh] [--test]
+# Usage: ./build_local.sh [wasm32|wasm64] [--fresh] [--test] [--bench]
 #
 #   --fresh   delete and recreate the environments and the build dir
-#   --test    run the browser tests (main thread) with pyjs_code_runner
+#   --test    run the browser tests with pyjs_code_runner
+#   --bench   run the benchmarks in benchmarks/ and store the output in
+#             build_root/benchmarks/<wasm>/<stamp>_<backend>.{log,json}
+#   (both run in the browser main thread and in a worker, see BACKENDS)
 #
 # Env overrides: NUM_JOBS, MAMBA_EXE,
 #                SRC_DIR (pyjs source tree, default: this dir)
+#                BACKENDS (default: "browser-main browser-worker")
+#                BENCH_FILTER (only run benchmarks whose "module::name"
+#                contains this substring)
 #
 # Environments (all under build_root/):
 #   build_prefix_<wasm>/   native env      environment-wasm-build-<wasm>.yml
@@ -26,13 +32,15 @@ set -euo pipefail
 WASM_TYPE="wasm32"
 FRESH=0
 RUN_TESTS=0
+RUN_BENCH=0
 for arg in "$@"; do
     case "$arg" in
         wasm32|wasm64) WASM_TYPE="$arg" ;;
         --fresh)       FRESH=1 ;;
         --test)        RUN_TESTS=1 ;;
+        --bench)       RUN_BENCH=1 ;;
         *)
-            echo "Usage: $0 [wasm32|wasm64] [--fresh] [--test]"
+            echo "Usage: $0 [wasm32|wasm64] [--fresh] [--test] [--bench]"
             exit 1
             ;;
     esac
@@ -56,6 +64,9 @@ BUILD_PREFIX="$BUILD_ROOT/build_prefix_$WASM_TYPE"
 HOST_PREFIX="$BUILD_ROOT/host_prefix_$WASM_TYPE"
 DEPLOY_PREFIX="$BUILD_ROOT/deploy_prefix_$WASM_TYPE"
 BUILD_DIR="$BUILD_ROOT/build_$WASM_TYPE"
+BENCH_OUT_DIR="$BUILD_ROOT/benchmarks/$WASM_TYPE"
+# pyjs_code_runner backends used by --test / --bench
+BACKENDS="${BACKENDS:-browser-main browser-worker}"
 
 ########################################
 # find micromamba / mamba
@@ -165,26 +176,110 @@ echo "  library: $PREFIX/lib/libpyjs.a"
 ########################################
 create_env "$DEPLOY_PREFIX" "$DEPLOY_ENV_FILE" --platform "$PLATFORM"
 
+if [ "$RUN_TESTS" = "1" ] || [ "$RUN_BENCH" = "1" ]; then
+    playwright install chromium
+fi
+
 ########################################
 # tests
 ########################################
 if [ "$RUN_TESTS" = "1" ]; then
     cd "$THIS_DIR"
-    playwright install chromium
-    mkdir -p "$BUILD_DIR/host_work_dir"
-    # the pyjs python module is mounted from the source tree,
-    # the runtime (js/wasm) is taken from the build dir
-    pyjs_code_runner run script \
-        browser-main \
-        --conda-env     "$DEPLOY_PREFIX" \
-        --mount         "$SRC_DIR/tests:/tests" \
-        --mount         "$SRC_DIR/module/pyjs:/lib/python${PY_VER}/site-packages/pyjs" \
-        --script        main.py \
-        --work-dir      /tests \
-        --host-work-dir "$BUILD_DIR/host_work_dir" \
-        --headless \
-        --no-cache \
-        --slow-mo 0 \
-        --async-main \
-        --pyjs-dir      "$BUILD_DIR"
+    for BACKEND in $BACKENDS; do
+        echo "========================================"
+        echo "tests: $BACKEND"
+        echo "========================================"
+        mkdir -p "$BUILD_DIR/host_work_dir_$BACKEND"
+        # the pyjs python module is mounted from the source tree,
+        # the runtime (js/wasm) is taken from the build dir
+        pyjs_code_runner run script \
+            "$BACKEND" \
+            --conda-env     "$DEPLOY_PREFIX" \
+            --mount         "$SRC_DIR/tests:/tests" \
+            --mount         "$SRC_DIR/module/pyjs:/lib/python${PY_VER}/site-packages/pyjs" \
+            --script        main.py \
+            --work-dir      /tests \
+            --host-work-dir "$BUILD_DIR/host_work_dir_$BACKEND" \
+            --headless \
+            --no-cache \
+            --slow-mo 0 \
+            --async-main \
+            --pyjs-dir      "$BUILD_DIR"
+    done
+fi
+
+########################################
+# benchmarks
+########################################
+if [ "$RUN_BENCH" = "1" ]; then
+    cd "$THIS_DIR"
+    mkdir -p "$BUILD_DIR/bench_config" "$BENCH_OUT_DIR"
+
+    # config read by benchmarks/main.py (mounted at /bench_config)
+    BENCH_FILTER="${BENCH_FILTER:-}" python -c '
+import json, os, sys
+cfg = {}
+if os.environ["BENCH_FILTER"]:
+    cfg["filter"] = os.environ["BENCH_FILTER"]
+json.dump(cfg, open(sys.argv[1], "w"))
+' "$BUILD_DIR/bench_config/config.json"
+
+    GIT_REV="$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    if [ -n "$(git -C "$SRC_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+        GIT_REV="$GIT_REV-dirty"
+    fi
+    STAMP="$(date +%Y%m%d-%H%M%S)_$GIT_REV"
+
+    BENCH_RET=0
+    for BACKEND in $BACKENDS; do
+        echo "========================================"
+        echo "benchmarks: $BACKEND"
+        echo "========================================"
+        mkdir -p "$BUILD_DIR/host_work_dir_bench_$BACKEND"
+        BENCH_LOG="$BENCH_OUT_DIR/${STAMP}_$BACKEND.log"
+        BENCH_JSON="$BENCH_OUT_DIR/${STAMP}_$BACKEND.json"
+
+        set +e
+        pyjs_code_runner run script \
+            "$BACKEND" \
+            --conda-env     "$DEPLOY_PREFIX" \
+            --mount         "$SRC_DIR/benchmarks:/benchmarks" \
+            --mount         "$BUILD_DIR/bench_config:/bench_config" \
+            --mount         "$SRC_DIR/module/pyjs:/lib/python${PY_VER}/site-packages/pyjs" \
+            --script        main.py \
+            --work-dir      /benchmarks \
+            --host-work-dir "$BUILD_DIR/host_work_dir_bench_$BACKEND" \
+            --headless \
+            --no-cache \
+            --slow-mo 0 \
+            --async-main \
+            --pyjs-dir      "$BUILD_DIR" 2>&1 | tee "$BENCH_LOG"
+        RET=${PIPESTATUS[0]}
+        set -e
+        if [ "$RET" != "0" ]; then BENCH_RET=$RET; fi
+
+        # extract the machine readable result line and add build metadata
+        python - "$BENCH_LOG" "$BENCH_JSON" "$WASM_TYPE" "$GIT_REV" "$STAMP" "$BACKEND" <<'PYEOF'
+import json, sys
+log, out, wasm_type, git_rev, stamp, backend = sys.argv[1:]
+marker = "PYJS_BENCH_RESULT_JSON:"
+payload = None
+with open(log) as f:
+    for line in f:
+        idx = line.find(marker)
+        if idx != -1:
+            payload = json.loads(line[idx + len(marker):])
+if payload is None:
+    sys.exit(f"no benchmark results found in {log}")
+payload["build"] = dict(wasm_type=wasm_type, git_rev=git_rev, timestamp=stamp, backend=backend)
+with open(out, "w") as f:
+    json.dump(payload, f, indent=2)
+PYEOF
+        ln -sf "$(basename "$BENCH_LOG")" "$BENCH_OUT_DIR/latest_$BACKEND.log"
+        ln -sf "$(basename "$BENCH_JSON")" "$BENCH_OUT_DIR/latest_$BACKEND.json"
+        echo ""
+        echo "benchmark output: $BENCH_LOG"
+        echo "benchmark json:   $BENCH_JSON"
+    done
+    exit "$BENCH_RET"
 fi

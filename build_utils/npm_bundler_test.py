@@ -165,10 +165,12 @@ def write_project(bundler, tgz, name):
 
 
 def run(cmd, cwd, log):
+    # CI=true: like on CI (e.g. parcel does not auto install node polyfills)
+    env = {**os.environ, "CI": "true"}
     with open(log, "a") as f:
         f.write(f"\n$ {' '.join(cmd)}\n")
         f.flush()
-        return subprocess.run(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT).returncode
+        return subprocess.run(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT, env=env).returncode
 
 
 def build(bundler, project):

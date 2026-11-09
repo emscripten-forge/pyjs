@@ -66,6 +66,13 @@ await build({
     // rewrites (-> "__filename is not defined" in the browser)
     __filename: "undefined",
     __dirname: "undefined",
+    // node globals in node-only code paths: bundlers (parcel) see free
+    // `process` / `Buffer` / `global` and try to bundle polyfills (which
+    // fails without auto install, e.g. on CI). As property accesses they are
+    // not node globals for them; the code behaves the same.
+    process: "globalThis.process",
+    Buffer: "globalThis.Buffer",
+    global: "globalThis",
   },
   logLevel: "warning",
 });

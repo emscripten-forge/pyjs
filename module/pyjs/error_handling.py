@@ -9,7 +9,9 @@ class JsHolder(object):
         return self._js_proxy
 
 
-class JsException(JsHolder, Exception):
+# also a RuntimeError: awaiting a rejected promise used to raise RuntimeError,
+# `except RuntimeError` keeps working
+class JsException(JsHolder, RuntimeError):
     def __init__(self, err, message=None):
 
         # default message

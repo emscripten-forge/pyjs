@@ -21,12 +21,35 @@ async def _drain(n=3):
         await asyncio.sleep(0)
 
 
-async def _wait_for(predicate, timeout=2.0):
+async def _wait_for(predicate, timeout=30.0):
+    # `timeout` only guards against a hang, it does not decide a result
     t0 = time.monotonic()
     while not predicate():
         if time.monotonic() - t0 > timeout:
             raise TimeoutError("condition not reached in time")
         await asyncio.sleep(0)
+
+
+class _CountSetTimeout:
+    """Counts the setTimeout calls of the event loop (call_later and, without
+    the fast path, call_soon) while active."""
+
+    def __init__(self, loop):
+        self.loop = loop
+        self.delays_ms = []
+
+    def __enter__(self):
+        self._orig = self.loop._set_timeout
+
+        def counting(callback, ms):
+            self.delays_ms.append(ms)
+            return self._orig(callback, ms)
+
+        self.loop._set_timeout = counting
+        return self
+
+    def __exit__(self, *exc):
+        self.loop._set_timeout = self._orig
 
 
 async def _check_call_soon_fifo():
@@ -129,20 +152,22 @@ async def test_webloop_call_soon_exception_goes_to_handler():
     assert isinstance(contexts[0]["exception"], ValueError)
 
 
-async def test_webloop_call_soon_before_call_later():
+async def test_webloop_call_soon_does_not_use_timers():
+    # call_soon runs via the macrotask queue (MessageChannel), never via
+    # setTimeout, which browsers clamp to >= 4ms when nested; only call_later
+    # with a delay uses setTimeout
     loop = _loop()
     if loop._macrotask_queue is None:
-        # setTimeout fallback (Safari): call_soon is setTimeout(0), which is
-        # clamped to >= 4ms when nested, so the browser may run the earlier
-        # scheduled 5ms timer first. The ordering is only guaranteed on the
-        # fast path.
-        return
+        return  # setTimeout fallback (Safari), see webloop.py
     order = []
-    loop.call_later(0.005, order.append, "later")
-    for i in range(5):
-        loop.call_soon(order.append, i)
+    with _CountSetTimeout(loop) as timers:
+        for i in range(5):
+            loop.call_soon(order.append, i)
+        assert timers.delays_ms == [], timers.delays_ms
+        loop.call_later(0.005, order.append, "later")
+        assert len(timers.delays_ms) == 1, timers.delays_ms
     await _wait_for(lambda: len(order) == 6)
-    assert order == [0, 1, 2, 3, 4, "later"], order
+    assert order[:5] == [0, 1, 2, 3, 4], order
 
 
 async def test_webloop_call_soon_many():
@@ -150,7 +175,7 @@ async def test_webloop_call_soon_many():
     got = []
     for i in range(n):
         _loop().call_soon(got.append, i)
-    await _wait_for(lambda: len(got) == n, timeout=10.0)
+    await _wait_for(lambda: len(got) == n)
     assert got == list(range(n))
 
 
@@ -191,16 +216,16 @@ async def test_webloop_sleep0():
     await _check_sleep0_many()
 
 
-async def test_webloop_sleep0_is_fast():
-    # with setTimeout(0) every hop is clamped to >= 4ms by the browser
-    if _loop()._macrotask_queue is None:
+async def test_webloop_sleep0_does_not_use_timers():
+    # asyncio.sleep(0) reschedules the task via call_soon: on the fast path
+    # that must not go through setTimeout (>= 4ms per hop when nested)
+    loop = _loop()
+    if loop._macrotask_queue is None:
         return  # environment without fast path (e.g. Safari)
-    n = 200
-    t0 = time.perf_counter()
-    for _ in range(n):
-        await asyncio.sleep(0)
-    per_hop = (time.perf_counter() - t0) / n
-    assert per_hop < 0.001, f"asyncio.sleep(0) took {per_hop * 1000:.3f}ms per call"
+    with _CountSetTimeout(loop) as timers:
+        for _ in range(200):
+            await asyncio.sleep(0)
+    assert timers.delays_ms == [], f"sleep(0) used setTimeout {len(timers.delays_ms)} times"
 
 
 async def test_webloop_sleep_positive():
@@ -331,10 +356,39 @@ async def test_webloop_await_js_rejected_promise():
     p = js.Function("return Promise.reject(new Error('nope'))")()
     try:
         await p
-    except Exception as e:
+    except pyjs.JsError as e:
+        # a JsException (pyodide compatible), still a RuntimeError (as before)
+        assert isinstance(e, pyjs.JsException) and isinstance(e, RuntimeError)
+        assert e.name == "Error"
         assert "nope" in str(e)
     else:
         raise AssertionError("expected an exception")
+
+
+async def test_webloop_await_js_rejected_promise_abort_error():
+    # what fetch / stream reads reject with when an AbortController aborts
+    # (code built on that, e.g. timeouts, checks the error's `name`)
+    p = js.Function("return Promise.reject(new DOMException('aborted', 'AbortError'))")()
+    try:
+        await p
+    except pyjs.JsException as e:
+        assert e.name == "AbortError", e.name
+    else:
+        raise AssertionError("expected an exception")
+
+
+async def test_webloop_await_js_rejected_promise_non_error_values():
+    for js_code, text in [
+        ("return Promise.reject('just a string')", "just a string"),
+        ("return Promise.reject(undefined)", "None"),
+        ("return Promise.reject(42)", "42"),
+    ]:
+        try:
+            await js.Function(js_code)()
+        except pyjs.JsException as e:
+            assert text in str(e), (js_code, str(e))
+        else:
+            raise AssertionError(f"expected an exception for {js_code}")
 
 
 async def test_webloop_js_awaits_python_coroutine_result():

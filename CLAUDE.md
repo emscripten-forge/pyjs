@@ -232,8 +232,9 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   offline and with `--network` (numpy + `installPackages(["six"])`), the
   package served under another path than the test page (like a CDN).
 - CI: `.github/workflows/npm.yml` builds + tests (all browsers), publishes on
-  release tags (`4.1.0`, must equal the package version) / manual dispatch
-  (secret `NPM_TOKEN`, variable `NPM_PACKAGE_NAME`). Manual publish:
+  release tags (`4.1.0`, must equal the package version) / manual dispatch;
+  npm trusted publishing (OIDC, configured on npmjs.com for this repo +
+  `npm.yml`, no token), variable `NPM_PACKAGE_NAME`. Manual publish:
   `cd build_root/npm/package && npm publish --access public`.
 - On jsDelivr import `dist/index.js` directly, not `/+esm` (re-bundling
   breaks the `import.meta.url` asset paths).

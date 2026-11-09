@@ -4,9 +4,10 @@ name: npm
 # PR, published on release tags (e.g. `4.1.0`, must equal the version in
 # CMakeLists.txt) or manually (workflow_dispatch with publish=true).
 #
-# Publishing needs the repository secret NPM_TOKEN (an npm automation token
-# with publish rights for the scope); the package name comes from the
-# repository variable NPM_PACKAGE_NAME (default @derthorsten/pyjs, later
+# Publishing uses npm trusted publishing (OIDC, no token / secret): on
+# npmjs.com the package (Settings -> Trusted Publisher) trusts this repository
+# + this workflow file (npm.yml). The package name comes from the repository
+# variable NPM_PACKAGE_NAME (default @derthorsten/pyjs, later
 # @emscripten-forge/pyjs).
 
 on:
@@ -72,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write  # npm provenance
+      id-token: write  # npm trusted publishing (OIDC) + provenance
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -81,8 +82,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+
+      # trusted publishing needs npm >= 11.5.1
+      - name: Update npm
+        run: npm install -g npm@^11.5.1
 
       - name: Check the version against the tag
         if: startsWith(github.ref, 'refs/tags/')
@@ -94,7 +99,7 @@ jobs:
             exit 1
           fi
 
+      # authenticated via OIDC (trusted publisher), provenance is attached
+      # automatically
       - name: Publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish dist/*.tgz --access public --provenance
+        run: npm publish dist/*.tgz --access public

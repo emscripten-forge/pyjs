@@ -1,0 +1,8 @@
+node_modules/
+build/
+*.tgz
+# ignored globally in the root .gitignore, but part of the npm package build:
+# the lock file pins the build tools (npm ci), the empack config filters the
+# python env shipped in the package
+!package-lock.json
+!empack_config.yaml

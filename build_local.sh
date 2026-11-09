@@ -1,559 +1,510 @@
 #!/bin/bash
-# Local build of pyjs
+# Build / test / benchmark pyjs, build the docs and the npm package.
+# Used locally and on CI. Needs only micromamba (or mamba).
 #
-# Usage: ./build_local.sh [wasm32|wasm64] [--fresh] [--test] [--bench] [--docs] [--docs-kernel]
+#   ./build_local.sh build wasm32|wasm64   build pyjs (installed into the host env)
+#   ./build_local.sh test  wasm32|wasm64   build + browser tests (tests/)
+#   ./build_local.sh bench wasm32|wasm64   build + benchmarks (benchmarks/)
+#   ./build_local.sh docs [--test]         docs: sphinx + jupyterlite (all ARCHS)
+#   ./build_local.sh npm  [--test]         npm package (all ARCHS)
+#   --fresh                                recreate envs + build dirs first
 #
-#   --fresh   delete and recreate the environments and the build dir
-#   --docs    build the documentation (sphinx + jupyterlite, run with wasm32):
-#             pyjs is built into a separate docs host env, xeus-python is
-#             built from source against it (the docs kernels, two independent
-#             jupyterlite deployments: lite/ wasm32, lite64/ wasm64; the wasm64
-#             kernel is built first by running this script with
-#             `wasm64 --docs-kernel`, skip it with DOCS_WASM64=0), the html
-#             ends up in build_root/docs_html (or
-#             DOCS_OUT_DIR). With --test: smoke test of the docs instead of
-#             the pyjs tests (build_utils/docs_smoke_test.py, for each of BROWSERS)
-#   --docs-kernel  only the kernel part of --docs for the given wasm type
-#             (pyjs + xeus-python + build_root/docs_extra/pyjs-runtime/<wasm>/)
-#   --test    run the browser tests with pyjs_code_runner
-#   --bench   run the benchmarks in benchmarks/ and store the output in
-#             build_root/benchmarks/<wasm>/<stamp>_<browser>_<backend>.{log,json}
-#   (both run for every combination of BROWSERS x BACKENDS)
+# Env vars:
+#   BROWSERS        chromium firefox webkit          (default: chromium)
+#   BACKENDS        browser-main browser-worker      (default: both)
+#   ARCHS           archs of docs / npm              (default: "wasm32 wasm64")
+#   TEST_ENV        default | no-numpy               (packages of the test env)
+#   DISABLE_JSPI=1  test with JSPI switched off at runtime
+#   BENCH_FILTER    only benchmarks whose "module::name" contains it
+#   BUILD_ENV_PREFIX  existing dev env to use (CI), never created / deleted
+#   EXTRA_CHANNELS  channels searched first when creating envs
+#   PYJS_CODE_RUNNER_DIR  pyjs-code-runner checkout, pip -e installed
+#   PLAYWRIGHT_INSTALL_ARGS  e.g. --with-deps (CI)
+#   XEUS_PYTHON_REF, DOCS_OUT_DIR                    (docs)
+#   NPM_PACKAGE_NAME (default @derthorsten/pyjs), NPM_MINIFY=0,
+#   NPM_TEST_NETWORK=0, NPM_TEST_BUNDLERS=0          (npm)
+#   NUM_JOBS, MAMBA_EXE
 #
-# Env overrides: NUM_JOBS, MAMBA_EXE,
-#                SRC_DIR (pyjs source tree, default: this dir)
-#                BACKENDS (default: "browser-main browser-worker")
-#                BROWSERS (default: "chromium"; also: firefox webkit,
-#                webkit is the engine behind Safari)
-#                DEPLOY_ENV_FILE (env file of the run env the tests /
-#                benchmarks run against, default: environment-wasm-deploy.yml)
-#                PLAYWRIGHT_INSTALL_ARGS (extra args for `playwright install`,
-#                e.g. --with-deps on CI)
-#                BUILD_ENV_PREFIX (use this existing build env instead of
-#                creating build_root/build_prefix_<wasm>; it is used as is,
-#                never created or deleted by this script, e.g. on CI)
-#                PYJS_CODE_RUNNER_DIR (local pyjs-code-runner checkout,
-#                pip installed (editable) into the build env)
-#                BENCH_FILTER (only run benchmarks whose "module::name"
-#                contains this substring)
-#                XEUS_PYTHON_REF (xeus-python tag used by --docs)
-#                DOCS_OUT_DIR (html output of --docs)
-#                DOCS_WASM64=0 (--docs: without the wasm64 kernel / pyjs runtime)
-#                DOCS_WASM64_BUILD_ENV_PREFIX (--docs: existing wasm64 build env,
-#                like BUILD_ENV_PREFIX)
-#                EXTRA_CHANNELS (space separated channels searched first when
-#                creating envs, e.g. a local rattler-build output dir; only
-#                affects envs that do not exist yet, see --fresh)
-#                DISABLE_JSPI=1 (--test: switch JSPI off at runtime, ie. test
-#                like in a browser without JSPI; the same build either way)
-#
-# Environments (all under build_root/):
-#   build_prefix_<wasm>/   native env      environment-wasm-build-<wasm>.yml
-#                          (emscripten compiler, cmake, pyjs_code_runner, ...)
-#   host_prefix_<wasm>/    emscripten env  environment-wasm.yml
-#                          (libpython-static, pybind11, ...; pyjs is
-#                          installed into this prefix)
-#   deploy_prefix_<wasm>/  emscripten env  environment-wasm-deploy.yml
-#                          (runtime env the built pyjs runs against)
-#   build_<wasm>/          cmake build dir
-#   (--docs: host_docs_prefix_<wasm>/ from environment-wasm.yml +
-#    environment-wasm-docs.yml, build_docs_<wasm>/, build_xeus_python_<wasm>/,
-#    src/xeus-python-<ref>/)
+# Everything lives in build_root/ (see CLAUDE.md):
+#   dev_prefix/             native env, one for both archs (environment-dev.yml)
+#   host_prefix_<wasm>/     emscripten env pyjs is built against + installed into,
+#                           + the xeus-python deps of the docs (environment-host.yml)
+#   deploy_prefix_<wasm>/   env the tests / benchmarks run in (DEPLOY_SPECS;
+#                           deploy_no_numpy_prefix_<wasm>/ for TEST_ENV=no-numpy)
+#   npm_env_prefix_<wasm>/  env shipped in the npm package (NPM_ENV_SPECS)
+#   build_<wasm>/, build_xeus_python_<wasm>/   cmake build dirs
 set -euo pipefail
+
+usage() { sed -n '4,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
 ########################################
 # arguments
 ########################################
-WASM_TYPE="wasm32"
+COMMAND="${1:-}"
+[ -n "$COMMAND" ] || usage
+shift
+ARCH=""
 FRESH=0
-RUN_TESTS=0
-RUN_BENCH=0
-RUN_DOCS=0
-DOCS_KERNEL_ONLY=0
+WITH_TESTS=0
 for arg in "$@"; do
     case "$arg" in
-        wasm32|wasm64) WASM_TYPE="$arg" ;;
+        wasm32|wasm64) ARCH="$arg" ;;
         --fresh)       FRESH=1 ;;
-        --test)        RUN_TESTS=1 ;;
-        --bench)       RUN_BENCH=1 ;;
-        --docs)        RUN_DOCS=1 ;;
-        --docs-kernel) RUN_DOCS=1; DOCS_KERNEL_ONLY=1 ;;
-        *)
-            echo "Usage: $0 [wasm32|wasm64] [--fresh] [--test] [--bench] [--docs] [--docs-kernel]"
-            exit 1
-            ;;
+        --test)        WITH_TESTS=1 ;;
+        *)             usage ;;
     esac
 done
-
-if [ "$RUN_DOCS" = "1" ] && [ "$DOCS_KERNEL_ONLY" = "0" ] && [ "$WASM_TYPE" != "wasm32" ]; then
-    echo "Error: run --docs with wasm32 (the wasm64 kernel is built by it, see --docs-kernel)"
-    exit 1
-fi
-
-# --docs: first the wasm64 kernel, in a separate process (own build env
-# activation); BUILD_ENV_PREFIX is a wasm32 build env, not passed on
-if [ "$RUN_DOCS" = "1" ] && [ "$DOCS_KERNEL_ONLY" = "0" ] && [ "${DOCS_WASM64:-1}" = "1" ]; then
-    DOCS_WASM64_ARGS=(wasm64 --docs-kernel)
-    if [ "$FRESH" = "1" ]; then
-        DOCS_WASM64_ARGS+=(--fresh)
-    fi
-    echo "========================================"
-    echo "docs: wasm64 kernel"
-    echo "========================================"
-    BUILD_ENV_PREFIX="${DOCS_WASM64_BUILD_ENV_PREFIX:-}" "$0" "${DOCS_WASM64_ARGS[@]}"
-fi
+case "$COMMAND" in
+    build|test|bench) [ -n "$ARCH" ] || usage ;;
+    docs|npm)         [ -z "$ARCH" ] || { echo "$COMMAND builds all ARCHS, no arch argument"; exit 1; } ;;
+    *)                usage ;;
+esac
 
 ########################################
 # configuration
 ########################################
-THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-SRC_DIR="${SRC_DIR:-$THIS_DIR}"
+SRC_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+BUILD_ROOT="$SRC_DIR/build_root"
 NUM_JOBS="${NUM_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}"
-
-PLATFORM="emscripten-$WASM_TYPE"
-
-BUILD_ENV_FILE="$SRC_DIR/environment-wasm-build-$WASM_TYPE.yml"
-HOST_ENV_FILE="$SRC_DIR/environment-wasm.yml"
-DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-$SRC_DIR/environment-wasm-deploy.yml}"
-
-BUILD_ROOT="$THIS_DIR/build_root"
-BUILD_ENV_PREFIX="${BUILD_ENV_PREFIX:-}"
-if [ -n "$BUILD_ENV_PREFIX" ]; then
-    BUILD_PREFIX="$BUILD_ENV_PREFIX"
-else
-    BUILD_PREFIX="$BUILD_ROOT/build_prefix_$WASM_TYPE"
-fi
-HOST_PREFIX="$BUILD_ROOT/host_prefix_$WASM_TYPE"
-HOST_ENV_ARGS=()
-# one run env per env file, e.g. environment-wasm-deploy.yml -> deploy_prefix_<wasm>
-DEPLOY_ENV_NAME="$(basename "$DEPLOY_ENV_FILE" .yml)"
-DEPLOY_ENV_NAME="${DEPLOY_ENV_NAME#environment-wasm-}"
-DEPLOY_PREFIX="$BUILD_ROOT/${DEPLOY_ENV_NAME//-/_}_prefix_$WASM_TYPE"
-BUILD_DIR="$BUILD_ROOT/build_$WASM_TYPE"
-if [ "$RUN_DOCS" = "1" ]; then
-    # docs: pyjs is installed into a host env which also has everything
-    # needed to build / run xeus-python (the kernel of the docs jupyterlite)
-    HOST_PREFIX="$BUILD_ROOT/host_docs_prefix_$WASM_TYPE"
-    HOST_ENV_ARGS=(-f "$SRC_DIR/environment-wasm-docs.yml")
-    BUILD_DIR="$BUILD_ROOT/build_docs_$WASM_TYPE"
-fi
-XEUS_PYTHON_REF="${XEUS_PYTHON_REF:-0.19.1}"
-XEUS_PYTHON_SRC="$BUILD_ROOT/src/xeus-python-$XEUS_PYTHON_REF"
-XEUS_PYTHON_BUILD_DIR="$BUILD_ROOT/build_xeus_python_$WASM_TYPE"
-DOCS_OUT_DIR="${DOCS_OUT_DIR:-$BUILD_ROOT/docs_html}"
-BENCH_OUT_DIR="$BUILD_ROOT/benchmarks/$WASM_TYPE"
-# pyjs_code_runner backends used by --test / --bench
-BACKENDS="${BACKENDS:-browser-main browser-worker}"
 BROWSERS="${BROWSERS:-chromium}"
-PYJS_CODE_RUNNER_DIR="${PYJS_CODE_RUNNER_DIR:-}"
+BACKENDS="${BACKENDS:-browser-main browser-worker}"
+ARCHS="${ARCHS:-wasm32 wasm64}"
+EMSCRIPTEN_VERSION="6.0.8"
+# channels of the envs created from package lists (EXTRA_CHANNELS come first)
+ENV_CHANNELS=(https://repo.prefix.dev/emscripten-forge/6x conda-forge)
 
-########################################
-# find micromamba / mamba
-########################################
+TEST_ENV="${TEST_ENV:-default}"
+case "$TEST_ENV" in
+    # + the http stack of tests/tests/test_http.py (what scipy.datasets uses)
+    default)  DEPLOY_SPECS=(python "emscripten-abi==$EMSCRIPTEN_VERSION" numpy pytest
+                            urllib3 requests pyodide-http pooch) ;;
+    # pyjs must work without (optional) numpy
+    no-numpy) DEPLOY_SPECS=(python "emscripten-abi==$EMSCRIPTEN_VERSION" pytest) ;;
+    *)        echo "unknown TEST_ENV=$TEST_ENV (default | no-numpy)"; exit 1 ;;
+esac
+# the env shipped in the npm package: python + stdlib only
+NPM_ENV_SPECS=(python "emscripten-abi==$EMSCRIPTEN_VERSION")
+
+DEV_PREFIX="${BUILD_ENV_PREFIX:-$BUILD_ROOT/dev_prefix}"
+XEUS_PYTHON_REF="${XEUS_PYTHON_REF:-0.19.1}"
+DOCS_OUT_DIR="${DOCS_OUT_DIR:-$BUILD_ROOT/docs_html}"
+NPM_ROOT="$BUILD_ROOT/npm"
+NPM_PACKAGE_NAME="${NPM_PACKAGE_NAME:-@derthorsten/pyjs}"
+
 if [ -z "${MAMBA_EXE:-}" ]; then
     # type -P: only executables on PATH (micromamba is often also a shell function)
     MAMBA_EXE="$(type -P micromamba || type -P mamba || true)"
 fi
-if [ -z "$MAMBA_EXE" ] || [ ! -x "$MAMBA_EXE" ]; then
-    echo "Error: micromamba/mamba not found (set MAMBA_EXE)."
-    exit 1
-fi
+[ -x "${MAMBA_EXE:-}" ] || { echo "micromamba / mamba not found (set MAMBA_EXE)"; exit 1; }
 
-if [ "$FRESH" = "1" ]; then
-    echo "Removing existing environments and build dir"
-    rm -rf "$HOST_PREFIX" "$DEPLOY_PREFIX" "$BUILD_DIR"
-    if [ "$RUN_DOCS" = "1" ]; then
-        rm -rf "$XEUS_PYTHON_BUILD_DIR" "$DOCS_OUT_DIR"
-    fi
-    if [ -z "$BUILD_ENV_PREFIX" ]; then
-        rm -rf "$BUILD_PREFIX"
-    fi
-fi
+########################################
+# helpers
+########################################
+section() { printf '========================================\n%s\n========================================\n' "$*"; }
 
-# create_env <prefix> <env-file> [extra micromamba args...]
+# create_env <prefix> <platform> (-f <env file> | <spec>...): only if missing;
+# envs without file get ENV_CHANNELS, EXTRA_CHANNELS are searched first
 create_env() {
-    local prefix="$1" env_file="$2"
+    local prefix="$1" platform="$2"
     shift 2
-    # EXTRA_CHANNELS: searched before the channels of the env file
-    local channel_args=()
-    local channel
-    for channel in ${EXTRA_CHANNELS:-}; do
-        channel_args+=(-c "$channel")
-    done
-    if [ ! -d "$prefix" ]; then
-        echo "Creating environment at $prefix from $(basename "$env_file") ${channel_args[*]:-} $*"
-        "$MAMBA_EXE" create -p "$prefix" -f "$env_file" --yes ${channel_args[@]+"${channel_args[@]}"} "$@"
+    [ -d "$prefix" ] && return 0
+    local args=() channel
+    for channel in ${EXTRA_CHANNELS:-}; do args+=(-c "$channel"); done
+    if [ "$1" != "-f" ]; then
+        for channel in "${ENV_CHANNELS[@]}"; do args+=(-c "$channel"); done
     fi
+    [ "$platform" = "native" ] || args+=(--platform "$platform")
+    echo "creating $prefix: $*"
+    "$MAMBA_EXE" create -p "$prefix" --yes ${args[@]+"${args[@]}"} "$@"
 }
 
 ########################################
-# build (native) + host (emscripten) environments
+# dev env: created + activated once, for all archs
 ########################################
-if [ -n "$BUILD_ENV_PREFIX" ]; then
-    if [ ! -d "$BUILD_ENV_PREFIX" ]; then
-        echo "Error: BUILD_ENV_PREFIX=$BUILD_ENV_PREFIX does not exist."
-        exit 1
-    fi
-    echo "Using existing build environment at $BUILD_ENV_PREFIX"
-else
-    create_env "$BUILD_PREFIX" "$BUILD_ENV_FILE"
+if [ "$FRESH" = "1" ]; then
+    echo "removing envs and build dirs"
+    if [ -z "${BUILD_ENV_PREFIX:-}" ]; then rm -rf "$DEV_PREFIX"; fi
+    rm -rf "$BUILD_ROOT"/host_prefix_wasm* "$BUILD_ROOT"/deploy_*prefix_wasm* \
+           "$BUILD_ROOT"/npm_env_prefix_wasm* "$BUILD_ROOT"/build_wasm* "$BUILD_ROOT"/build_xeus_python_wasm*
 fi
-create_env "$HOST_PREFIX"  "$HOST_ENV_FILE" ${HOST_ENV_ARGS[@]+"${HOST_ENV_ARGS[@]}"} --platform "$PLATFORM"
+if [ -n "${BUILD_ENV_PREFIX:-}" ]; then
+    [ -d "$BUILD_ENV_PREFIX" ] || { echo "BUILD_ENV_PREFIX=$BUILD_ENV_PREFIX does not exist"; exit 1; }
+else
+    create_env "$DEV_PREFIX" native -f "$SRC_DIR/environment-dev.yml"
+fi
 
-########################################
-# activate build env
-########################################
-# PREFIX must point to the host env *before* activation:
-# the emscripten activation script bakes it into CMAKE_ARGS / LDFLAGS.
-export PREFIX="$HOST_PREFIX"
-unset CONDA_FORGE_EMSCRIPTEN_ACTIVATED EMCC_CFLAGS EMCC_FLAGS LDFLAGS CFLAGS CXXFLAGS 2>/dev/null || true
-
-# activation scripts are not nounset-safe
-set +u
+# flags of an earlier activation (e.g. of the calling shell) must not leak in
+unset CONDA_FORGE_EMSCRIPTEN_ACTIVATED CONDA_FORGE_EMSCRIPTEN_WASM_32_ACTIVATED \
+      CONDA_FORGE_EMSCRIPTEN_WASM_64_ACTIVATED EMCC_CFLAGS EMCC_FLAGS CFLAGS CXXFLAGS \
+      LDFLAGS HOST MESON_CROSS_FILE CMAKE_ARGS PREFIX 2>/dev/null || true
+set +u  # activation scripts are not nounset-safe
 eval "$("$MAMBA_EXE" shell hook -s bash)"
-micromamba activate "$BUILD_PREFIX"
+micromamba activate "$DEV_PREFIX"
 set -u
-# CMakeLists.txt uses $ENV{CONDA_PREFIX}/bin/python for merge_js.py
-export CONDA_PREFIX="$BUILD_PREFIX"
+# CMakeLists.txt runs $ENV{CONDA_PREFIX}/bin/python (merge_js.py); empack
+# finds its default config via CONDA_PREFIX
+export CONDA_PREFIX="$DEV_PREFIX"
+# the EMCC_CFLAGS of emscripten-core (= wasm32), extended by use_arch
+EMCC_CFLAGS_BASE="$EMCC_CFLAGS"
 
-if [ "$WASM_TYPE" = "wasm64" ]; then
-    USE_WASM64=TRUE
-else
-    USE_WASM64=FALSE
+if [ -n "${PYJS_CODE_RUNNER_DIR:-}" ]; then
+    python -m pip install --no-deps --no-build-isolation -q -e "$PYJS_CODE_RUNNER_DIR"
 fi
 
-export CMAKE_PREFIX_PATH="$PREFIX"
-export CMAKE_SYSTEM_PREFIX_PATH="$PREFIX"
-export CC=emcc
-export CXX=em++
-
 ########################################
-# detect python version from host env
+# per architecture
 ########################################
-PY_VER=$(basename -- "$PREFIX"/include/python* | sed 's/^python//')
-echo "Detected Python version: $PY_VER"
-echo "emcc: $(command -v emcc)"
-
-########################################
-# configure / build / install
-########################################
-mkdir -p "$BUILD_DIR"
-cd "$BUILD_DIR"
-
-# CMAKE_ARGS (from the emscripten activation) sets the emscripten toolchain
-# file, CMAKE_PREFIX_PATH / CMAKE_FIND_ROOT_PATH and CMAKE_INSTALL_PREFIX.
-# shellcheck disable=SC2086
-emmake cmake ${CMAKE_ARGS:-} "$SRC_DIR" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
-    -DBUILD_RUNTIME_BROWSER=ON \
-    -DBUILD_RUNTIME_NODE=OFF \
-    -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-    -DLINK_LIBLZMA=ON \
-    -DPY_VERSION="$PY_VER" \
-    -DPYTHON_SITE_PACKAGES="$PREFIX/lib/python${PY_VER}/site-packages" \
-    -DPython_INCLUDE_DIRS="$PREFIX/include/python${PY_VER}" \
-    -DPython_LIBRARY="$PREFIX/lib/libpython${PY_VER}.a" \
-    -DPython_LIBRARIES="$PREFIX/lib/libpython${PY_VER}.a" \
-    -DPython_Interpreter_FOUND=TRUE \
-    -DPython_EXECUTABLE="$BUILD_PREFIX/bin/python${PY_VER}" \
-    -DPYTHON_MODULE_EXTENSION=.so \
-    -DPYTHON_MODULE_DEBUG_POSTFIX="" \
-    -DPYTHON_MODULE_EXT_SUFFIX=.so \
-    -DPython_FOUND=TRUE \
-    -DWASM64="$USE_WASM64"
-
-emmake make -j"$NUM_JOBS"
-emmake make install
-
-echo ""
-echo "pyjs built and installed into $PREFIX"
-echo "  runtime: $PREFIX/lib_js/pyjs/pyjs_runtime_browser.{js,wasm}"
-echo "  library: $PREFIX/lib/libpyjs.a"
-
-########################################
-# docs: xeus-python (built against this pyjs) + sphinx / jupyterlite
-########################################
-if [ "$RUN_DOCS" = "1" ]; then
-    # xeus-python must be built against the pyjs from this repository (installed
-    # into the prefix above): the env must not contain a pyjs package
-    for pkg in pyjs pyjs-dev libpyjs-static; do
-        if compgen -G "$PREFIX/conda-meta/$pkg-[0-9]*.json" > /dev/null; then
-            echo "Error: the docs host env $PREFIX contains the conda package '$pkg'"
-            echo "       (pulled in by environment-wasm.yml / environment-wasm-docs.yml),"
-            echo "       xeus-python would not be built against the pyjs from this repository."
-            exit 1
-        fi
-    done
-
-    if [ ! -d "$XEUS_PYTHON_SRC" ]; then
-        mkdir -p "$(dirname "$XEUS_PYTHON_SRC")"
-        git clone --depth 1 --branch "$XEUS_PYTHON_REF" \
-            https://github.com/jupyter-xeus/xeus-python "$XEUS_PYTHON_SRC"
-    fi
-
-    # as in the emscripten-forge xeus-python recipe:
-    # remove the fake pythons and link python (+ its deps) statically.
-    # PYTHONLIBS_FOUND / PYTHON_MODULE_EXTENSION / PYTHON_INCLUDE_DIR(S) make
-    # pybind11 skip querying the (native, 64 bit) build python, the recipe
-    # uses cross-python for that instead.
-    rm -f "$PREFIX"/bin/python*
-    XPYT_PYTHON_LIBRARIES="$PREFIX/lib/libbz2.a;$PREFIX/lib/libz.a;$PREFIX/lib/libsqlite3.a"
-    XPYT_PYTHON_LIBRARIES+=";$PREFIX/lib/libffi.a;$PREFIX/lib/libzstd.a;$PREFIX/lib/libssl.a"
-    XPYT_PYTHON_LIBRARIES+=";$PREFIX/lib/libcrypto.a;$PREFIX/lib/liblzma.a"
-    for lib in expat mpdec Hacl_Hash_BLAKE2 Hacl_Hash_MD5 Hacl_Hash_SHA1 Hacl_Hash_SHA2 Hacl_Hash_SHA3; do
-        XPYT_PYTHON_LIBRARIES+=";$PREFIX/lib/python${PY_VER}/static/lib$lib.a"
-    done
-    XPYT_PYTHON_LIBRARIES+=";$PREFIX/lib/libpython${PY_VER}.a"
-
-    mkdir -p "$XEUS_PYTHON_BUILD_DIR"
-    cd "$XEUS_PYTHON_BUILD_DIR"
-    # shellcheck disable=SC2086
-    emcmake cmake ${CMAKE_ARGS:-} "$XEUS_PYTHON_SRC" \
-        -GNinja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH="$PREFIX" \
-        -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-        -DPYTHON_LIBRARIES="$XPYT_PYTHON_LIBRARIES" \
-        -DPYBIND11_PYTHON_VERSION="$PY_VER" \
-        -DPYTHONLIBS_FOUND=TRUE \
-        -DPYTHON_MODULE_EXTENSION=.so \
-        -DPYTHON_INCLUDE_DIR="$PREFIX/include/python${PY_VER}" \
-        -DPYTHON_INCLUDE_DIRS="$PREFIX/include/python${PY_VER}"
-    ninja
-    ninja install
-    rm -rf "$PREFIX/share/jupyter/kernels/xpython-raw"
-    echo "xeus-python $XEUS_PYTHON_REF built against this pyjs and installed into $PREFIX"
-
-    # pyjs runtime + packed environment for the javascript kernel of the docs
-    # jupyterlite, deployed as <html root>/pyjs-runtime/<wasm>/ (see docs/conf.py)
-    create_env "$DEPLOY_PREFIX" "$DEPLOY_ENV_FILE" --platform "$PLATFORM"
-    DOCS_EXTRA_DIR="$BUILD_ROOT/docs_extra"
-    PYJS_RUNTIME_DIR="$DOCS_EXTRA_DIR/pyjs-runtime/$WASM_TYPE"
-    rm -rf "$PYJS_RUNTIME_DIR"
-    mkdir -p "$PYJS_RUNTIME_DIR"
-    cp "$BUILD_DIR/pyjs_runtime_browser.js" "$BUILD_DIR/pyjs_runtime_browser.wasm" "$PYJS_RUNTIME_DIR/"
-    empack pack env \
-        --env-prefix "$DEPLOY_PREFIX" \
-        --relocate-prefix "/" \
-        --outdir "$PYJS_RUNTIME_DIR"
-    # the pyjs python module of this repository
-    empack pack dir \
-        --host-dir "$SRC_DIR/module/pyjs" \
-        --mount-dir "/lib/python${PY_VER}/site-packages/pyjs" \
-        --outname "pyjs_module.tar.gz" \
-        --outdir "$PYJS_RUNTIME_DIR"
-    empack pack append \
-        --env-meta "$PYJS_RUNTIME_DIR/empack_env_meta.json" \
-        --tarfile "$PYJS_RUNTIME_DIR/pyjs_module.tar.gz"
-    if [ "$DOCS_KERNEL_ONLY" = "1" ]; then
-        echo "docs kernel ($WASM_TYPE): $PREFIX, pyjs runtime: $PYJS_RUNTIME_DIR"
-        exit 0
-    fi
-    export PYJS_DOCS_EXTRA_DIR="$DOCS_EXTRA_DIR"
-
-    # docs/conf.py passes these envs to jupyterlite-xeus as kernel envs:
-    # two independent jupyterlite deployments, lite/ (wasm32, built by sphinx)
-    # and lite64/ (wasm64, built below)
-    export PYJS_DOCS_KERNEL_PREFIX="$PREFIX"
-    if [ "${DOCS_WASM64:-1}" = "1" ]; then
-        export PYJS_DOCS_KERNEL_PREFIX_WASM64="$BUILD_ROOT/host_docs_prefix_wasm64"
+# use_arch <wasm32|wasm64>: env vars + host env of one architecture.
+#
+# The dev env has emscripten-core only (its activation = the wasm32 flags).
+# What the emscripten_emscripten-wasm64 package adds in its activation is done
+# here: -m64 for every emcc call (EMCC_CFLAGS) and in the compiler / linker
+# flags. For cmake -m64 must be in CMAKE_C_FLAGS on the command line: the
+# emscripten toolchain file decides 32 / 64 bit from it *before* CFLAGS of
+# the environment are applied (with CFLAGS only, the first configure of a
+# fresh build dir is 32 bit).
+use_arch() {
+    ARCH="$1"
+    PLATFORM="emscripten-$ARCH"
+    export PREFIX="$BUILD_ROOT/host_prefix_$ARCH"
+    BUILD_DIR="$BUILD_ROOT/build_$ARCH"
+    if [ "$TEST_ENV" = "default" ]; then
+        DEPLOY_PREFIX="$BUILD_ROOT/deploy_prefix_$ARCH"
     else
-        unset PYJS_DOCS_KERNEL_PREFIX_WASM64
-        rm -rf "$DOCS_EXTRA_DIR/pyjs-runtime/wasm64"
+        DEPLOY_PREFIX="$BUILD_ROOT/deploy_$(echo "$TEST_ENV" | tr - _)_prefix_$ARCH"
     fi
-    rm -rf "$DOCS_OUT_DIR"
-    sphinx-build -b html "$SRC_DIR/docs" "$DOCS_OUT_DIR"
+    local m64=""
+    [ "$ARCH" = "wasm64" ] && m64="-m64"
 
-    if [ "${DOCS_WASM64:-1}" = "1" ]; then
-        # same notebooks, wasm64 kernel env (config written by docs/conf.py);
-        # an own lite dir: jupyterlite keeps its build state there
-        LITE64_DIR="$BUILD_ROOT/lite64_dir"
-        rm -rf "$LITE64_DIR"
-        mkdir -p "$LITE64_DIR"
-        LITE64_CONTENTS=()
-        for notebook in "$SRC_DIR"/docs/_generated/notebooks/*.ipynb; do
-            LITE64_CONTENTS+=(--contents "$notebook")
-        done
-        (
-            cd "$LITE64_DIR"
-            jupyter lite build \
-                --config "$SRC_DIR/docs/_generated/jupyter_lite_config_wasm64.json" \
-                "${LITE64_CONTENTS[@]}" \
-                --output-dir "$DOCS_OUT_DIR/lite64" \
-                --lite-dir "$LITE64_DIR"
-        )
+    export EMCC_CFLAGS="$EMCC_CFLAGS_BASE${m64:+ $m64}"
+    export CFLAGS="$m64" CXXFLAGS="$m64"
+    export LDFLAGS="-L$PREFIX/lib -Wl,-rpath,/lib${m64:+ $m64}"
+    export HOST="$ARCH-unknown-emscripten"
+    CMAKE_ARGS=(
+        -DCMAKE_TOOLCHAIN_FILE="$EMSCRIPTEN_FORGE_EMSDK_DIR/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+        -DCMAKE_PREFIX_PATH="$PREFIX"
+        -DCMAKE_FIND_ROOT_PATH="$PREFIX"
+        -DCMAKE_INSTALL_PREFIX="$PREFIX"
+        -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_BUILD_TYPE=Release
+    )
+    if [ -n "$m64" ]; then
+        CMAKE_ARGS+=(-DCMAKE_C_FLAGS=-m64 -DCMAKE_CXX_FLAGS=-m64)
     fi
-    echo ""
-    echo "docs: $DOCS_OUT_DIR/index.html"
+    section "$ARCH (EMCC_CFLAGS=$EMCC_CFLAGS)"
 
-    # --docs --test: smoke test of the docs (pyjs in the jupyterlite kernels)
-    DOCS_TEST_RET=0
-    if [ "$RUN_TESTS" = "1" ]; then
-        # shellcheck disable=SC2086
-        playwright install ${PLAYWRIGHT_INSTALL_ARGS:-} $BROWSERS
-        for BROWSER in $BROWSERS; do
-            echo "========================================"
-            echo "docs smoke test: $BROWSER"
-            echo "========================================"
-            python "$SRC_DIR/build_utils/docs_smoke_test.py" "$DOCS_OUT_DIR" --browser "$BROWSER" \
-                || DOCS_TEST_RET=1
-        done
+    create_env "$PREFIX" "$PLATFORM" -f "$SRC_DIR/environment-host.yml"
+    if [ "$ARCH" = "wasm64" ]; then
+        fix_wasm64_cmake_configs
     fi
-    exit "$DOCS_TEST_RET"
-fi
+    PY_VER=$(basename -- "$PREFIX"/include/python* | sed 's/^python//')
+}
 
-########################################
-# deploy (run) environment
-########################################
-create_env "$DEPLOY_PREFIX" "$DEPLOY_ENV_FILE" --platform "$PLATFORM"
+# The wasm64 packages of the channel (xeus, xeus-lite, zlib, ...) are 64 bit,
+# but their cmake package version files come from a 32 bit configure (see
+# use_arch): they claim CMAKE_SIZEOF_VOID_P 4 and reject 64 bit projects.
+# Disable that check in this env (sed -i writes a new file: the hardlinked
+# file in the micromamba package cache stays untouched).
+# TODO: remove once the packages are rebuilt (emscripten-forge/recipes)
+fix_wasm64_cmake_configs() {
+    local check='^if(NOT CMAKE_SIZEOF_VOID_P STREQUAL "4")' file
+    for file in $(grep -rl --include='*ConfigVersion.cmake' "$check" \
+                      "$PREFIX/lib/cmake" "$PREFIX/share/cmake" 2>/dev/null || true); do
+        sed -i.bak "s/$check/if(FALSE) # build_local.sh: wasm64 package with a 32 bit cmake config/" "$file"
+        rm -f "$file.bak"
+    done
+}
 
-if [ "$RUN_TESTS" = "1" ] || [ "$RUN_BENCH" = "1" ]; then
-    if [ -n "$PYJS_CODE_RUNNER_DIR" ]; then
-        echo "Installing pyjs-code-runner from $PYJS_CODE_RUNNER_DIR"
-        python -m pip install --no-deps --no-build-isolation -q -e "$PYJS_CODE_RUNNER_DIR"
-    fi
+build_pyjs() {
+    mkdir -p "$BUILD_DIR"
+    (
+        cd "$BUILD_DIR"
+        emcmake cmake "${CMAKE_ARGS[@]}" "$SRC_DIR" \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
+            -DBUILD_RUNTIME_BROWSER=ON \
+            -DBUILD_RUNTIME_NODE=OFF \
+            -DLINK_LIBLZMA=ON \
+            -DPY_VERSION="$PY_VER" \
+            -DPYTHON_SITE_PACKAGES="$PREFIX/lib/python$PY_VER/site-packages" \
+            -DPython_INCLUDE_DIRS="$PREFIX/include/python$PY_VER" \
+            -DPython_LIBRARY="$PREFIX/lib/libpython$PY_VER.a" \
+            -DPython_LIBRARIES="$PREFIX/lib/libpython$PY_VER.a" \
+            -DPython_Interpreter_FOUND=TRUE \
+            -DPython_EXECUTABLE="$DEV_PREFIX/bin/python$PY_VER" \
+            -DPYTHON_MODULE_EXTENSION=.so \
+            -DPYTHON_MODULE_DEBUG_POSTFIX="" \
+            -DPYTHON_MODULE_EXT_SUFFIX=.so \
+            -DPython_FOUND=TRUE \
+            -DWASM64="$([ "$ARCH" = "wasm64" ] && echo TRUE || echo FALSE)"
+        emmake make -j"$NUM_JOBS"
+        emmake make install
+    )
+    echo "pyjs ($ARCH): $BUILD_DIR/pyjs_runtime_browser.{js,wasm}, installed into $PREFIX"
+}
+
+# pack_runtime <env prefix> <out dir> [empack args...]: the runtime + the env
+# packed by empack + the pyjs python module of this repository (as mount)
+pack_runtime() {
+    local env="$1" out="$2"
+    shift 2
+    rm -rf "$out"
+    mkdir -p "$out"
+    cp "$BUILD_DIR/pyjs_runtime_browser.js" "$BUILD_DIR/pyjs_runtime_browser.wasm" "$out/"
+    empack pack env --env-prefix "$env" --relocate-prefix / --outdir "$out" "$@"
+    empack pack dir --host-dir "$SRC_DIR/module/pyjs" \
+        --mount-dir "/lib/python$PY_VER/site-packages/pyjs" \
+        --outname pyjs_module.tar.gz --outdir "$out"
+    empack pack append --env-meta "$out/empack_env_meta.json" --tarfile "$out/pyjs_module.tar.gz"
+}
+
+playwright_install() {
     # shellcheck disable=SC2086
     playwright install ${PLAYWRIGHT_INSTALL_ARGS:-} $BROWSERS
-fi
+}
+
+# run_in_browser <dir: tests|benchmarks> <backend> <browser> <host work dir> [args...]:
+# <dir>/main.py with the runtime of the build dir and the pyjs module of the source tree
+run_in_browser() {
+    local dir="$1" backend="$2" browser="$3" workdir="$4"
+    shift 4
+    mkdir -p "$workdir"
+    pyjs_code_runner run script "$backend" \
+        --browser "$browser" \
+        --conda-env "$DEPLOY_PREFIX" \
+        --mount "$SRC_DIR/$dir:/$dir" \
+        --mount "$SRC_DIR/module/pyjs:/lib/python$PY_VER/site-packages/pyjs" \
+        --script main.py \
+        --work-dir "/$dir" \
+        --host-work-dir "$workdir" \
+        --headless --no-cache --slow-mo 0 --async-main \
+        --pyjs-dir "$BUILD_DIR" \
+        "$@"
+}
 
 ########################################
-# tests
+# commands
 ########################################
-if [ "$RUN_TESTS" = "1" ]; then
-    cd "$THIS_DIR"
-    TEST_SUMMARY=()
-    TEST_RET=0
-    for BROWSER in $BROWSERS; do
-    for BACKEND in $BACKENDS; do
-        echo "========================================"
-        echo "tests: $BROWSER / $BACKEND"
-        echo "========================================"
-        mkdir -p "$BUILD_DIR/host_work_dir_${BROWSER}_$BACKEND"
-        # config read by tests/main.py (mounted at /test_config)
-        mkdir -p "$BUILD_DIR/test_config"
-        printf '{"disable_jspi": %s}\n' \
-            "$([ "${DISABLE_JSPI:-0}" = "1" ] && echo true || echo false)" \
-            > "$BUILD_DIR/test_config/config.json"
-        # the pyjs python module is mounted from the source tree,
-        # the runtime (js/wasm) is taken from the build dir
-        set +e
-        pyjs_code_runner run script \
-            "$BACKEND" \
-            --browser       "$BROWSER" \
-            --conda-env     "$DEPLOY_PREFIX" \
-            --mount         "$SRC_DIR/tests:/tests" \
-            --mount         "$BUILD_DIR/test_config:/test_config" \
-            --mount         "$SRC_DIR/module/pyjs:/lib/python${PY_VER}/site-packages/pyjs" \
-            --script        main.py \
-            --work-dir      /tests \
-            --host-work-dir "$BUILD_DIR/host_work_dir_${BROWSER}_$BACKEND" \
-            --headless \
-            --no-cache \
-            --slow-mo 0 \
-            --async-main \
-            --pyjs-dir      "$BUILD_DIR"
-        RET=$?
-        set -e
-        if [ "$RET" = "0" ]; then
-            TEST_SUMMARY+=("  PASSED  $BROWSER / $BACKEND")
-        else
-            TEST_SUMMARY+=("  FAILED  $BROWSER / $BACKEND")
-            TEST_RET=1
-        fi
+cmd_build() {
+    use_arch "$ARCH"
+    build_pyjs
+}
+
+cmd_test() {
+    use_arch "$ARCH"
+    build_pyjs
+    create_env "$DEPLOY_PREFIX" "$PLATFORM" "${DEPLOY_SPECS[@]}"
+    playwright_install
+    # read by tests/main.py (mounted at /test_config)
+    mkdir -p "$BUILD_DIR/test_config"
+    printf '{"disable_jspi": %s}\n' "$([ "${DISABLE_JSPI:-0}" = "1" ] && echo true || echo false)" \
+        > "$BUILD_DIR/test_config/config.json"
+    local browser backend summary=() ret=0
+    for browser in $BROWSERS; do
+        for backend in $BACKENDS; do
+            section "tests ($ARCH): $browser / $backend"
+            if run_in_browser tests "$backend" "$browser" "$BUILD_DIR/host_work_dir_${browser}_$backend" \
+                    --mount "$BUILD_DIR/test_config:/test_config"; then
+                summary+=("  PASSED  $browser / $backend")
+            else
+                summary+=("  FAILED  $browser / $backend")
+                ret=1
+            fi
+        done
     done
-    done
-    echo ""
-    echo "test summary ($WASM_TYPE):"
-    printf '%s\n' "${TEST_SUMMARY[@]}"
-    if [ "$RUN_BENCH" != "1" ] && [ "$TEST_RET" != "0" ]; then
-        exit "$TEST_RET"
-    fi
-fi
+    printf '\ntest summary (%s, TEST_ENV=%s, DISABLE_JSPI=%s):\n' "$ARCH" "$TEST_ENV" "${DISABLE_JSPI:-0}"
+    printf '%s\n' "${summary[@]}"
+    return "$ret"
+}
 
-########################################
-# benchmarks
-########################################
-if [ "$RUN_BENCH" = "1" ]; then
-    cd "$THIS_DIR"
-    mkdir -p "$BUILD_DIR/bench_config" "$BENCH_OUT_DIR"
-
-    # config read by benchmarks/main.py (mounted at /bench_config)
-    BENCH_FILTER="${BENCH_FILTER:-}" python -c '
-import json, os, sys
-cfg = {}
-if os.environ["BENCH_FILTER"]:
-    cfg["filter"] = os.environ["BENCH_FILTER"]
-json.dump(cfg, open(sys.argv[1], "w"))
-' "$BUILD_DIR/bench_config/config.json"
-
-    GIT_REV="$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-    if [ -n "$(git -C "$SRC_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
-        GIT_REV="$GIT_REV-dirty"
-    fi
-    STAMP="$(date +%Y%m%d-%H%M%S)_$GIT_REV"
-
-    BENCH_RET=0
-    for BROWSER in $BROWSERS; do
-    for BACKEND in $BACKENDS; do
-        echo "========================================"
-        echo "benchmarks: $BROWSER / $BACKEND"
-        echo "========================================"
-        RUN_NAME="${BROWSER}_$BACKEND"
-        mkdir -p "$BUILD_DIR/host_work_dir_bench_$RUN_NAME"
-        BENCH_LOG="$BENCH_OUT_DIR/${STAMP}_$RUN_NAME.log"
-        BENCH_JSON="$BENCH_OUT_DIR/${STAMP}_$RUN_NAME.json"
-
-        set +e
-        pyjs_code_runner run script \
-            "$BACKEND" \
-            --browser       "$BROWSER" \
-            --conda-env     "$DEPLOY_PREFIX" \
-            --mount         "$SRC_DIR/benchmarks:/benchmarks" \
-            --mount         "$BUILD_DIR/bench_config:/bench_config" \
-            --mount         "$SRC_DIR/module/pyjs:/lib/python${PY_VER}/site-packages/pyjs" \
-            --script        main.py \
-            --work-dir      /benchmarks \
-            --host-work-dir "$BUILD_DIR/host_work_dir_bench_$RUN_NAME" \
-            --headless \
-            --no-cache \
-            --slow-mo 0 \
-            --async-main \
-            --pyjs-dir      "$BUILD_DIR" 2>&1 | tee "$BENCH_LOG"
-        RET=${PIPESTATUS[0]}
-        set -e
-        if [ "$RET" != "0" ]; then BENCH_RET=$RET; fi
-
-        # extract the machine readable result line and add build metadata
-        if ! python - "$BENCH_LOG" "$BENCH_JSON" "$WASM_TYPE" "$GIT_REV" "$STAMP" "$BACKEND" "$BROWSER" <<'PYEOF'
+cmd_bench() {
+    use_arch "$ARCH"
+    build_pyjs
+    create_env "$DEPLOY_PREFIX" "$PLATFORM" "${DEPLOY_SPECS[@]}"
+    playwright_install
+    local out="$BUILD_ROOT/benchmarks/$ARCH"
+    mkdir -p "$BUILD_DIR/bench_config" "$out"
+    # read by benchmarks/main.py (mounted at /bench_config)
+    python -c 'import json, sys; json.dump({"filter": sys.argv[2]} if sys.argv[2] else {}, open(sys.argv[1], "w"))' \
+        "$BUILD_DIR/bench_config/config.json" "${BENCH_FILTER:-}"
+    local rev stamp browser backend name log ret=0
+    rev="$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    if [ -n "$(git -C "$SRC_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]; then rev="$rev-dirty"; fi
+    stamp="$(date +%Y%m%d-%H%M%S)_$rev"
+    for browser in $BROWSERS; do
+        for backend in $BACKENDS; do
+            section "benchmarks ($ARCH): $browser / $backend"
+            name="${browser}_$backend"
+            log="$out/${stamp}_$name.log"
+            run_in_browser benchmarks "$backend" "$browser" "$BUILD_DIR/host_work_dir_bench_$name" \
+                --mount "$BUILD_DIR/bench_config:/bench_config" 2>&1 | tee "$log" || ret=1
+            # the result line of benchmarks/main.py (files written in the
+            # browser do not reach the host) + build metadata
+            if ! python - "$log" "$out/${stamp}_$name.json" "$ARCH" "$rev" "$stamp" "$backend" "$browser" <<'EOF'
 import json, sys
 log, out, wasm_type, git_rev, stamp, backend, browser = sys.argv[1:]
 marker = "PYJS_BENCH_RESULT_JSON:"
-payload = None
-with open(log) as f:
-    for line in f:
-        idx = line.find(marker)
-        if idx != -1:
-            payload = json.loads(line[idx + len(marker):])
-if payload is None:
-    sys.exit(f"no benchmark results found in {log}")
-payload["build"] = dict(
-    wasm_type=wasm_type, git_rev=git_rev, timestamp=stamp, backend=backend, browser=browser
-)
-with open(out, "w") as f:
-    json.dump(payload, f, indent=2)
-PYEOF
-        then
-            BENCH_RET=1
-            continue
+lines = [l[l.find(marker) + len(marker):] for l in open(log) if marker in l]
+if not lines:
+    sys.exit(f"no benchmark results in {log}")
+payload = json.loads(lines[-1])
+payload["build"] = dict(wasm_type=wasm_type, git_rev=git_rev, timestamp=stamp, backend=backend, browser=browser)
+json.dump(payload, open(out, "w"), indent=2)
+EOF
+            then
+                ret=1
+                continue
+            fi
+            ln -sf "$(basename "$log")" "$out/latest_$name.log"
+            ln -sf "${stamp}_$name.json" "$out/latest_$name.json"
+            echo "benchmark results: $out/${stamp}_$name.json"
+        done
+    done
+    return "$ret"
+}
+
+# xeus-python from source against the pyjs in $PREFIX (the docs kernel); like
+# the emscripten-forge recipe: python (+ its deps) linked statically
+build_xeus_python() {
+    local src="$BUILD_ROOT/src/xeus-python-$XEUS_PYTHON_REF" lib libs pkg
+    for pkg in pyjs pyjs-dev libpyjs-static; do
+        if compgen -G "$PREFIX/conda-meta/$pkg-[0-9]*.json" > /dev/null; then
+            echo "$PREFIX contains the conda package $pkg: xeus-python would not be built against this pyjs"
+            exit 1
         fi
-        ln -sf "$(basename "$BENCH_LOG")" "$BENCH_OUT_DIR/latest_$RUN_NAME.log"
-        ln -sf "$(basename "$BENCH_JSON")" "$BENCH_OUT_DIR/latest_$RUN_NAME.json"
-        echo ""
-        echo "benchmark output: $BENCH_LOG"
-        echo "benchmark json:   $BENCH_JSON"
     done
+    if [ ! -d "$src" ]; then
+        git clone --depth 1 --branch "$XEUS_PYTHON_REF" https://github.com/jupyter-xeus/xeus-python "$src"
+    fi
+    # the fake (native) pythons of the host env would be picked up by pybind11
+    rm -f "$PREFIX"/bin/python*
+    libs="$PREFIX/lib/libbz2.a;$PREFIX/lib/libz.a;$PREFIX/lib/libsqlite3.a;$PREFIX/lib/libffi.a"
+    libs+=";$PREFIX/lib/libzstd.a;$PREFIX/lib/libssl.a;$PREFIX/lib/libcrypto.a;$PREFIX/lib/liblzma.a"
+    for lib in expat mpdec Hacl_Hash_BLAKE2 Hacl_Hash_MD5 Hacl_Hash_SHA1 Hacl_Hash_SHA2 Hacl_Hash_SHA3; do
+        libs+=";$PREFIX/lib/python$PY_VER/static/lib$lib.a"
     done
-    if [ "${TEST_RET:-0}" != "0" ]; then exit "$TEST_RET"; fi
-    exit "$BENCH_RET"
-fi
+    libs+=";$PREFIX/lib/libpython$PY_VER.a"
+    mkdir -p "$BUILD_ROOT/build_xeus_python_$ARCH"
+    (
+        cd "$BUILD_ROOT/build_xeus_python_$ARCH"
+        # PYTHONLIBS_FOUND / PYTHON_*: pybind11 must not query the (native) build python
+        emcmake cmake "${CMAKE_ARGS[@]}" "$src" -GNinja \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
+            -DPYTHON_LIBRARIES="$libs" \
+            -DPYBIND11_PYTHON_VERSION="$PY_VER" \
+            -DPYTHONLIBS_FOUND=TRUE \
+            -DPYTHON_MODULE_EXTENSION=.so \
+            -DPYTHON_INCLUDE_DIR="$PREFIX/include/python$PY_VER" \
+            -DPYTHON_INCLUDE_DIRS="$PREFIX/include/python$PY_VER"
+        ninja
+        ninja install
+    )
+    rm -rf "$PREFIX/share/jupyter/kernels/xpython-raw"
+    echo "xeus-python $XEUS_PYTHON_REF ($ARCH) built against this pyjs, installed into $PREFIX"
+}
+
+# docs: per arch pyjs + xeus-python (the jupyterlite kernel) + the pyjs runtime
+# for the javascript kernel, then sphinx (lite/ = wasm32) and a second,
+# independent jupyterlite (lite64/ = wasm64)
+cmd_docs() {
+    local docs_extra="$BUILD_ROOT/docs_extra" arch
+    # read by docs/conf.py
+    export PYJS_DOCS_EXTRA_DIR="$docs_extra"
+    unset PYJS_DOCS_KERNEL_PREFIX PYJS_DOCS_KERNEL_PREFIX_WASM64
+    rm -rf "$docs_extra/pyjs-runtime"
+    for arch in $ARCHS; do
+        use_arch "$arch"
+        build_pyjs
+        build_xeus_python
+        create_env "$DEPLOY_PREFIX" "$PLATFORM" "${DEPLOY_SPECS[@]}"
+        pack_runtime "$DEPLOY_PREFIX" "$docs_extra/pyjs-runtime/$ARCH"
+        if [ "$ARCH" = "wasm32" ]; then
+            export PYJS_DOCS_KERNEL_PREFIX="$PREFIX"
+        else
+            export PYJS_DOCS_KERNEL_PREFIX_WASM64="$PREFIX"
+        fi
+    done
+
+    rm -rf "$DOCS_OUT_DIR"
+    sphinx-build -b html "$SRC_DIR/docs" "$DOCS_OUT_DIR"
+    if [ -n "${PYJS_DOCS_KERNEL_PREFIX_WASM64:-}" ]; then
+        # same notebooks, wasm64 kernel (config written by docs/conf.py); an
+        # own lite dir: jupyterlite keeps its build state there
+        local lite64="$BUILD_ROOT/lite64_dir" contents=() nb
+        rm -rf "$lite64"
+        mkdir -p "$lite64"
+        for nb in "$SRC_DIR"/docs/_generated/notebooks/*.ipynb; do contents+=(--contents "$nb"); done
+        (cd "$lite64" && jupyter lite build \
+            --config "$SRC_DIR/docs/_generated/jupyter_lite_config_wasm64.json" \
+            ${contents[@]+"${contents[@]}"} --output-dir "$DOCS_OUT_DIR/lite64" --lite-dir "$lite64")
+    fi
+    echo "docs: $DOCS_OUT_DIR/index.html"
+
+    [ "$WITH_TESTS" = "1" ] || return 0
+    playwright_install
+    local browser ret=0
+    for browser in $BROWSERS; do
+        section "docs smoke test: $browser"
+        python "$SRC_DIR/build_utils/docs_smoke_test.py" "$DOCS_OUT_DIR" --browser "$browser" || ret=1
+    done
+    return "$ret"
+}
+
+# npm package (npm/): per arch the runtime + python/stdlib/pyjs packed by
+# empack, assembled into one package by npm/build.mjs
+cmd_npm() {
+    local arch stages=() entries=(index) version
+    for arch in $ARCHS; do
+        use_arch "$arch"
+        build_pyjs
+        create_env "$BUILD_ROOT/npm_env_prefix_$ARCH" "$PLATFORM" "${NPM_ENV_SPECS[@]}"
+        # npm/empack_config.yaml drops CPython's test suite etc.
+        pack_runtime "$BUILD_ROOT/npm_env_prefix_$ARCH" "$NPM_ROOT/stage/$ARCH" \
+            --config "$SRC_DIR/npm/empack_config.yaml" --no-use-cache
+        # channels + pinned python for mambajs (extra packages at runtime)
+        python "$SRC_DIR/build_utils/npm_env_meta.py" "$NPM_ROOT/stage/$ARCH/empack_env_meta.json" \
+            "${ENV_CHANNELS[@]}"
+        stages+=(--stage "$ARCH=$NPM_ROOT/stage/$ARCH")
+        entries+=("$ARCH")
+    done
+
+    version="$(sed -n 's/^project(pyjs VERSION \([0-9.]*\).*/\1/p' "$SRC_DIR/CMakeLists.txt")"
+    local minify=()
+    [ "${NPM_MINIFY:-1}" = "0" ] && minify=(--no-minify)
+    (
+        cd "$SRC_DIR/npm"
+        npm ci --no-audit --no-fund
+        node build.mjs --out "$NPM_ROOT/package" --name "$NPM_PACKAGE_NAME" --version "$version" \
+            "${stages[@]}" ${minify[@]+"${minify[@]}"}
+    )
+    rm -f "$NPM_ROOT"/*.tgz
+    (cd "$NPM_ROOT/package" && npm pack --pack-destination "$NPM_ROOT")
+    local tgz
+    tgz="$(ls "$NPM_ROOT"/*.tgz)"
+    echo "npm package: $NPM_ROOT/package ($tgz)"
+    echo "  publish:   cd $NPM_ROOT/package && npm publish --access public"
+
+    [ "$WITH_TESTS" = "1" ] || return 0
+    playwright_install
+    local browser ret=0 network=()
+    [ "${NPM_TEST_NETWORK:-1}" = "1" ] && network=(--network)
+    for browser in $BROWSERS; do
+        section "npm smoke test: $browser"
+        python "$SRC_DIR/build_utils/npm_smoke_test.py" "$NPM_ROOT/package" --browser "$browser" \
+            --entries "${entries[@]}" || ret=1
+        if [ "${#network[@]}" -gt 0 ]; then
+            python "$SRC_DIR/build_utils/npm_smoke_test.py" "$NPM_ROOT/package" --browser "$browser" \
+                --entries "${entries[@]}" --network || ret=1
+        fi
+    done
+    # the package in apps built with vite, webpack, rollup, esbuild, parcel
+    # (the bundled output does not depend on the browser: one is enough)
+    if [ "${NPM_TEST_BUNDLERS:-1}" = "1" ]; then
+        section "npm bundler test"
+        python "$SRC_DIR/build_utils/npm_bundler_test.py" "$tgz" \
+            --browser "${BROWSERS%% *}" ${network[@]+"${network[@]}"} || ret=1
+    fi
+    return "$ret"
+}
+
+"cmd_$COMMAND"

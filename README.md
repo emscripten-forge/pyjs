@@ -89,11 +89,12 @@ Building, testing, benchmarking and building the docs all go through
 the CI uses the same script:
 
 ```bash
-./build_local.sh wasm32                 # build pyjs
-./build_local.sh wasm64 --test          # build + run the tests in the browser
-BROWSERS="chromium firefox webkit" ./build_local.sh wasm32 --test
-./build_local.sh wasm32 --bench         # FFI / asyncio benchmarks
-./build_local.sh wasm32 --docs          # sphinx docs + jupyterlite
+./build_local.sh build wasm32           # build pyjs
+./build_local.sh test wasm64            # build + run the tests in the browser
+BROWSERS="chromium firefox webkit" ./build_local.sh test wasm32
+./build_local.sh bench wasm32           # FFI / asyncio benchmarks
+./build_local.sh docs                   # sphinx docs + jupyterlite
+./build_local.sh npm                    # npm package
 ```
 
 See [development](https://emscripten-forge.github.io/pyjs/development.html)

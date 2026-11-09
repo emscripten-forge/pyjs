@@ -249,23 +249,6 @@ def test_http_pooch_retrieve():
 
 
 # ---------------------------------------------------------------------------
-# known failure: figshare (sklearn.datasets.fetch_california_housing)
-# ---------------------------------------------------------------------------
-@pytest.mark.xfail(
-    reason="needs internet; figshare answers browsers with an AWS WAF challenge "
-    "(202, empty body, x-amzn-waf-action: challenge) and the redirect target "
-    "(cloudflare r2) sends no CORS headers. Not a pyjs issue: plain JS fails too. "
-    "Before, the empty body ended up as an empty file -> checksum mismatch in sklearn.",
-    strict=False,
-)
-def test_http_figshare_download():
-    urllib3 = pytest.importorskip("urllib3")
-    response = urllib3.request("GET", "https://ndownloader.figshare.com/files/5976036")
-    assert response.status == 200, response.status
-    assert len(response.data) > 0
-
-
-# ---------------------------------------------------------------------------
 # 6. pyodide-http (patches requests / urllib globally -> last)
 # ---------------------------------------------------------------------------
 def test_http_pyodide_http_requests():

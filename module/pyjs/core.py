@@ -4,6 +4,7 @@ import sys
 import types
 from typing import Any
 import ast
+import inspect
 import pyjs_core
 from pyjs_core import JsValue, js_array, js_py_object
 import warnings
@@ -289,27 +290,34 @@ def exec_eval(script, globals=None, locals=None):
         # otherwise we just execute the entire code
         return exec(script, globals, locals)
 
-# move to internal
 async def async_exec_eval(stmts, globals=None, locals=None):
-    parsed_stmts = ast.parse(stmts)
-    if parsed_stmts.body:
+    """Execute a script which may use top level `await`, return the value of
+    the last expression (like `exec_eval`).
 
-        last_node = parsed_stmts.body[-1]
-        if isinstance(last_node, ast.Expr):
-            last_node = ast.Return(value=last_node.value)
-            parsed_stmts.body.append(last_node)
-            ast.fix_missing_locations(parsed_stmts)
+    The script runs with module level semantics (`PyCF_ALLOW_TOP_LEVEL_AWAIT`,
+    like the asyncio REPL / IPython): assignments go to `globals`, each
+    statement runs exactly once.
+    """
+    flags = ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
 
-    fn_name = "_pyjs_async_exec_f"
-    fn = f"async def {fn_name}(): pass"
-    parsed_fn = ast.parse(fn)
-    for node in parsed_stmts.body:
-        ast.increment_lineno(node)
+    async def run(code):
+        result = eval(code, globals, locals)
+        if code.co_flags & inspect.CO_COROUTINE:
+            result = await result
+        return result
 
-    parsed_fn.body[0].body = parsed_stmts.body
-    exec(compile(parsed_fn, filename="<ast>", mode="exec"), globals, locals)
-    return await  eval(f'{fn_name}()', globals, locals)  # fmt: skip
-
+    body = ast.parse(stmts).body
+    if not body:
+        return None
+    if isinstance(body[-1], ast.Expr):
+        if len(body) > 1:
+            module = ast.Module(body=body[:-1], type_ignores=[])
+            await run(compile(module, filename="<ast>", mode="exec", flags=flags))
+        expression = ast.Expression(body=body[-1].value)
+        return await run(compile(expression, filename="<ast>", mode="eval", flags=flags))
+    module = ast.Module(body=body, type_ignores=[])
+    await run(compile(module, filename="<ast>", mode="exec", flags=flags))
+    return None
 
 
 class _CallbackEntryPoint:

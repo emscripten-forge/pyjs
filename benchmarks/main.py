@@ -1,7 +1,7 @@
 """Entry point for running the pyjs benchmarks in the browser.
 
 Run via ``pyjs_code_runner run script ... --script main.py --async-main``
-(see ``build_local.sh --bench``).
+(see ``build_local.sh bench <wasm>``).
 
 Discovers ``bench_*`` functions (sync or async) in ``bench_*.py`` modules next
 to this file, runs them with the async-aware harness, prints a table and a

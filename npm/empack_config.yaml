@@ -1,0 +1,47 @@
+# empack config of the environment shipped in the npm package
+# (build_local.sh --npm: `empack pack env --config npm/empack_config.yaml`).
+# = empack's default config + python specific excludes: a package specific
+# entry replaces the default list, so the default patterns are repeated.
+#
+# python: CPython's own test suite (lib/python3.X/test, ~75% of the package)
+# and GUI / installer modules which cannot work in the browser.
+packages:
+  # a dependency of python, useless in the browser (no subprocesses / pip install)
+  pip:
+    exclude_patterns:
+      - pattern: '**'
+  python:
+    exclude_patterns:
+      - pattern: 'bin/**'
+      - pattern: '**/bin/**'
+      - pattern: '**/*.pyc'
+      - pattern: '**/*.exe'
+      - pattern: 'lib/python3.*/test/**'
+      - pattern: 'lib/python3.*/idlelib/**'
+      - pattern: 'lib/python3.*/ensurepip/**'
+      - pattern: 'lib/python3.*/tkinter/**'
+      - pattern: 'lib/python3.*/turtledemo/**'
+      - pattern: 'lib/python3.*/turtle.py'
+      - pattern: 'lib/python3.*/lib2to3/**'
+      - pattern: 'lib/python3.*/venv/**'
+default:
+  exclude_patterns:
+    - pattern: 'bin/**'
+    - pattern: '**/bin/**'
+    - pattern: 'tests/**'
+    - pattern: '**/tests/**'
+    - pattern: '**/*.ini'
+    - pattern: '**/*.exe'
+    - pattern: '**/*.c'
+    - pattern: '**/*.pxd'
+    - pattern: '**/*.pyx'
+    - pattern: '**/*.pyc'
+    - pattern: '**/*.typed'
+    - pattern: '**/*.egg-info'
+    - pattern: '**/site-packages/pip/_vendor/**'
+    - pattern: '**/idlelib/**'
+    - pattern: '**/ensurepip/**'
+    - pattern: 'Scripts/*'
+    - pattern: 'share/jupyter/nbextensions/**'
+    - pattern: 'share/jupyter/labextensions/**'
+    - pattern: 'etc/jupyter/nbconfig/**'

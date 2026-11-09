@@ -25,7 +25,7 @@ function _get_type_string(instance) {
         } else if (type === "function") {
             return _FUNCTION
         } else {
-            console.log(instance, "is unhandled type")
+            console.warn(instance, "is unhandled type")
             throw Error("internal error -- this should be unreachable")
         }
     }

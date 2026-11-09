@@ -1,6 +1,6 @@
 # Sphinx configuration of the pyjs documentation.
 #
-# Build with `./build_local.sh wasm32 --docs`: this builds pyjs, builds
+# Build with `./build_local.sh docs`: this builds pyjs, builds
 # xeus-python from source against it and passes that environment to
 # jupyterlite-xeus (via PYJS_DOCS_KERNEL_PREFIX), so the interactive parts of
 # the docs run the pyjs from this repository.
@@ -158,7 +158,7 @@ else:
     print(
         "WARNING: PYJS_DOCS_KERNEL_PREFIX is not set, there is no python kernel "
         "for the jupyterlite in the docs and its build will fail "
-        "(build the docs with `./build_local.sh wasm32 --docs`)"
+        "(build the docs with `./build_local.sh docs`)"
     )
 _kernel_prefix_wasm64 = os.environ.get("PYJS_DOCS_KERNEL_PREFIX_WASM64")
 if _kernel_prefix_wasm64:
@@ -167,7 +167,7 @@ if _kernel_prefix_wasm64:
     )
 
 # the pyjs runtimes (js / wasm) + packed environments for the javascript kernel,
-# prepared by build_local.sh --docs and deployed next to the jupyterlite:
+# prepared by build_local.sh docs and deployed next to the jupyterlite:
 # <html root>/pyjs-runtime/{wasm32,wasm64}/ (see examples/js_api_tour.js)
 _extra_dir = os.environ.get("PYJS_DOCS_EXTRA_DIR")
 if _extra_dir:

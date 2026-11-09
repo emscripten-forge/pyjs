@@ -1,6 +1,6 @@
 """Async tests for pyjs.WebLoop scheduling (call_soon / call_later / awaiting JS).
 
-These run in the browser main thread *and* in a worker (see build_local.sh --test).
+These run in the browser main thread *and* in a worker (see `build_local.sh test`).
 """
 
 import asyncio

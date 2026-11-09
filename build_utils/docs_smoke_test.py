@@ -1,4 +1,4 @@
-"""Smoke test of the built documentation (build_local.sh wasm32 --docs --test).
+"""Smoke test of the built documentation (build_local.sh docs --test).
 
 Serves the html output and checks in a headless browser (playwright) that the
 JupyterLite embedded in the docs works with pyjs:

@@ -50,6 +50,7 @@ Use the [Python REPL](try.md) in these docs, the
 :caption: User guide
 
 try
+npm
 installation
 embed
 ```

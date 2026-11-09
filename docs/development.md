@@ -5,25 +5,28 @@ Everything (environments, build, tests, benchmarks, docs) goes through
 [micromamba](https://mamba.readthedocs.io) (or mamba).
 
 ```bash
-./build_local.sh [wasm32|wasm64] [--fresh] [--test] [--bench] [--docs]
+./build_local.sh build|test|bench wasm32|wasm64 [--fresh]
+./build_local.sh docs|npm [--test] [--fresh]
 ```
 
 All environments and build directories live in `build_root/`:
 
 | directory | environment file | content |
 |---|---|---|
-| `build_prefix_<wasm>` | `environment-wasm-build-<wasm>.yml` | native tools: emscripten, cmake, pyjs-code-runner, sphinx, ... |
-| `host_prefix_<wasm>` | `environment-wasm.yml` | emscripten env pyjs is built against and installed into |
-| `deploy_prefix_<wasm>` | `environment-wasm-deploy.yml` | emscripten env the tests / benchmarks run in |
+| `dev_prefix` | `environment-dev.yml` | native tools, one env for wasm32 and wasm64: emscripten, cmake, node, pyjs-code-runner, sphinx, ... |
+| `host_prefix_<wasm>` | `environment-host.yml` | emscripten env pyjs is built against and installed into (+ what the docs need to build xeus-python) |
+| `deploy_prefix_<wasm>` | (package list in `build_local.sh`, `TEST_ENV`) | emscripten env the tests / benchmarks run in |
 | `build_<wasm>` | | cmake build directory |
 
-`--fresh` deletes and recreates them.
+`--fresh` deletes and recreates them. To work by hand (node / npm,
+empack, playwright, ...) activate the dev env:
+`micromamba activate build_root/dev_prefix`.
 
 ## Tests
 
 ```bash
-./build_local.sh wasm32 --test
-BROWSERS="chromium firefox webkit" ./build_local.sh wasm64 --test
+./build_local.sh test wasm32
+BROWSERS="chromium firefox webkit" ./build_local.sh test wasm64
 ```
 
 The tests in `tests/` run in the browser via
@@ -36,8 +39,8 @@ browser main thread and in a web worker (`BACKENDS`), in all browsers listed in
 ## Benchmarks
 
 ```bash
-./build_local.sh wasm32 --bench
-BENCH_FILTER=async BROWSERS="chromium firefox" ./build_local.sh wasm32 --bench
+./build_local.sh bench wasm32
+BENCH_FILTER=async BROWSERS="chromium firefox" ./build_local.sh bench wasm32
 ```
 
 The benchmarks in `benchmarks/` measure the Python ↔ JavaScript FFI and the
@@ -60,7 +63,7 @@ The results are stored in
 ## Documentation
 
 ```bash
-./build_local.sh wasm32 --docs
+./build_local.sh docs
 ```
 
 builds pyjs, builds [xeus-python](https://github.com/jupyter-xeus/xeus-python)

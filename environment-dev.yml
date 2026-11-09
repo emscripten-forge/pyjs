@@ -1,4 +1,6 @@
-name: pyjs-wasm-build
+name: pyjs-dev
+# the single development env (native, for wasm32 and wasm64): build_local.sh
+# creates it as build_root/dev_prefix (CI: setup-micromamba, BUILD_ENV_PREFIX)
 channels:
   - conda-forge
   - https://repo.prefix.dev/emscripten-forge/6x
@@ -12,12 +14,14 @@ dependencies:
   - click
   - ninja
   - nodejs
-  - emscripten_emscripten-wasm64 == 6.0.8
+  # emscripten itself; the wasm32 / wasm64 specific flags (-m64) are set by
+  # build_local.sh (instead of emscripten_emscripten-wasm32 / -wasm64, which
+  # only depend on emscripten-core and add -m64 for wasm64 in their activation)
+  - emscripten-core == 6.0.8
   - playwright
   - playwright-python
-  - pyjs_code_runner >= 2.0.1
   - exceptiongroup
-  # documentation (sphinx + jupyterlite, see build_local.sh --docs)
+  # documentation (sphinx + jupyterlite, see `build_local.sh docs`)
   - jupytext
   - sphinx
   - sphinx-autoapi
@@ -33,7 +37,9 @@ dependencies:
   - hatchling
   - pip:
     - JLDracula
-    - pyjs_code_runner >= 3.0
+    # runs the tests / benchmarks in the browser; 3.3.0 (--browser) is only
+    # released as git tag
+    - git+https://github.com/emscripten-forge/pyjs-code-runner@3.3.0
     # javascript kernel for the docs jupyterlite (iframe + web worker runtime,
     # top level await), only available as pre-release
     - jupyterlite-javascript-kernel == 0.4.0a5

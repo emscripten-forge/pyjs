@@ -6,7 +6,6 @@ Module["mkdirs"] = function (dirname) {
         parent_dirs.push(parent_dir)
         parent_dir = parent_dir.split("/").slice(0, -1).join("/")
     }
-    console.log(parent_dirs)
     // make directories
     parent_dirs = parent_dirs.reverse()
     for (let parent_dir of parent_dirs) {
@@ -172,30 +171,14 @@ Module["bootstrap_from_empack_packed_environment"] = async function
             ) {
               const package_url =
                 pkg?.url ?? `${package_tarballs_root_url}/${pkg.filename}`;
-              if (verbose) {
-                console.log(`!!fetching pkg ${pkg.name} from ${package_url}`);
-              }
               let byte_array = await fetchByteArray(package_url);
               const tarball_path = `/package_tarballs/${pkg.filename}`;
               Module.FS.writeFile(tarball_path, byte_array);
-              if (verbose) {
-                console.log(
-                  `!!extract ${tarball_path} (${byte_array.length} bytes)`
-                );
-              }
 
-              if (verbose) {
-                console.log("await python_is_ready_promise");
-              }
               await python_is_ready_promise;
 
               if (package_url.toLowerCase().endsWith(".conda")) {
                 // Conda v2 packages
-                if (verbose) {
-                  console.log(
-                    `!!extract conda package ${package_url} (${byte_array.length} bytes)`
-                  );
-                }
                 const dest = `/conda_packages/${pkg.name}`;
                 const pkg_file = Module["_unzip_from_python"](
                   tarball_path,
@@ -204,11 +187,6 @@ Module["bootstrap_from_empack_packed_environment"] = async function
                 return Module._install_conda_file(pkg_file.path, dest, prefix);
               } else if (package_url.toLowerCase().endsWith(".tar.bz2")) {
                 // Conda v1 packages
-                if (verbose) {
-                  console.log(
-                    `!!extract conda package ${package_url} (${byte_array.length} bytes)`
-                  );
-                }
                 const dest = `/conda_packages/${pkg.name}`;
                 return Module["_install_conda_file_from_python"](
                   tarball_path,
@@ -225,17 +203,10 @@ Module["bootstrap_from_empack_packed_environment"] = async function
             // fetch python package
             const python_package_url = python_package?.url ?? `${package_tarballs_root_url}/${python_package.filename}`;
         
-            if (verbose) {
-                console.log(`fetching python package from ${python_package_url}`)
-            }
             let byte_array = await fetchByteArray(python_package_url)
         
             const python_tarball_path = `/package_tarballs/${python_package.filename}`;
-            if(verbose){
-                console.log(`extract ${python_tarball_path} (${byte_array.length} bytes)`)
-            }
             Module.FS.writeFile(python_tarball_path, byte_array);
-            if(verbose){console.log("untar_from_python");}
             Module._untar(python_tarball_path, prefix);
             
             
@@ -249,15 +220,11 @@ Module["bootstrap_from_empack_packed_environment"] = async function
 
             await Module.init_phase_1(prefix, version, verbose);
 
-            console.log("bootstrapping python done")
 
         }
         
         
         
-        if(verbose){
-            console.log("fetching packages.json from", packages_json_url)
-        }
 
         // fetch json with list of all packages
         let empack_env_meta = await fetchJson(packages_json_url);
@@ -265,68 +232,47 @@ Module["bootstrap_from_empack_packed_environment"] = async function
         let all_mount_points = empack_env_meta.mounts || [];
         let prefix = empack_env_meta.prefix;
 
-        if(verbose){
-            console.log("makeDirs");
-        }
         Module.create_directories("/package_tarballs");
         
         // enusre there is python and split it from the rest
-        if(verbose){console.log("splitPackages");}
         let splitted = splitPackages(all_packages);
         let packages = splitted.packages;
         let python_package = splitted.python_package;
         let python_version = python_package.version.split(".").map(x => parseInt(x));
 
         // fetch init python itself
-        if(verbose){
-            console.log("bootstrap_python");
-        }
 
         let python_is_ready_promise = undefined;
         try{
             python_is_ready_promise = bootstrap_python(prefix, package_tarballs_root_url, python_package, verbose);
-            console.log("waiting for python to be ready");
             await python_is_ready_promise;
-            console.log("python is ready");
         }
         catch(e){
-            console.log("error while bootstrapping python", e)
+            console.error("error while bootstrapping python", e)
             throw e
         }
 
         // create array with size 
-        if(verbose){
-            console.log("fetchAndUntarAll");
-        }
         // let shared_libs = await Promise.all([
         //     ...packages.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)),
         //     ...all_mount_points.map(pkg => fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose))
         // ]);
 
-        // console.log("shared_libs:", shared_libs);
 
 
         // same as above, but sequentially to debug better
         let shared_libs = []
         for(let pkg of packages){
-            console.log("fetching and untarring package", pkg.name)
             let sl = await fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)
             shared_libs.push(sl)
         }
         for(let pkg of all_mount_points){
-            console.log("fetching and untarring mount point", pkg.name) 
             let sl = await fetchAndUntar(package_tarballs_root_url, python_is_ready_promise, pkg, verbose)
             shared_libs.push(sl)
         }
 
-        if(verbose){
-            console.log("init_phase_2");
-        }       
         Module.init_phase_2(prefix, python_version, verbose);
 
-        if(verbose){
-            console.log("init shared");
-        }     
 
 
         // in a worker we dont need to pre-load shared libraries
@@ -342,26 +288,18 @@ Module["bootstrap_from_empack_packed_environment"] = async function
                 // if we have any shared libraries, load them
                 if (shared_libs[i].length > 0) {
 
-                    for (let j = 0; j < shared_libs[i].length; j++) {
-                        let sl = shared_libs[i][j];
-                    }
-                    console.log(`loading #${shared_libs[i].length} shared libraries for package ${packages[i].name}`);
                     await Module._loadDynlibsFromPackage(
                         prefix,
                         python_version,
                         packages[i].name,
                         shared_libs[i]
                     );
-                    console.log(`asd loading shared libraries for package ${packages[i].name} done`);
                 }
             }
         }
         Module.runtimeKeepalivePush();
-        if(verbose){
-            console.log("done bootstrapping");}         
     }
     catch(e){
-        console.log("error in bootstrapping process")
         console.error(e);
     }
 }

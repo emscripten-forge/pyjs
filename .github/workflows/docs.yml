@@ -24,18 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # creates (and caches) the build env (incl. sphinx / jupyterlite),
+      # creates (and caches) the dev env (incl. sphinx / jupyterlite),
       # build_local.sh uses it via BUILD_ENV_PREFIX
-      - name: Install micromamba and the build env
+      - name: Install micromamba and the dev env
         uses: mamba-org/setup-micromamba@v2
         with:
-          environment-file: environment-wasm-build-wasm32.yml
+          environment-file: environment-dev.yml
           environment-name: pyjs-build
           cache-environment: true
           init-shell: bash
 
       # builds pyjs, xeus-python (from source, against this pyjs) for wasm32 and
-      # wasm64 (build_local.sh creates the wasm64 build env itself) and the
+      # wasm64 (one dev env, build_local.sh sets the arch flags) and the
       # sphinx docs with jupyterlite, then smoke tests the docs in a headless
       # browser (pyjs in the xeus-python kernels and the javascript kernel with
       # the wasm32 and the wasm64 pyjs runtime)
@@ -45,7 +45,7 @@ jobs:
         run: |
           export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
           export DOCS_OUT_DIR="$GITHUB_WORKSPACE/docs_build/html"
-          ./build_local.sh wasm32 --docs --test
+          ./build_local.sh docs --test
 
       ################################################################
       # upload to github pages

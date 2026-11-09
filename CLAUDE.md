@@ -77,6 +77,11 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   `tests/atests/__init__.py`).
 - Tests must pass in the main thread *and* in a worker, and in chromium,
   firefox and webkit.
+- No assertions that depend on timing (CI runners are slow and noisy): make the
+  order explicit (e.g. a JS promise the test resolves itself), check structure
+  instead of speed (`_CountSetTimeout` in `tests/atests/webloop_tests.py`: the
+  fast path uses no `setTimeout`), only lower bounds for delays ("at least"),
+  and timeouts only as hang guards. Speed belongs in `benchmarks/`.
 - pyjs-code-runner >= 3.3.0 has `--browser chromium|firefox|webkit`
   (repo: emscripten-forge/pyjs-code-runner, CI installs it from the git tag).
 

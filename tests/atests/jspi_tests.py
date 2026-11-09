@@ -139,17 +139,24 @@ async def test_jspi_concurrent_tasks():
     if not pyjs.jspi_enabled():
         return
     seen = []
+    # the waiter's promise is resolved by the other task after its steps, so
+    # the order does not depend on timing (slow CI browsers)
+    deferred = js.Function(
+        "let resolve; const p = new Promise((r) => { resolve = r; }); return [p, resolve];"
+    )()
+    promise, resolve = deferred[0], deferred[1]
 
     async def waiter():
         seen.append(("waiter start", pyjs.can_run_sync()))
-        value = pyjs.run_sync(_delayed_promise("w", 50))
+        value = pyjs.run_sync(promise)
         seen.append(("waiter end", value))
 
     async def other():
         for i in range(3):
-            await asyncio.sleep(0.005)
+            await asyncio.sleep(0)
             # waiter is suspended: no second suspended stack
             seen.append((f"other {i}", pyjs.can_run_sync()))
+        resolve("w")
 
     await asyncio.gather(waiter(), other())
     assert seen[0] == ("waiter start", True), seen

@@ -17,3 +17,5 @@ build_root/
 docs/_generated/
 # jupyterlite build state (written by the docs build)
 .jupyterlite.doit.db
+# personal Claude Code settings
+.claude/settings.local.json

@@ -11,6 +11,12 @@ on:
     branches: [main]
   pull_request:
 
+# a new run (push / PR update) cancels the older run of the same workflow on
+# the same branch / PR (release tags: each tag its own group, never cancelled)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash -l {0}

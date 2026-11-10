@@ -309,6 +309,9 @@ pure-JS benchmarks (`raw_js_*`) show the run-to-run noise.
 
 ## CI
 
+- All workflows: `concurrency` per workflow + PR number / ref with
+  `cancel-in-progress`: a new push / PR update cancels the older run (each
+  release tag is its own group).
 - `.github/workflows/main.yml`: matrix wasm32/wasm64 x chromium/firefox/webkit,
   dev env (`environment-dev.yml`) from `setup-micromamba` (cached) ->
   `BUILD_ENV_PREFIX` ->

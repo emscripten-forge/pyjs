@@ -1,0 +1,111 @@
+name: npm
+
+# The npm package (npm/, build_local.sh npm): built + tested on every push /
+# PR, published on release tags (e.g. `4.1.0`, must equal the version in
+# CMakeLists.txt) or manually (workflow_dispatch with publish=true).
+#
+# Publishing uses npm trusted publishing (OIDC, no token / secret): on
+# npmjs.com the package (Settings -> Trusted Publisher) trusts this repository
+# + this workflow file (npm.yml). The package name comes from the repository
+# variable NPM_PACKAGE_NAME (default @derthorsten/pyjs, later
+# @emscripten-forge/pyjs).
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+*"]
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "publish to npm"
+        type: boolean
+        default: false
+
+# a new run (push / PR update) cancels the older run of the same workflow on
+# the same branch / PR (release tags: each tag its own group, never cancelled)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+env:
+  NPM_PACKAGE_NAME: ${{ vars.NPM_PACKAGE_NAME || '@derthorsten/pyjs' }}
+
+jobs:
+  build-test:
+    name: build + test
+    runs-on: ubuntu-latest
+    # a failed JSPI suspension can hang the browser instead of failing
+    timeout-minutes: 120
+
+    env:
+      BROWSERS: chromium firefox webkit
+      PLAYWRIGHT_INSTALL_ARGS: --with-deps
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # one dev env (cached) for both architectures
+      - name: Install micromamba and the dev env
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment-dev.yml
+          environment-name: pyjs-build
+          cache-environment: true
+          init-shell: bash
+
+      # wasm32 + wasm64, main thread + module worker, offline + network
+      - name: Build and test the npm package
+        run: |
+          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
+          ./build_local.sh npm --test
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: build_root/npm/*.tgz
+          if-no-files-found: error
+
+  publish:
+    needs: build-test
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # npm trusted publishing (OIDC) + provenance
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # trusted publishing needs npm >= 11.5.1
+      - name: Update npm
+        run: npm install -g npm@^11.5.1
+
+      - name: Check the version against the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tgz=$(ls dist/*.tgz)
+          version=$(tar -xOzf "$tgz" package/package.json | node -p "JSON.parse(require('fs').readFileSync(0)).version")
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "package version $version != tag $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      # authenticated via OIDC (trusted publisher), provenance is attached
+      # automatically
+      - name: Publish
+        run: npm publish dist/*.tgz --access public

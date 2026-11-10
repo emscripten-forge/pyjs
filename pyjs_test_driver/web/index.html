@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>pyjs test page</title></head>
+<body>
+<pre id="status">running</pre>
+<script type="module">
+// The page contract (see pyjs_test_driver/README.md): options from the url,
+// run the suite with the pyjs of ./page.js in this thread or in a module
+// worker, publish the result as window.__pyjs_result.
+import { optionsFromUrl, runSuite } from "./harness.js";
+
+const options = optionsFromUrl();
+const done = (result) => {
+  window.__pyjs_result = result;
+  document.getElementById("status").textContent = JSON.stringify(result, null, 2);
+};
+
+if (options.mode === "worker") {
+  const worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+  worker.onmessage = ({ data }) => {
+    if (data.console) console[data.console](data.text);  // output of the worker
+    if (data.result) done(data.result);
+  };
+  worker.onerror = (e) => done({ ok: false, error: `worker error: ${e.message}` });
+  worker.postMessage(options);
+} else {
+  const { createPyjs } = await import("./page.js");
+  done(await runSuite(createPyjs, options));
+}
+</script>
+</body>
+</html>

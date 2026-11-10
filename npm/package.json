@@ -1,0 +1,16 @@
+{
+  "name": "pyjs-npm-build",
+  "private": true,
+  "description": "build tooling of the pyjs npm package (the published package.json is written by build.mjs)",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@emscripten-forge/mambajs": "0.24.0",
+    "@emscripten-forge/mambajs-core": "0.24.0",
+    "@emscripten-forge/untarjs": "5.4.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

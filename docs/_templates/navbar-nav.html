@@ -1,0 +1,11 @@
+{# The header navbar: the top-level toctree entries (as in pydata-sphinx-theme)
+   + the playground, a static page next to the docs (not a sphinx document,
+   pathto(..., 1) gives its relative url from every page). #}
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    {{ generate_header_nav_html(n_links_before_dropdown=theme_header_links_before_dropdown, dropdown_text=theme_header_dropdown_text) }}
+    <li class="nav-item pst-header-nav-item">
+      <a class="nav-link nav-internal" href="{{ pathto('playground/index.html', 1) }}">Playground</a>
+    </li>
+  </ul>
+</nav>

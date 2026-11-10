@@ -4,12 +4,13 @@ import sys
 import types
 from typing import Any
 import ast
+import inspect
 import pyjs_core
 from pyjs_core import JsValue, js_array, js_py_object
 import warnings
 import time
 
-def install_submodules():
+def _install_submodules():
     def _js_mod__getattr__(name: str) -> Any:
         ret = pyjs_core.internal.global_property(name)
         if ret is None:
@@ -31,8 +32,8 @@ def install_submodules():
     pyjs_core._module = _module
 
 
-install_submodules()
-del install_submodules
+_install_submodules()
+del _install_submodules
 
 
 
@@ -69,7 +70,7 @@ def create_callable(py_function):
     def py_function(x, y):
         return x + y
 
-    js_callable, js_py_object = create_callable(py_function)
+    js_callable, js_py_object = pyjs.create_callable(py_function)
     
     # this function can be passed to JavaScript.
     # lets create some JavaScript code to test it
@@ -77,7 +78,8 @@ def create_callable(py_function):
         return z * f(x, y);
     """)
     
-    # call the higher order JavaScript function with py_function wrapped as a JavaScript callable
+    # call the higher order JavaScript function
+    # with py_function wrapped as a JavaScript callable
     result = higher_order_function(js_callable, 1, 2, 3)
     assert result == 9
 
@@ -108,7 +110,8 @@ def callable_context(py_function):
         return x + y
 
     with pyjs.callable_context(py_function) as js_function:
-        # js_function is a JavaScript callable and could be passed and called from JavaScript
+        # js_function is a JavaScript callable and could be
+        # passed to and called from JavaScript,
         # here we just call it from Python
         print(js_function(1,2))
     ```
@@ -133,8 +136,8 @@ def promise(py_resolve_reject):
     """ Create a new JavaScript promise with a python callback to resolve or reject the promise.
     
     Args:
-        py_resolve_reject (Callable): A Python function that takes two arguments, resolve and reject, which are both functions. 
-        The resolve function should be called with the result of the promise and the reject function should be called with an error.
+        py_resolve_reject (Callable): A Python function that takes two arguments, resolve and reject, which are both functions.
+            The resolve function should be called with the result of the promise and the reject function should be called with an error.
     
     Example:
     ```python
@@ -189,8 +192,8 @@ def create_once_callable(py_function):
     # the following will raise an error
     try:
         print(js_function(1,2))
-    except Exception as e:
-        print(e)
+    except pyjs.JsException as e:
+        print("error:", e.message)
     ```
     """
     
@@ -289,27 +292,34 @@ def exec_eval(script, globals=None, locals=None):
         # otherwise we just execute the entire code
         return exec(script, globals, locals)
 
-# move to internal
 async def async_exec_eval(stmts, globals=None, locals=None):
-    parsed_stmts = ast.parse(stmts)
-    if parsed_stmts.body:
+    """Execute a script which may use top level `await`, return the value of
+    the last expression (like `exec_eval`).
 
-        last_node = parsed_stmts.body[-1]
-        if isinstance(last_node, ast.Expr):
-            last_node = ast.Return(value=last_node.value)
-            parsed_stmts.body.append(last_node)
-            ast.fix_missing_locations(parsed_stmts)
+    The script runs with module level semantics (`PyCF_ALLOW_TOP_LEVEL_AWAIT`,
+    like the asyncio REPL / IPython): assignments go to `globals`, each
+    statement runs exactly once.
+    """
+    flags = ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
 
-    fn_name = "_pyjs_async_exec_f"
-    fn = f"async def {fn_name}(): pass"
-    parsed_fn = ast.parse(fn)
-    for node in parsed_stmts.body:
-        ast.increment_lineno(node)
+    async def run(code):
+        result = eval(code, globals, locals)
+        if code.co_flags & inspect.CO_COROUTINE:
+            result = await result
+        return result
 
-    parsed_fn.body[0].body = parsed_stmts.body
-    exec(compile(parsed_fn, filename="<ast>", mode="exec"), globals, locals)
-    return await  eval(f'{fn_name}()', globals, locals)  # fmt: skip
-
+    body = ast.parse(stmts).body
+    if not body:
+        return None
+    if isinstance(body[-1], ast.Expr):
+        if len(body) > 1:
+            module = ast.Module(body=body[:-1], type_ignores=[])
+            await run(compile(module, filename="<ast>", mode="exec", flags=flags))
+        expression = ast.Expression(body=body[-1].value)
+        return await run(compile(expression, filename="<ast>", mode="eval", flags=flags))
+    module = ast.Module(body=body, type_ignores=[])
+    await run(compile(module, filename="<ast>", mode="exec", flags=flags))
+    return None
 
 
 class _CallbackEntryPoint:
@@ -426,7 +436,14 @@ def run_sync(awaitable):
 
     Example:
     ```python
-    response = pyjs.run_sync(pyjs.js.fetch(url))
+    import pyjs
+
+    def page_status():
+        # a plain (sync) function waiting for a JavaScript promise
+        response = pyjs.run_sync(pyjs.js.fetch(pyjs.js.location.href))
+        return response.status
+
+    page_status()  # 200
     ```
     """
     if not jspi_enabled():

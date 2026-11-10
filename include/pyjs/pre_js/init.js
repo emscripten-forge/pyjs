@@ -4,7 +4,6 @@ Module._is_initialized = false
 
 Module['init_phase_1'] = async function(prefix, python_version, verbose) {
 
-    if(verbose){console.log("in init phase 1");}
     let version_str = `${python_version[0]}.${python_version[1]}`;
 
     // list of python objects we need to delete when cleaning up
@@ -37,8 +36,6 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
         const pypath = `/lib/python${version_str}/site-packages:/usr/lib/python${version_str}/site-packages`;
         var side_path = `/lib/python${version_str}/site-packages`;
 
-        console.log("PYTHONPATH",pypath);
-        console.log("SIDE_PATH",side_path);
         Module.setenv("PYTHONHOME", `/`);
         Module.setenv("PYTHONPATH", pypath);
         Module.create_directories(side_path);
@@ -55,9 +52,7 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
         Module["_jspi_install"]();
     }
 
-    console.log("initialize interpreter");
     Module["_initialize_interpreter"]();
-    console.log("interpreter initialized");
 
 
 
@@ -168,14 +163,12 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
             return ret['ret']
         }
     };
-    if(verbose){console.log("in init phase 1 done!!");}
 }
 
 Module['init_phase_2'] =  function(prefix, python_version, verbose) {
     let default_scope = Module["default_scope"];
 
     // make the python pyjs module easy available
-    if(verbose){console.log("in init phase 2");}
 
     Module.exec(`
 import traceback
@@ -187,13 +180,11 @@ except Exception as e:
     raise e
     `)
 
-    if(verbose){console.log("assign pyobjects I");}
     Module.py_pyjs = Module.eval("pyjs")
     Module._py_objects.push(Module.py_pyjs);
 
 
     // execute a script and return the value of the last expression
-    if(verbose){console.log("assign pyobjects II");}
     Module._py_exec_eval = Module.eval("pyjs.exec_eval")
     Module._py_objects.push(Module._py_exec_eval)
     Module.exec_eval = function(script, globals=default_scope, locals=default_scope){
@@ -201,22 +192,28 @@ except Exception as e:
     }
 
     // ansync execute a script and return the value of the last expression
-    if(verbose){console.log("assign pyobjects III");}
     Module._py_async_exec_eval = Module.eval("pyjs.async_exec_eval")
     Module._py_objects.push(Module._py_async_exec_eval)
     Module.async_exec_eval = async function(script, globals=default_scope, locals=default_scope){
         return await Module._py_async_exec_eval.py_call(script, globals, locals)
     }
-    if(verbose){console.log("assign pyobjects IV");}
      Module.exec(`
 import asyncio
 def _add_resolve_done_callback(future, resolve, reject):
     ensured_future = asyncio.ensure_future(future)
     def done(f):
         try:
-            resolve(f.result())
+            result = f.result()
         except Exception as err:
             reject(repr(err))
+            return
+        # a python object (not converted to a JS value) is resolved as a
+        # pyobject owned by JavaScript (like the result of exec_eval): an
+        # implicitly converted argument would be deleted after the call
+        import pyjs
+        if not isinstance(result, (type(None), bool, int, float, str, pyjs.JsValue)):
+            result = pyjs.js_py_object(result)
+        resolve(result)
 
     ensured_future.add_done_callback(done)
     `)
@@ -327,5 +324,4 @@ def _mock_webbrowser():
 _mock_webbrowser()
 del _mock_webbrowser
 `);
-    if(verbose){console.log("init phase 2 done");}
 }

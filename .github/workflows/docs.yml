@@ -9,6 +9,12 @@ on:
   pull_request:
 
 
+# a new run (push / PR update) cancels the older run of the same workflow on
+# the same branch / PR (release tags: each tag its own group, never cancelled)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash -l {0}
@@ -24,28 +30,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # creates (and caches) the build env (incl. sphinx / jupyterlite),
+      # creates (and caches) the dev env (incl. sphinx),
       # build_local.sh uses it via BUILD_ENV_PREFIX
-      - name: Install micromamba and the build env
+      - name: Install micromamba and the dev env
         uses: mamba-org/setup-micromamba@v2
         with:
-          environment-file: environment-wasm-build-wasm32.yml
+          environment-file: environment-dev.yml
           environment-name: pyjs-build
           cache-environment: true
           init-shell: bash
 
-      # builds pyjs, xeus-python (from source, against this pyjs) for wasm32 and
-      # wasm64 (build_local.sh creates the wasm64 build env itself) and the
-      # sphinx docs with jupyterlite, then smoke tests the docs in a headless
-      # browser (pyjs in the xeus-python kernels and the javascript kernel with
-      # the wasm32 and the wasm64 pyjs runtime)
-      - name: Build and test the docs
-        env:
-          PLAYWRIGHT_INSTALL_ARGS: --with-deps
+      # builds the npm package (wasm32 + wasm64, deployed next to the html for
+      # the playground) and the sphinx docs
+      - name: Build the docs
         run: |
           export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
           export DOCS_OUT_DIR="$GITHUB_WORKSPACE/docs_build/html"
-          ./build_local.sh wasm32 --docs --test
+          ./build_local.sh docs
 
       ################################################################
       # upload to github pages

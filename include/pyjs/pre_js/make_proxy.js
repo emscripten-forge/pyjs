@@ -14,6 +14,12 @@ Module['make_proxy'] = function(py_object) {
                 }
                 return undefined
             }
+            // `await` / Promise.resolve probe every value for `.then`: a python
+            // object without a `then` attribute is no thenable (no AttributeError)
+            if (property === 'then') {
+                const ret = target._raw_getattr('then');
+                return ret.has_err ? undefined : ret.ret;
+            }
             return target._getattr(property);
         }
     };

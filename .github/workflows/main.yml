@@ -6,14 +6,15 @@ on:
   pull_request:
 
 
+# a new run (push / PR update) cancels the older run of the same workflow on
+# the same branch / PR (release tags: each tag its own group, never cancelled)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash -l {0}
-
-
-env:
-  # pyjs-code-runner is installed from source (see build_local.sh)
-  PYJS_CODE_RUNNER_REF: "3.3.0"
 
 
 jobs:
@@ -35,26 +36,20 @@ jobs:
       BROWSERS: ${{ matrix.browser }}
       # install the system libraries the browser needs (via apt)
       PLAYWRIGHT_INSTALL_ARGS: --with-deps
-      PYJS_CODE_RUNNER_DIR: ${{ github.workspace }}/../pyjs-code-runner
 
     steps:
       - uses: actions/checkout@v4
 
-      # creates (and caches) the build env, build_local.sh uses it via
-      # BUILD_ENV_PREFIX and creates the (small) host / deploy envs itself
-      - name: Install micromamba and the build env
+      # creates (and caches) the dev env (incl. playwright), build_local.sh
+      # uses it via BUILD_ENV_PREFIX and creates the host / test envs itself
+      - name: Install micromamba and the dev env
         uses: mamba-org/setup-micromamba@v2
         with:
-          environment-file: environment-wasm-build-${{ matrix.wasm }}.yml
+          # one dev env for wasm32 and wasm64 (build_local.sh sets -m64)
+          environment-file: environment-dev.yml
           environment-name: pyjs-build
           cache-environment: true
           init-shell: bash
-
-      - name: Get pyjs-code-runner
-        run: |
-          git clone --depth 1 --branch "$PYJS_CODE_RUNNER_REF" \
-            https://github.com/emscripten-forge/pyjs-code-runner \
-            "$PYJS_CODE_RUNNER_DIR"
 
       # one build for all browsers: JSPI (pyjs.run_sync) is used when the browser
       # supports it (needs python with the wasm-gc call trampoline,
@@ -62,7 +57,7 @@ jobs:
       - name: Build and test (browser main thread + worker)
         run: |
           export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          ./build_local.sh ${{ matrix.wasm }} --test
+          ./build_local.sh test ${{ matrix.wasm }}
 
       # the same build, JSPI switched off at runtime (like a browser without JSPI)
       - name: Test without JSPI (browser main thread + worker)
@@ -70,12 +65,12 @@ jobs:
           DISABLE_JSPI: "1"
         run: |
           export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          ./build_local.sh ${{ matrix.wasm }} --test
+          ./build_local.sh test ${{ matrix.wasm }}
 
       - name: Test without numpy (browser main thread)
         env:
-          DEPLOY_ENV_FILE: ${{ github.workspace }}/environment-wasm-deploy-no-numpy.yml
-          BACKENDS: browser-main
+          TEST_ENV: no-numpy
+          MODES: main
         run: |
           export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          ./build_local.sh ${{ matrix.wasm }} --test
+          ./build_local.sh test ${{ matrix.wasm }}

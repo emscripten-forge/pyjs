@@ -31,6 +31,9 @@ def main(argv=None):
     run.add_argument("--option", action="append", default=[], metavar="KEY=VALUE",
                      help="passed to the suite's main(options), e.g. filter=async")
     run.add_argument("--result-json", help="write the result to this file")
+    run.add_argument("--retries", type=int, default=0,
+                     help="rerun if pyjs could not be set up (network errors), not on failed tests")
+    run.add_argument("--retry-delay", type=float, default=10, help="seconds between the retries")
     run.add_argument("--meta", action="append", default=[], metavar="KEY=VALUE",
                      help="added to the result file as `build` (e.g. git_rev=...)")
 
@@ -53,7 +56,9 @@ def main(argv=None):
         preload=args.preload,
     )
     meta = dict(item.split("=", 1) for item in args.meta)
-    return driver.run(args.page_dir, args.browser, options, args.result_json, meta)
+    return driver.run(
+        args.page_dir, args.browser, options, args.result_json, meta, args.retries, args.retry_delay
+    )
 
 
 if __name__ == "__main__":

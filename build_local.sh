@@ -326,14 +326,16 @@ test_npm_package() {
     for arch in $ARCHS; do
         test_driver build-page npm --package "$BUILD_ROOT/npm/package" --arch "$arch" \
             --packages "${TEST_PACKAGES[@]}" --out "$BUILD_ROOT/pages/npm_$arch"
-        run_tests "npm $arch" "$BUILD_ROOT/pages/npm_$arch" "$BROWSERS" "$MODES" || ret=1
+        # the npm pages need the network (test packages via mambajs from
+        # prefix.dev): retry a failed setup, never failed tests
+        run_tests "npm $arch" "$BUILD_ROOT/pages/npm_$arch" "$BROWSERS" "$MODES" --retries 5 || ret=1
     done
     # the bundled app does not depend on the browser: the first browser, main thread
     if [ "${NPM_TEST_BUNDLERS:-1}" = "1" ]; then
         for bundler in vite webpack rollup esbuild parcel; do
             if test_driver build-page "$bundler" --tgz "$tgz" --packages "${TEST_PACKAGES[@]}" \
                     --work-dir "$BUILD_ROOT/pages/bundler_projects" --out "$BUILD_ROOT/pages/$bundler"; then
-                run_tests "$bundler" "$BUILD_ROOT/pages/$bundler" "${BROWSERS%% *}" main || ret=1
+                run_tests "$bundler" "$BUILD_ROOT/pages/$bundler" "${BROWSERS%% *}" main --retries 5 || ret=1
             else
                 SUMMARY+=("  FAILED  $bundler (building the page)")
                 ret=1

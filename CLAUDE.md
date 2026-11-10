@@ -126,6 +126,11 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   `include/pyjs/{pre,post}_js/*.js` (TS2304 besides the emscripten globals).
 - Tests must pass in the main thread *and* in a worker, and in chromium,
   firefox and webkit.
+- npm / bundler pages need the network (mambajs fetches from prefix.dev,
+  which sometimes answers without CORS headers): `run --retries 5` (10 s
+  apart, `--retry-delay`) reruns a
+  page whose *setup* failed (`{ok: false, error}`, no test ran), never failed
+  tests. Vanilla pages are offline, no retries.
 - No assertions that depend on timing (CI runners are slow and noisy): make the
   order explicit (e.g. a JS promise the test resolves itself), check structure
   instead of speed (`_CountSetTimeout` in `tests/async/test_webloop.py`: the

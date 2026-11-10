@@ -120,8 +120,10 @@ export async function test_async_exec_eval_returns_python_object(pyjs){
 import fractions
 fractions.Fraction(1, 3)
 `);
-    // toString: python's str() (String(res) would be the number, toPrimitive)
-    assert_eq(res.toString(), "1/3");
+    // a live python object: usable when passed back to python
+    const py_str = pyjs.eval("str");
+    assert_eq(py_str.py_call(res), "1/3");
+    py_str.delete();
     assert_undefined(res.then);
     // owned by JavaScript, like the result of exec_eval
     res.delete();

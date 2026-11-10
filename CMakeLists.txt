@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.0)
-project(pyjs VERSION 4.2.1 DESCRIPTION "pyjs")
+project(pyjs VERSION 4.2.2 DESCRIPTION "pyjs")
 
 
 # cmake module directory

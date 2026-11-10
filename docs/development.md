@@ -90,6 +90,9 @@ async def bench_asyncio_sleep_0(benchmark):
 The results are stored in
 `build_root/benchmarks/<wasm>/<stamp>_<browser>_<mode>.{log,json}`. They run
 on the vanilla page (`pyjs_test_driver run ... --entry benchmarks`).
+`python benchmarks/report.py <json>...` turns them into markdown tables; the
+CI (`.github/workflows/bench.yml`) runs the benchmarks for every architecture
+and browser and shows these tables on the summary page of each job.
 
 ## Documentation
 

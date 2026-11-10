@@ -1,0 +1,67 @@
+name: benchmarks
+
+# The benchmarks (benchmarks/, build_local.sh bench) for every architecture x
+# browser, main thread + worker. The results are shown on the summary page of
+# each job (benchmarks/report.py) and uploaded as json. CI runners are shared
+# and noisy: compare the rows of one run, not absolute numbers across runs.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+jobs:
+  bench:
+    name: bench ${{ matrix.wasm }} / ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        wasm: [wasm32, wasm64]
+        browser: [chromium, firefox, webkit]
+
+    env:
+      BROWSERS: ${{ matrix.browser }}
+      PLAYWRIGHT_INSTALL_ARGS: --with-deps
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install micromamba and the dev env
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment-dev.yml
+          environment-name: pyjs-build
+          cache-environment: true
+          init-shell: bash
+
+      - name: Run the benchmarks (main thread + worker)
+        run: |
+          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
+          ./build_local.sh bench ${{ matrix.wasm }}
+
+      - name: Report
+        if: always()
+        run: |
+          shopt -s nullglob
+          results=(build_root/benchmarks/${{ matrix.wasm }}/latest_*.json)
+          if [ ${#results[@]} -eq 0 ]; then
+            echo "no benchmark results" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 benchmarks/report.py "${results[@]}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks-${{ matrix.wasm }}-${{ matrix.browser }}
+          path: build_root/benchmarks/${{ matrix.wasm }}/
+          if-no-files-found: ignore

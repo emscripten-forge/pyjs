@@ -314,5 +314,9 @@ pure-JS benchmarks (`raw_js_*`) show the run-to-run noise.
   `BUILD_ENV_PREFIX` ->
   `./build_local.sh test <wasm>`, again with `DISABLE_JSPI=1`, plus a
   `TEST_ENV=no-numpy` run. Jobs have a timeout (a failed suspension hangs).
+- `.github/workflows/bench.yml`: `./build_local.sh bench <wasm>` for wasm32 /
+  wasm64 x chromium / firefox / webkit (main thread + worker), on pushes to
+  `main`, PRs and manually; `benchmarks/report.py` writes the results as
+  markdown tables to the job summary, the json files are artifacts.
 - `.github/workflows/docs.yml`: `./build_local.sh docs`,
   deploys `docs_build/html` to GitHub Pages from `main`.

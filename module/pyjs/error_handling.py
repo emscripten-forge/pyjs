@@ -9,14 +9,25 @@ class JsHolder(object):
         return self._js_proxy
 
 
+def _js_error_message(err):
+    """the `message` of a JavaScript error (like pyodide), for other thrown
+    values (strings, plain objects, ...) the value as JSON"""
+    try:
+        message = err.message
+    except Exception:
+        message = None
+    if isinstance(message, str) and message:
+        return message
+    return js.JSON.stringify(err, js.Object.getOwnPropertyNames(err))
+
+
 # also a RuntimeError: awaiting a rejected promise used to raise RuntimeError,
 # `except RuntimeError` keeps working
 class JsException(JsHolder, RuntimeError):
     def __init__(self, err, message=None):
 
-        # default message
         if message is None:
-            message = js.JSON.stringify(err, js.Object.getOwnPropertyNames(err))
+            message = _js_error_message(err)
 
         self.name = "UnknownError"
         try:

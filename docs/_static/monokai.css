@@ -1,0 +1,125 @@
+/* The docs in monokai colors (like the playground): the color variables of
+   pydata-sphinx-theme, for both modes (the theme switcher is hidden, see
+   docs/conf.py). */
+html[data-theme="light"],
+html[data-theme="dark"] {
+  /* page a shade darker than monokai's #272822, which is kept for code */
+  --pst-color-background: #1e1f1c;
+  --pst-color-on-background: #191a17;
+  --pst-color-surface: #3e3d32;
+  --pst-color-on-surface: #f8f8f2;
+  --pst-color-text-base: #f8f8f2;
+  --pst-color-text-muted: #a59f85;
+  --pst-color-heading-color: #f8f8f2;
+  --pst-color-shadow: rgba(0, 0, 0, 0.4);
+  --pst-color-border: #49483e;
+  --pst-color-border-muted: #3e3d32;
+  --pst-color-primary: #a6e22e;
+  --pst-color-primary-bg: #3e3d32;
+  --pst-color-secondary: #f92672;
+  --pst-color-secondary-bg: #3e3d32;
+  --pst-color-accent: #66d9ef;
+  --pst-color-link: #66d9ef;
+  --pst-color-link-hover: #a6e22e;
+  --pst-color-inline-code: #e6db74;
+  --pst-color-inline-code-links: #66d9ef;
+  --pst-color-target: #49483e;
+  --pst-color-table-row-hover-bg: #3e3d32;
+  --pst-color-info: #66d9ef;
+  --pst-color-success: #a6e22e;
+  --pst-color-warning: #fd971f;
+  --pst-color-danger: #f92672;
+  --pst-color-attention: #e6db74;
+  color-scheme: dark;
+}
+
+/* code blocks: the background of the monokai pygments style, lighter than the page */
+html[data-theme] .highlight,
+html[data-theme] .highlight pre {
+  background: #272822;
+}
+/* inline code: a light box on the page */
+html[data-theme] code.literal,
+html[data-theme] .rst-content code {
+  background: #2d2e27;
+  border-color: #3e3d32;
+}
+html[data-theme] div.highlight {
+  border: 1px solid #49483e;
+  border-radius: 6px;
+}
+
+/* admonitions (note, warning, ...): monokai tinted headers instead of the
+   theme's saturated ones */
+html[data-theme] .admonition,
+html[data-theme] div.admonition {
+  background: #272822;
+}
+html[data-theme] .admonition > .admonition-title,
+html[data-theme] div.admonition > .admonition-title {
+  background: rgba(102, 217, 239, 0.12);
+}
+html[data-theme] .admonition.warning > .admonition-title,
+html[data-theme] .admonition.attention > .admonition-title {
+  background: rgba(253, 151, 31, 0.15);
+}
+html[data-theme] .admonition.danger > .admonition-title,
+html[data-theme] .admonition.error > .admonition-title {
+  background: rgba(249, 38, 114, 0.15);
+}
+
+/* run buttons + output of the code snippets (_static/runnable.js) */
+.pyjs-run-bar {
+  display: flex;
+  gap: 8px;
+  margin: -0.6rem 0 0.8rem;
+}
+/* editable code boxes (runnable.js): a hint on hover / focus */
+pre.pyjs-editable {
+  outline: none;
+  cursor: text;
+}
+div.highlight:has(pre.pyjs-editable:hover) {
+  border-color: #75715e;
+}
+div.highlight:has(pre.pyjs-editable:focus) {
+  border-color: #a6e22e;
+}
+.pyjs-reset-button {
+  padding: 2px 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: #f8f8f2;
+  background: #49483e;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pyjs-run-button {
+  padding: 2px 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: #272822;
+  background: #a6e22e;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pyjs-run-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.pyjs-run-output {
+  margin: -0.4rem 0 1.2rem;
+  padding: 8px 12px;
+  background: #191a17;
+  border-left: 3px solid #a6e22e;
+  border-radius: 0 4px 4px 0;
+  font-family: var(--pst-font-family-monospace);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  color: #f8f8f2;
+}
+.pyjs-run-output .pyjs-run-result { color: #e6db74; }
+.pyjs-run-output .pyjs-run-error { color: #f92672; }
+.pyjs-run-output .pyjs-run-info { color: #75715e; font-style: italic; }

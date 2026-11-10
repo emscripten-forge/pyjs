@@ -1,20 +1,14 @@
-"""Entry point for running the pyjs benchmarks in the browser.
+"""The pyjs benchmarks, run inside the browser.
 
-Run via ``pyjs_code_runner run script ... --script main.py --async-main``
-(see ``build_local.sh bench <wasm>``).
+The test driver (`pyjs_test_driver run ... --entry benchmarks`, see
+`build_local.sh bench <wasm>`) writes this directory into the emscripten file
+system and awaits `main(options)`. Discovers ``bench_*`` functions (sync or
+async) in ``bench_*.py`` modules next to this file, runs them with the
+async-aware harness, prints a table and returns the results (the driver
+writes them as json on the host).
 
-Discovers ``bench_*`` functions (sync or async) in ``bench_*.py`` modules next
-to this file, runs them with the async-aware harness, prints a table and a
-single machine readable line::
-
-    PYJS_BENCH_RESULT_JSON: {...}
-
-which the host side extracts from the captured output (files written in the
-browser file system are not visible on the host).
-
-An optional ``/bench_config/config.json`` may contain::
-
-    {"filter": "substring", "min_round_time": 0.05, "rounds": 5}
+options: ``filter`` (substring of "module::name"), ``min_round_time``,
+``rounds``.
 """
 
 import importlib
@@ -31,18 +25,8 @@ sys.path.insert(0, BENCH_DIR)
 import pyjs  # noqa: E402
 from harness import format_table, run_benchmark_function  # noqa: E402
 
-RESULT_MARKER = "PYJS_BENCH_RESULT_JSON:"
-CONFIG_PATH = "/bench_config/config.json"
-
-
-def load_config():
-    if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
-    return {}
-
-
 def discover(name_filter=None):
+    """all bench_* functions of the bench_*.py modules, optionally filtered"""
     benches = []
     for fname in sorted(os.listdir(BENCH_DIR)):
         if not (fname.startswith("bench_") and fname.endswith(".py")):
@@ -60,6 +44,7 @@ def discover(name_filter=None):
 
 
 def environment_info():
+    """where the benchmarks ran (python, pointer size, browser)"""
     info = dict(
         python=sys.version,
         platform=sys.platform,
@@ -72,8 +57,9 @@ def environment_info():
     return info
 
 
-async def main():
-    config = load_config()
+async def main(options):
+    """run the benchmarks, return environment + config + results"""
+    config = {k: v for k, v in options.items() if k in ("filter", "min_round_time", "rounds")}
     harness_kwargs = {
         k: config[k] for k in ("min_round_time", "rounds") if k in config
     }
@@ -99,7 +85,4 @@ async def main():
     print(format_table(results))
     print(f"\n{len(results) - n_failed} benchmarks ok, {n_failed} failed in {total:.1f}s")
 
-    payload = dict(environment=environment_info(), config=config, results=results)
-    print(RESULT_MARKER + " " + json.dumps(payload), flush=True)
-
-    return 1 if n_failed else 0
+    return dict(ok=n_failed == 0, environment=environment_info(), config=config, results=results)

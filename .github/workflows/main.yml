@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # creates (and caches) the dev env (incl. pyjs-code-runner), build_local.sh
+      # creates (and caches) the dev env (incl. playwright), build_local.sh
       # uses it via BUILD_ENV_PREFIX and creates the host / test envs itself
       - name: Install micromamba and the dev env
         uses: mamba-org/setup-micromamba@v2
@@ -64,7 +64,7 @@ jobs:
       - name: Test without numpy (browser main thread)
         env:
           TEST_ENV: no-numpy
-          BACKENDS: browser-main
+          MODES: main
         run: |
           export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
           ./build_local.sh test ${{ matrix.wasm }}

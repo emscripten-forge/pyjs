@@ -6,40 +6,23 @@ channels:
   - https://repo.prefix.dev/emscripten-forge/6x
 
 
-dependencies: 
-  - cmake
-  - pip
+dependencies:
   - python =3.14
-  - yarn
-  - click
-  - ninja
-  - nodejs
+  - cmake
   # emscripten itself; the wasm32 / wasm64 specific flags (-m64) are set by
   # build_local.sh (instead of emscripten_emscripten-wasm32 / -wasm64, which
   # only depend on emscripten-core and add -m64 for wasm64 in their activation)
   - emscripten-core == 6.0.8
+  # packs conda envs for the browser (test pages, npm package)
+  - empack >=6.0.0
+  # npm package build, bundler test pages
+  - nodejs
+  # pyjs_test_driver: playwright = driver + browsers, playwright-python = its
+  # python API
   - playwright
   - playwright-python
-  - exceptiongroup
-  # documentation (sphinx + jupyterlite, see `build_local.sh docs`)
-  - jupytext
+  # documentation
   - sphinx
   - sphinx-autoapi
   - myst-parser
   - pydata-sphinx-theme
-  - empack >=6.0.0
-  - jupyter_server  # to enable contents  
-  - jupyterlite
-  - jupyterlite-xeus >= 3.1.8
-  - jupyterlite-sphinx
-  - notebook >=7,<8  # to include the extension to switch between JupyterLab and Notebook
-  # pyjs_code_runner dev deps
-  - hatchling
-  - pip:
-    - JLDracula
-    # runs the tests / benchmarks in the browser; 3.3.0 (--browser) is only
-    # released as git tag
-    - git+https://github.com/emscripten-forge/pyjs-code-runner@3.3.0
-    # javascript kernel for the docs jupyterlite (iframe + web worker runtime,
-    # top level await), only available as pre-release
-    - jupyterlite-javascript-kernel == 0.4.0a5

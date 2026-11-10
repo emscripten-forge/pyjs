@@ -63,7 +63,7 @@ Module['_gapply_try_catch'] = function(obj, args, is_generated_proxy, jin, jout)
 
 Module['_japply_try_catch'] = function(obj, jargs) {
     try {
-        args = JSON.parse(jargs)
+        const args = JSON.parse(jargs)
         return _wrap_return_value(obj(...args));
     } catch (e) {
         return _wrap_catched_error(e);

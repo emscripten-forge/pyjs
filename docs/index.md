@@ -41,33 +41,31 @@ console.log(py_list.get(0)) // same as py_list[0] on the python side
 
 ## Try it out
 
-Use the [Python REPL](try.md) in these docs, the
-<a href="lite/lab/index.html?path=js_api_tour.ipynb">JavaScript API tour</a>, or the full
-<a href="lite/lab/index.html">JupyterLite deployment</a>.
+The <a href="playground/index.html">playground</a> runs Python with pyjs in
+your browser, with a canvas to draw on from Python.
+
+## Using pyjs
+
+- [npm package](npm.md): the recommended way, for apps with or without a bundler
+- [CDN](cdn.md): one `import` in a plain html page
+- [C++ / static library](cpp.md) (advanced): deploying the raw runtime, or
+  embedding pyjs into your own WebAssembly program
+
+## Further references
+
+- [xeus-python](https://github.com/jupyter-xeus/xeus-python): the Jupyter
+  kernel built on pyjs, try it in
+  [JupyterLite](https://jupyterlite.github.io/demo/lab/index.html)
+- [emscripten-forge](https://github.com/emscripten-forge/recipes): the conda
+  packages compiled to WebAssembly (python, numpy, scipy, ...) that pyjs
+  installs
+- [mambajs](https://github.com/emscripten-forge/mambajs): the package manager
+  the npm package uses at runtime
 
 ```{toctree}
-:maxdepth: 2
-:caption: User guide
+:hidden:
 
-try
-npm
-installation
-embed
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: API reference
-
-JavaScript_API
-api/python/pyjs/index
-api/python/pyjs_core/index
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Internals
-
-design
-development
+usage
+reference
+internals
 ```

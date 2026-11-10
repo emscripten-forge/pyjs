@@ -111,8 +111,8 @@ class WebLoop(asyncio.AbstractEventLoop):
     clamping of nested ``setTimeout(callback, 0)``), ``call_later`` uses
     ``setTimeout(callback, delay)``.
 
-    See `Event Loop Methods
-        <https://docs.python.org/3/library/asyncio-eventloop.html#asyncio-event-loop>`_.
+    See the asyncio event loop methods:
+    https://docs.python.org/3/library/asyncio-eventloop.html#asyncio-event-loop
     """
 
     def __init__(self):
@@ -283,7 +283,7 @@ class WebLoop(asyncio.AbstractEventLoop):
     def run_in_executor(self, executor, func, *args):
         """Arrange for func to be called in the specified executor.
 
-        This is normally supposed to run func(*args) in a separate process or
+        This is normally supposed to run `func(*args)` in a separate process or
         thread and signal back to our event loop when it is done. It's possible
         to make the executor, but if we actually try to submit any functions to
         it, it will try to create a thread and throw an error. Best we can do is

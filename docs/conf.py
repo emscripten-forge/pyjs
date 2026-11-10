@@ -1,16 +1,11 @@
 # Sphinx configuration of the pyjs documentation.
 #
-# Build with `./build_local.sh docs`: this builds pyjs, builds
-# xeus-python from source against it and passes that environment to
-# jupyterlite-xeus (via PYJS_DOCS_KERNEL_PREFIX), so the interactive parts of
-# the docs run the pyjs from this repository.
+# Build with `./build_local.sh docs`: builds the npm package of this repository
+# (deployed next to the html, used by the playground), then sphinx.
 
-import json
 import os
 import re
 from pathlib import Path
-
-import jupytext
 
 HERE = Path(__file__).parent.resolve()
 ROOT = HERE.parent
@@ -23,18 +18,17 @@ extensions = [
     "myst_parser",
     "autoapi.extension",
     "sphinx.ext.napoleon",
-    "jupyterlite_sphinx",
 ]
 
 source_suffix = {
     ".rst": "restructuredtext",
     ".md": "markdown",
 }
-exclude_patterns = ["_build", "_generated", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "_extra", "Thumbs.db", ".DS_Store"]
 
 myst_enable_extensions = ["colon_fence"]
 # anchors for links like `development.md#tests`
-myst_heading_anchors = 3
+myst_heading_anchors = 4
 # pygments' cmake lexer stumbles over `\$` in the embedding example
 suppress_warnings = ["misc.highlighting_failure"]
 
@@ -44,7 +38,19 @@ html_title = "pyjs"
 html_theme_options = {
     "github_url": "https://github.com/emscripten-forge/pyjs",
     "navigation_with_keys": False,
+    # monokai only (like the playground): no light / dark switcher
+    "navbar_end": ["navbar-icon-links"],
+    "pygments_light_style": "monokai",
+    "pygments_dark_style": "monokai",
 }
+html_context = {"default_mode": "dark"}
+# _templates/navbar-nav.html: + the playground link in the header
+templates_path = ["_templates"]
+html_static_path = ["_static"]
+html_css_files = ["monokai.css"]
+# run buttons for the python / javascript snippets, executed by pyjs itself
+# (the npm package deployed next to the html)
+html_js_files = [("runnable.js", {"type": "module"})]
 
 # -- python api -----------------------------------------------------------------
 # sphinx-autoapi parses the sources instead of importing them:
@@ -55,13 +61,11 @@ autoapi_file_patterns = ["*.pyi", "*.py"]
 autoapi_root = "api/python"
 autoapi_add_toctree_entry = False
 autoapi_keep_files = False
-autoapi_options = [
-    "members",
-    # e.g. the `pyjs` package itself has no docstring and would be hidden
-    "undoc-members",
-    "show-inheritance",
-    "show-module-summary",
-]
+# The Python API page (python_api.md) is written by hand with autoapi
+# directives (`autoapifunction:: pyjs.run_sync`): one page with only the names
+# meant for users, autoapi generates no pages itself.
+autoapi_generate_api_docs = False
+autoapi_options = ["members", "undoc-members", "imported-members", "show-inheritance"]
 
 # The docstrings are written in markdown flavour (```python fences, `code`) with
 # google style sections (handled by napoleon), autoapi renders them as rst.
@@ -69,6 +73,7 @@ _INLINE_CODE = re.compile(r"(?<![`:])`([^`\n]+)`(?!`)")
 
 
 def _markdown_docstring_to_rst(app, what, name, obj, options, lines):
+    """markdown flavoured docstrings (```fences, `code`) -> rst for autoapi"""
     out = []
     in_fence = False
     for line in lines:
@@ -77,7 +82,8 @@ def _markdown_docstring_to_rst(app, what, name, obj, options, lines):
         if stripped.startswith("```"):
             if not in_fence:
                 language = stripped[3:].strip() or "text"
-                out += [f"{indent}.. code-block:: {language}", ""]
+                # blank line before: directly after e.g. `Example:` it is no directive
+                out += ["", f"{indent}.. code-block:: {language}", ""]
                 fence_indent = indent
             else:
                 out.append("")
@@ -91,84 +97,32 @@ def _markdown_docstring_to_rst(app, what, name, obj, options, lines):
 
 
 def setup(app):
+    """sphinx hooks: markdown docstrings, npm placeholders"""
     # before napoleon (priority 500), which then sees plain rst code blocks
     app.connect("autodoc-process-docstring", _markdown_docstring_to_rst, priority=400)
+    app.connect("source-read", _fill_in_npm_package)
 
 
-# -- jupyterlite ----------------------------------------------------------------
-# the example scripts (jupytext "percent" format) become notebooks in jupyterlite:
-# python examples run in xeus-python, javascript examples in the javascript
-# kernel of jupyterlite-javascript-kernel (IFrame runtime)
-NOTEBOOK_DIR = HERE / "_generated" / "notebooks"
-KERNELSPECS = {
-    ".py": {"name": "xpython", "display_name": "Python (XPython)", "language": "python"},
-    ".js": {"name": "javascript", "display_name": "JavaScript (IFrame)", "language": "javascript"},
-}
+# -- npm package name / version in the pages ------------------------------------
+# `@PYJS_NPM_PACKAGE@` / `@PYJS_NPM_VERSION@` in the markdown sources (e.g. the
+# CDN urls) are replaced, so the docs always match the package of this version
+NPM_PACKAGE = os.environ.get("NPM_PACKAGE_NAME", "@derthorsten/pyjs")
+NPM_VERSION = re.search(
+    r"project\(pyjs VERSION ([0-9.]+)", (ROOT / "CMakeLists.txt").read_text()
+).group(1)
 
 
-def _make_notebooks():
-    NOTEBOOK_DIR.mkdir(parents=True, exist_ok=True)
-    for suffix, kernelspec in KERNELSPECS.items():
-        for script in sorted((ROOT / "examples").glob(f"*{suffix}")):
-            notebook = jupytext.read(script)
-            notebook.metadata["kernelspec"] = kernelspec
-            jupytext.write(notebook, NOTEBOOK_DIR / f"{script.stem}.ipynb")
-
-
-_make_notebooks()
-# the files (not the directory), so they end up at the top level of jupyterlite
-jupyterlite_contents = [str(p) for p in sorted(NOTEBOOK_DIR.glob("*.ipynb"))]
-jupyterlite_bind_ipynb_suffix = False
-
-# the kernel environments: xeus-python + pyjs built from this repository.
-# Two independent jupyterlite deployments, each with one kernel env (`xpython`):
-#   lite/    wasm32, PYJS_DOCS_KERNEL_PREFIX, built by jupyterlite-sphinx
-#   lite64/  wasm64, PYJS_DOCS_KERNEL_PREFIX_WASM64, built afterwards by
-#            build_local.sh (`jupyter lite build` with the config written here)
-# (jupyterlite-xeus cannot detect the channels of an environment created from
-# environment files, hence the default channel)
-# Only files of conda packages (and the kernel) are packed from the prefix, so
-# the pyjs python module (installed into the prefix by `make install`, not by a
-# package) is mounted from the source tree. Its C++ part is linked into the
-# xeus-python kernel (xpython.wasm).
-
-
-def _write_lite_config(prefix, path):
-    py_ver = next(Path(prefix, "include").glob("python3.*")).name  # e.g. python3.14
-    config = {
-        "XeusAddon": {
-            "prefix": [prefix],
-            "default_channels": [
-                "https://repo.prefix.dev/conda-forge",
-                "https://repo.prefix.dev/emscripten-forge/6x"
-            ],
-            "mounts": [f"{ROOT / 'module' / 'pyjs'}:/lib/{py_ver}/site-packages/pyjs"],
-        }
-    }
-    path.write_text(json.dumps(config, indent=2))
-    return str(path)
-
-
-_kernel_prefix = os.environ.get("PYJS_DOCS_KERNEL_PREFIX")
-if _kernel_prefix:
-    jupyterlite_config = _write_lite_config(
-        _kernel_prefix, HERE / "_generated" / "jupyter_lite_config.json"
-    )
-else:
-    print(
-        "WARNING: PYJS_DOCS_KERNEL_PREFIX is not set, there is no python kernel "
-        "for the jupyterlite in the docs and its build will fail "
-        "(build the docs with `./build_local.sh docs`)"
-    )
-_kernel_prefix_wasm64 = os.environ.get("PYJS_DOCS_KERNEL_PREFIX_WASM64")
-if _kernel_prefix_wasm64:
-    _write_lite_config(
-        _kernel_prefix_wasm64, HERE / "_generated" / "jupyter_lite_config_wasm64.json"
+def _fill_in_npm_package(app, docname, source):
+    """replace the npm placeholders in a page source"""
+    source[0] = source[0].replace("@PYJS_NPM_PACKAGE@", NPM_PACKAGE).replace(
+        "@PYJS_NPM_VERSION@", NPM_VERSION
     )
 
-# the pyjs runtimes (js / wasm) + packed environments for the javascript kernel,
-# prepared by build_local.sh docs and deployed next to the jupyterlite:
-# <html root>/pyjs-runtime/{wasm32,wasm64}/ (see examples/js_api_tour.js)
-_extra_dir = os.environ.get("PYJS_DOCS_EXTRA_DIR")
-if _extra_dir:
-    html_extra_path = [_extra_dir]
+
+# -- deployed next to the html ----------------------------------------------------
+# _extra/: the playground (<html root>/playground/); PYJS_DOCS_EXTRA_DIR (set by
+# `build_local.sh docs`): the npm package built from this repository
+# (<html root>/pyjs/), which the playground loads
+html_extra_path = ["_extra"]
+if os.environ.get("PYJS_DOCS_EXTRA_DIR"):
+    html_extra_path.append(os.environ["PYJS_DOCS_EXTRA_DIR"])

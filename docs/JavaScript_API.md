@@ -1,12 +1,15 @@
 # JavaScript API
 
 ## `pyjs`
-The main module for the JavaScript API.
+The main module for the JavaScript API (what `initializePyjsRuntime` of the
+[npm package](npm.md) returns). Examples using numpy install it first with
+`pyjs.installPackages` (solved and downloaded from emscripten-forge at runtime).
 ### `exec`
 Execute a string of Python code.
 
 Example:
 ```javascript
+await pyjs.installPackages(["numpy"]);
 pyjs.exec(`
 import numpy
 print(numpy.random.rand(3))
@@ -18,6 +21,7 @@ Execute a string of Python code and return the last expression.
 
 Example:
 ```javascript
+await pyjs.installPackages(["numpy"]);
 const arr = pyjs.exec_eval(`
 import numpy
 numpy.random.rand(3)
@@ -57,6 +61,7 @@ Evaluate a file from the virtual file system.
 
 Example:
 ```javascript
+await pyjs.installPackages(["numpy"]);
 const file_content = `
 import numpy
 
@@ -112,7 +117,8 @@ Foobar
 // on the Python side
 var py_foobar_cls = pyjs.exec_eval(py_code)
 
-// all function call-like statements (ie Foobar(2) need to be done via py_call)
+// all function call-like statements (ie Foobar(2))
+// need to be done via py_call
 var instance  = py_foobar_cls.py_call(2)
 // prints 2
 console.log(instance.foo)
@@ -132,6 +138,7 @@ call the bracket operator `[]` of a Python object.
 
 Example:
 ```javascript
+await pyjs.installPackages(["numpy"]);
 const arr = pyjs.exec_eval("import numpy;numpy.eye(2)");
 console.log(arr.get(0,0)) // prints 1
 console.log(arr.get(0,1)) // prints 0

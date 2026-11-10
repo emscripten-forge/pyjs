@@ -8,48 +8,41 @@ with [mambajs](https://github.com/emscripten-forge/mambajs).
 No conda environment, no `empack`, no server-side setup.
 
 ```{note}
-The package is published as `@derthorsten/pyjs` for now; it will move to the
+The package is published as `@PYJS_NPM_PACKAGE@` for now; it will move to the
 `@emscripten-forge` scope.
 ```
 
 ## Usage
 
 ```bash
-npm install @derthorsten/pyjs
+npm install @PYJS_NPM_PACKAGE@
 ```
 
 ```js
-import { initializePyjsRuntime } from "@derthorsten/pyjs";          // wasm32
-// import { initializePyjsRuntime } from "@derthorsten/pyjs/wasm64"; // wasm64
+// wasm32
+import { initializePyjsRuntime } from "@PYJS_NPM_PACKAGE@";
+// wasm64:
+// import { initializePyjsRuntime } from "@PYJS_NPM_PACKAGE@/wasm64";
 
 const pyjs = await initializePyjsRuntime({ extraPackages: ["numpy"] });
 
 pyjs.exec("import numpy as np");
-pyjs.eval("int(np.arange(10).sum())");                 // 45
-pyjs.exec_eval("x = 2\nx * 21");                       // 42
-await pyjs.async_exec_eval("import asyncio\nawait asyncio.sleep(0)\n'done'");
+pyjs.eval("int(np.arange(10).sum())");  // 45
+pyjs.exec_eval("x = 2\nx * 21");        // 42
+await pyjs.async_exec_eval(
+  "import asyncio\nawait asyncio.sleep(0)\n'done'"
+);
 
-await pyjs.installPackages(["regex"]);                 // install more later
-await pyjs.installPackages(["scipy"], { verbose: true });  // with the mambajs log
+// install more later (verbose: with the mambajs log)
+await pyjs.installPackages(["regex"]);
+await pyjs.installPackages(["scipy"], { verbose: true });
 ```
 
 `initializePyjsRuntime` returns the pyjs runtime (the emscripten `Module`) with
 the API described in {doc}`JavaScript_API` (`exec`, `eval`, `exec_eval`,
 `async_exec_eval`, `eval_file`, `to_js`, `FS`, ...), plus `installPackages`.
 
-### From a CDN, without a bundler
-
-```html
-<script type="module">
-  import { initializePyjsRuntime } from "https://cdn.jsdelivr.net/npm/@derthorsten/pyjs@4.1.0/dist/index.js";
-  const pyjs = await initializePyjsRuntime();
-  pyjs.exec("print('hello from python')");
-</script>
-```
-
-Import `dist/index.js` (or `dist/wasm64.js`) directly, not the `/+esm`
-variant of jsDelivr: the runtime and the Python environment are loaded
-relative to the module (`import.meta.url`).
+Without a bundler, the package can be imported directly from a CDN, see [CDN](cdn.md).
 
 ### In a web worker
 
@@ -59,7 +52,7 @@ packages are not preloaded (`dlopen` can compile synchronously there).
 
 ### With a bundler (Vite, webpack, Rollup, esbuild, Parcel)
 
-`import { initializePyjsRuntime } from "@derthorsten/pyjs"` works in bundled
+`import { initializePyjsRuntime } from "@PYJS_NPM_PACKAGE@"` works in bundled
 apps. The runtime wasm and the python environment (`assets/`) are not
 JavaScript modules, so bundlers do not copy them; two ways to deploy them:
 
@@ -71,11 +64,16 @@ JavaScript modules, so bundlers do not copy them; two ways to deploy them:
   copied to the output with webpack / Rollup / esbuild) and pass its url:
 
   ```bash
-  npx @derthorsten/pyjs copy-assets public/pyjs              # both architectures
-  npx @derthorsten/pyjs copy-assets public/pyjs --arch wasm32 # only one
+  # both architectures
+  npx @PYJS_NPM_PACKAGE@ copy-assets public/pyjs
+  # only one
+  npx @PYJS_NPM_PACKAGE@ copy-assets public/pyjs --arch wasm32
   ```
   ```js
-  const pyjs = await initializePyjsRuntime({ assetsUrl: "/pyjs/", cdnFallback: false });
+  const pyjs = await initializePyjsRuntime({
+    assetsUrl: "/pyjs/",
+    cdnFallback: false,
+  });
   ```
 
   Re-run `copy-assets` after updating the package (the JS and the wasm must
@@ -101,14 +99,3 @@ wasm32 is the default and works in all browsers. wasm64 (memory64) allows
 more than 4 GB of memory (pyjs is linked with up to 16 GB) but needs a
 browser with memory64 support. Extra packages are taken from the matching
 channel subdir (`emscripten-wasm32` / `emscripten-wasm64`).
-
-## How it works
-
-The package ships the runtime (`pyjs_runtime_browser.{mjs,wasm}`) and an
-[empack](https://github.com/emscripten-forge/empack) packed environment with
-Python and its standard library (without CPython's test suite and GUI
-modules) plus the `pyjs` module. At startup they are extracted with untarjs
-into the emscripten file system, then the interpreter is started
-(`Module.init_phase_1` / `init_phase_2`, the same functions used by
-xeus-python / jupyterlite-xeus). Python is pinned to the shipped build when
-extra packages are solved.

@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pyjs canvas playground</title>
+<style>
+  /* monokai */
+  :root {
+    --bg: #272822; --panel: #1e1f1c; --text: #f8f8f2; --muted: #75715e;
+    --border: #3e3d32; --accent: #a6e22e; --accent-text: #272822; --error: #f92672;
+    --highlight: #e6db74;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; font-weight: 600; }
+  header .spacer { flex: 1; }
+  select, button {
+    font: inherit; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: 0.5; }
+  #status { color: var(--muted); font-size: 13px; }
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
+  #editor-pane { border-right: 1px solid var(--border); min-width: 0; min-height: 0; }
+  #editor, #fallback-editor { width: 100%; height: 100%; }
+  #fallback-editor {
+    display: none; resize: none; border: 0; padding: 12px; background: var(--panel); color: var(--text);
+    font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; tab-size: 4;
+  }
+  #right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #canvas-wrap { flex: 1; display: grid; place-items: center; padding: 16px; min-height: 0; }
+  canvas {
+    max-width: 100%; max-height: 100%; background: #1e1f1c;
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  #output {
+    height: 30%; min-height: 80px; margin: 0; padding: 10px 16px; overflow: auto;
+    border-top: 1px solid var(--border); background: var(--panel);
+    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: pre-wrap;
+  }
+  #output .err { color: var(--error); }
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 50vh auto; }
+    #editor-pane { border-right: 0; border-bottom: 1px solid var(--border); }
+    #canvas-wrap { min-height: 320px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>pyjs canvas playground</h1>
+  <select id="examples" aria-label="example"></select>
+  <button id="run" class="primary" disabled>Run (Ctrl+Enter)</button>
+  <button id="stop" disabled>Stop</button>
+  <span class="spacer"></span>
+  <span id="status">loading python…</span>
+</header>
+<main>
+  <div id="editor-pane">
+    <div id="editor"></div>
+    <textarea id="fallback-editor" spellcheck="false"></textarea>
+  </div>
+  <div id="right">
+    <div id="canvas-wrap"><canvas id="canvas" width="600" height="600"></canvas></div>
+    <pre id="output"></pre>
+  </div>
+</main>
+
+<script type="module">
+// The pyjs npm package: `?pkg=<url of the package dir>` (local build, see
+// build_utils/npm_example_server.py), default: jsDelivr.
+const params = new URLSearchParams(location.search);
+// default: the npm package deployed next to this page (docs: <html root>/pyjs/)
+const PKG = params.get("pkg") ?? new URL("../pyjs", location.href).href;
+const ARCH = params.get("arch") === "wasm64" ? "wasm64" : "index";
+// conda packages solved + downloaded by mambajs (emscripten-forge / conda-forge)
+// before python starts: `?packages=numpy,pandas` (default numpy, `?packages=`
+// for none); more later from python via `await install([...])`
+const PACKAGES = (params.get("packages") ?? "numpy").split(",").map((p) => p.trim()).filter(Boolean);
+
+const MONACO = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2";
+
+// the canvas python draws on: `from pyjs import js; js.canvas`
+window.canvas = document.getElementById("canvas");
+
+const EXAMPLES = {
+  "Shapes": `from pyjs import js
+import math
+
+ctx = js.canvas.getContext("2d")
+w, h = js.canvas.width, js.canvas.height
+ctx.clearRect(0, 0, w, h)
+
+# background gradient
+grad = ctx.createLinearGradient(0, 0, w, h)
+grad.addColorStop(0, "#1e3c72")
+grad.addColorStop(1, "#2a5298")
+ctx.fillStyle = grad
+ctx.fillRect(0, 0, w, h)
+
+# a spiral of circles
+for i in range(120):
+    angle = i * 0.35
+    radius = 2 + i * 2.2
+    x = w / 2 + math.cos(angle) * radius
+    y = h / 2 + math.sin(angle) * radius
+    ctx.beginPath()
+    ctx.arc(x, y, 4 + i / 12, 0, 2 * math.pi)
+    ctx.fillStyle = f"hsl({i * 3}, 80%, 60%)"
+    ctx.fill()
+
+ctx.fillStyle = "white"
+ctx.font = "bold 28px sans-serif"
+ctx.textAlign = "center"
+ctx.fillText("drawn from python", w / 2, h - 30)
+print("done")
+`,
+  "Animation": `# top level await: the animation runs as an asyncio task on the
+# browser event loop, the page stays responsive (Stop ends it)
+from pyjs import js
+import asyncio
+import math
+
+ctx = js.canvas.getContext("2d")
+w, h = js.canvas.width, js.canvas.height
+
+t = 0.0
+while not stopped():
+    ctx.fillStyle = "rgba(10, 12, 20, 0.25)"   # trails
+    ctx.fillRect(0, 0, w, h)
+    for k in range(7):
+        a = t * (1 + k * 0.15) + k
+        x = w / 2 + math.cos(a) * (60 + k * 30)
+        y = h / 2 + math.sin(a * 1.3) * (60 + k * 30)
+        ctx.beginPath()
+        ctx.arc(x, y, 10, 0, 2 * math.pi)
+        ctx.fillStyle = f"hsl({(k * 50 + t * 40) % 360}, 90%, 60%)"
+        ctx.fill()
+    t += 0.03
+    await asyncio.sleep(1 / 60)
+print("stopped")
+`,
+  "Events": `# a python callback for canvas clicks: on(event, handler) adds a
+# canvas event listener; it is removed when you switch examples or run again
+from pyjs import js
+import random
+
+ctx = js.canvas.getContext("2d")
+ctx.fillStyle = "#fafafa"
+ctx.fillRect(0, 0, js.canvas.width, js.canvas.height)
+ctx.fillStyle = "#333"
+ctx.font = "20px sans-serif"
+ctx.fillText("click on the canvas", 20, 40)
+
+def on_click(event):
+    rect = js.canvas.getBoundingClientRect()
+    scale = js.canvas.width / rect.width
+    x = (event.clientX - rect.left) * scale
+    y = (event.clientY - rect.top) * scale
+    ctx.beginPath()
+    ctx.arc(x, y, random.randint(8, 30), 0, 6.2832)
+    ctx.fillStyle = f"hsla({random.randint(0, 360)}, 80%, 55%, 0.8)"
+    ctx.fill()
+    print(f"click at {x:.0f}, {y:.0f}")
+
+on("click", on_click)
+`,
+  "numpy": `# numpy was downloaded via mambajs when the page loaded (extraPackages);
+# more packages: await install(["scipy"])
+# renders a plasma with numpy and copies the pixels to the canvas in one call
+from pyjs import js
+import pyjs
+import numpy as np
+
+w, h = js.canvas.width, js.canvas.height
+y, x = np.mgrid[0:h, 0:w] / 60.0
+v = np.sin(x) + np.sin(y / 1.5) + np.sin((x + y) / 2) + np.sin(np.hypot(x - 5, y - 5))
+v = (v - v.min()) / (v.max() - v.min())
+
+rgba = np.empty((h, w, 4), dtype=np.uint8)
+rgba[..., 0] = (255 * np.sin(np.pi * v)).astype(np.uint8)
+rgba[..., 1] = (255 * np.sin(np.pi * v + 2)).clip(0).astype(np.uint8)
+rgba[..., 2] = (255 * v).astype(np.uint8)
+rgba[..., 3] = 255
+
+u8 = pyjs.buffer_to_js_typed_array(rgba.ravel(), view=False)
+pixels = js.Uint8ClampedArray.new(u8.buffer)
+js.canvas.getContext("2d").putImageData(js.ImageData.new(pixels, w, h), 0, 0)
+print(f"numpy {np.__version__}: {w}x{h} pixels")
+`,
+  "scipy": `# installs scipy at runtime (solved + downloaded via mambajs on the first
+# run, a few seconds), then integrates the Lorenz system with
+# scipy.integrate.solve_ivp and draws the attractor
+await install(["scipy"], verbose=True)   # verbose: show the mambajs log
+
+from pyjs import js
+import numpy as np
+import scipy
+from scipy.integrate import solve_ivp
+
+def lorenz(t, state, sigma=10.0, rho=28.0, beta=8.0 / 3.0):
+    x, y, z = state
+    return [sigma * (y - x), x * (rho - z) - y, x * y - beta * z]
+
+sol = solve_ivp(lorenz, (0, 60), [1.0, 1.0, 1.0],
+                t_eval=np.linspace(0, 60, 15000), rtol=1e-9, atol=1e-9)
+x, z = sol.y[0], sol.y[2]
+
+ctx = js.canvas.getContext("2d")
+w, h = js.canvas.width, js.canvas.height
+ctx.fillStyle = "#0b0e14"
+ctx.fillRect(0, 0, w, h)
+
+# map the x/z plane onto the canvas
+px = (x - x.min()) / (x.max() - x.min()) * (w - 60) + 30
+py = h - 30 - (z - z.min()) / (z.max() - z.min()) * (h - 60)
+
+ctx.lineWidth = 0.8
+segments = 60
+n = len(px) // segments
+for s in range(segments):
+    i0, i1 = s * n, min((s + 1) * n + 1, len(px))
+    ctx.beginPath()
+    ctx.moveTo(px[i0], py[i0])
+    for i in range(i0 + 1, i1):
+        ctx.lineTo(px[i], py[i])
+    ctx.strokeStyle = f"hsla({200 + s * 2.5}, 90%, 60%, 0.85)"
+    ctx.stroke()
+
+ctx.fillStyle = "white"
+ctx.font = "16px sans-serif"
+ctx.fillText(f"Lorenz attractor, scipy {scipy.__version__} solve_ivp: {sol.t.size} steps", 20, 30)
+print(f"scipy {scipy.__version__}: {sol.message}")
+`,
+};
+
+const $ = (id) => document.getElementById(id);
+const status = (text) => { $("status").textContent = text; };
+const out = $("output");
+/** append a line to the output panel (python stdout / stderr, errors) */
+function write(text, isError = false) {
+  const span = document.createElement("span");
+  if (isError) span.className = "err";
+  span.textContent = text + "\n";
+  out.appendChild(span);
+  out.scrollTop = out.scrollHeight;
+}
+
+// ---- editor: monaco, a textarea if monaco cannot be loaded ----
+/** load a classic script (the monaco AMD loader) */
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`cannot load ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+/** the monokai colors for monaco (the page itself uses them too, see :root) */
+function defineMonokai(monaco) {
+  monaco.editor.defineTheme("monokai", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "", foreground: "f8f8f2", background: "272822" },
+      { token: "comment", foreground: "75715e", fontStyle: "italic" },
+      { token: "string", foreground: "e6db74" },
+      { token: "number", foreground: "ae81ff" },
+      { token: "keyword", foreground: "f92672" },
+      { token: "type", foreground: "66d9ef", fontStyle: "italic" },
+      { token: "identifier", foreground: "f8f8f2" },
+      { token: "delimiter", foreground: "f8f8f2" },
+      { token: "operator", foreground: "f92672" },
+    ],
+    colors: {
+      "editor.background": "#272822",
+      "editor.foreground": "#f8f8f2",
+      "editor.lineHighlightBackground": "#3e3d32",
+      "editor.selectionBackground": "#49483e",
+      "editorCursor.foreground": "#f8f8f0",
+      "editorLineNumber.foreground": "#90908a",
+      "editorWhitespace.foreground": "#464741",
+    },
+  });
+}
+
+/** monaco editor (or a textarea if monaco cannot be loaded) with `initial` */
+async function createEditor(initial) {
+  try {
+    await loadScript(`${MONACO}/min/vs/loader.min.js`);
+    // monaco's worker comes from another origin: start it via a data url
+    window.MonacoEnvironment = {
+      getWorkerUrl: () =>
+        "data:text/javascript;charset=utf-8," +
+        encodeURIComponent(
+          `self.MonacoEnvironment = { baseUrl: "${MONACO}/min/" };` +
+          `importScripts("${MONACO}/min/vs/base/worker/workerMain.js");`
+        ),
+    };
+    window.require.config({ paths: { vs: `${MONACO}/min/vs` } });
+    const monaco = await new Promise((resolve, reject) =>
+      window.require(["vs/editor/editor.main"], () => resolve(window.monaco), reject)
+    );
+    defineMonokai(monaco);
+    const editor = monaco.editor.create($("editor"), {
+      value: initial,
+      language: "python",
+      theme: "monokai",
+      automaticLayout: true,
+      minimap: { enabled: false },
+      fontSize: 13,
+      scrollBeyondLastLine: false,
+    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => run());
+    return { get: () => editor.getValue(), set: (v) => editor.setValue(v) };
+  } catch (e) {
+    console.warn("monaco not available, using a textarea", e);
+    $("editor").style.display = "none";
+    const ta = $("fallback-editor");
+    ta.style.display = "block";
+    ta.value = initial;
+    ta.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        ta.setRangeText("    ", ta.selectionStart, ta.selectionEnd, "end");
+      }
+    });
+    return { get: () => ta.value, set: (v) => { ta.value = v; } };
+  }
+}
+
+// ---- python ----
+let pyjs;
+let runId = 0;
+let running = false;
+
+/** a readable message for JS errors and python errors ({has_err, ...}) */
+function pyErrorText(e) {
+  // python errors are thrown as {has_err, message, error, ...}
+  if (e && typeof e === "object" && "has_err" in e) return `${e.error ?? ""}\n${e.message ?? ""}`.trim();
+  return String((e && e.message) || e);
+}
+
+/** run the editor content (top level await allowed), report status / errors */
+async function run() {
+  if (!pyjs) return;
+  runId += 1;          // ends a running animation (`stopped()`)
+  const myRun = runId;
+  $("stop").disabled = false;
+  out.textContent = "";
+  running = true;
+  status("running…");
+  try {
+    pyjs.exec("_remove_listeners()");         // event handlers of the previous run
+    pyjs.exec("stopped = _make_stopped()");   // a fresh `stopped()` per run
+    await pyjs.async_exec_eval(editorApi.get());
+    if (myRun === runId) status("done");
+  } catch (e) {
+    write(pyErrorText(e), true);
+    status("error");
+  } finally {
+    if (myRun === runId) { running = false; $("stop").disabled = true; }
+  }
+}
+
+const select = $("examples");
+for (const name of Object.keys(EXAMPLES)) select.add(new Option(name, name));
+// `?example=scipy`: open with that example in the editor
+const wanted = Object.keys(EXAMPLES).find((n) => n.toLowerCase() === (params.get("example") ?? "").toLowerCase());
+if (wanted) select.value = wanted;
+const editorApi = await createEditor(EXAMPLES[select.value]);
+// switching examples: stop a running animation, remove its event handlers
+select.addEventListener("change", () => {
+  runId += 1;
+  if (pyjs) pyjs.exec("_remove_listeners()");
+  editorApi.set(EXAMPLES[select.value]);
+});
+$("run").addEventListener("click", run);
+$("stop").addEventListener("click", () => { runId += 1; $("stop").disabled = true; status("stopped"); });
+
+try {
+  const { initializePyjsRuntime } = await import(`${PKG}/dist/${ARCH}.js`);
+  if (PACKAGES.length) status(`loading python + ${PACKAGES.join(", ")} (mambajs)…`);
+  pyjs = await initializePyjsRuntime({
+    extraPackages: PACKAGES,
+    print: (text) => write(text),
+    printErr: (text) => write(text, true),
+  });
+  // helpers for the examples: `stopped()` (Stop / a new run) and
+  // `await install([...])` (conda packages via mambajs)
+  window.pyjsCurrentRun = () => runId;
+  // mambajs output -> output panel (without the ANSI colors of its tables)
+  const stripAnsi = (t) => String(t).replace(/\x1b\[[0-9;]*m/g, "");
+  const panelLogger = {
+    log: (...m) => write(stripAnsi(m.join(" "))),
+    warn: (...m) => write(stripAnsi(m.join(" "))),
+    error: (...m) => write(stripAnsi(m.join(" ")), true),
+  };
+  window.pyjsInstall = async (specsJson, verbose) => {
+    const specs = JSON.parse(specsJson);
+    status(`installing ${specs.join(", ")}…`);
+    const installed = await pyjs.installPackages(specs, verbose ? { logger: panelLogger } : {});
+    status("running…");
+    return installed;
+  };
+  pyjs.exec(`
+import json as _json
+from pyjs import js as _js
+
+def _make_stopped():
+    run = _js.window.pyjsCurrentRun()
+    return lambda: _js.window.pyjsCurrentRun() != run
+
+async def install(specs, verbose=False):
+    """install conda packages via mambajs, verbose=True shows the mambajs log"""
+    await _js.window.pyjsInstall(_json.dumps(list(specs)), bool(verbose))
+
+_listeners = []  # (event, js callable, handle) added by on()
+
+def on(event, handler):
+    """add a canvas event listener; removed before the next run / example"""
+    import pyjs
+    js_handler, handle = pyjs.create_callable(handler)
+    _js.canvas.addEventListener(event, js_handler)
+    _listeners.append((event, js_handler, handle))
+
+def _remove_listeners():
+    """remove the listeners of on() and free their python callables"""
+    while _listeners:
+        event, js_handler, handle = _listeners.pop()
+        _js.canvas.removeEventListener(event, js_handler)
+        handle.delete()
+`);
+  const extra = PACKAGES.length ? ` + ${PACKAGES.join(", ")}` : "";
+  status(`python ${pyjs.pythonVersion.join(".")}${extra} (${pyjs.pyjsArch}) ready`);
+  $("run").disabled = false;
+  window.pyjsReady = true;
+  if (params.get("run") === "1") run();
+} catch (e) {
+  status("failed to load pyjs");
+  write(pyErrorText(e), true);
+}
+</script>
+</body>
+</html>

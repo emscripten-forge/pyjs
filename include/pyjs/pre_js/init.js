@@ -203,9 +203,17 @@ def _add_resolve_done_callback(future, resolve, reject):
     ensured_future = asyncio.ensure_future(future)
     def done(f):
         try:
-            resolve(f.result())
+            result = f.result()
         except Exception as err:
             reject(repr(err))
+            return
+        # a python object (not converted to a JS value) is resolved as a
+        # pyobject owned by JavaScript (like the result of exec_eval): an
+        # implicitly converted argument would be deleted after the call
+        import pyjs
+        if not isinstance(result, (type(None), bool, int, float, str, pyjs.JsValue)):
+            result = pyjs.js_py_object(result)
+        resolve(result)
 
     ensured_future.add_done_callback(done)
     `)

@@ -91,9 +91,11 @@ The FFI and the asyncio event loop are benchmarked, see [benchmarks](development
 
 ## Packaging
 
-Pyjs is distributed exclusively via [emscripten-forge](https://github.com/emscripten-forge/recipes).
+Pyjs is distributed via [emscripten-forge](https://github.com/emscripten-forge/recipes)
+(conda packages `pyjs`, `pyjs-dev`, `libpyjs-static`) and as [npm package](npm.md).
 
 ## Testing
 
-To test pyjs without manually inspecting a web page, we use [pyjs-code-runner](https://github.com/emscripten-forge/pyjs-code-runner). This is a tool that runs a Python script in a headless browser and returns the output.
-See [tests](development.md#tests).
+One test suite runs on every way pyjs can be loaded (the raw runtime, the npm
+package, apps built with the common bundlers), in headless browsers, see
+[tests](development.md#tests).

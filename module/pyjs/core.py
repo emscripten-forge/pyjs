@@ -10,7 +10,7 @@ from pyjs_core import JsValue, js_array, js_py_object
 import warnings
 import time
 
-def install_submodules():
+def _install_submodules():
     def _js_mod__getattr__(name: str) -> Any:
         ret = pyjs_core.internal.global_property(name)
         if ret is None:
@@ -32,8 +32,8 @@ def install_submodules():
     pyjs_core._module = _module
 
 
-install_submodules()
-del install_submodules
+_install_submodules()
+del _install_submodules
 
 
 
@@ -70,7 +70,7 @@ def create_callable(py_function):
     def py_function(x, y):
         return x + y
 
-    js_callable, js_py_object = create_callable(py_function)
+    js_callable, js_py_object = pyjs.create_callable(py_function)
     
     # this function can be passed to JavaScript.
     # lets create some JavaScript code to test it
@@ -78,7 +78,8 @@ def create_callable(py_function):
         return z * f(x, y);
     """)
     
-    # call the higher order JavaScript function with py_function wrapped as a JavaScript callable
+    # call the higher order JavaScript function
+    # with py_function wrapped as a JavaScript callable
     result = higher_order_function(js_callable, 1, 2, 3)
     assert result == 9
 
@@ -109,7 +110,8 @@ def callable_context(py_function):
         return x + y
 
     with pyjs.callable_context(py_function) as js_function:
-        # js_function is a JavaScript callable and could be passed and called from JavaScript
+        # js_function is a JavaScript callable and could be
+        # passed to and called from JavaScript,
         # here we just call it from Python
         print(js_function(1,2))
     ```
@@ -134,8 +136,8 @@ def promise(py_resolve_reject):
     """ Create a new JavaScript promise with a python callback to resolve or reject the promise.
     
     Args:
-        py_resolve_reject (Callable): A Python function that takes two arguments, resolve and reject, which are both functions. 
-        The resolve function should be called with the result of the promise and the reject function should be called with an error.
+        py_resolve_reject (Callable): A Python function that takes two arguments, resolve and reject, which are both functions.
+            The resolve function should be called with the result of the promise and the reject function should be called with an error.
     
     Example:
     ```python
@@ -190,8 +192,8 @@ def create_once_callable(py_function):
     # the following will raise an error
     try:
         print(js_function(1,2))
-    except Exception as e:
-        print(e)
+    except pyjs.JsException as e:
+        print("error:", e.message)
     ```
     """
     
@@ -434,7 +436,14 @@ def run_sync(awaitable):
 
     Example:
     ```python
-    response = pyjs.run_sync(pyjs.js.fetch(url))
+    import pyjs
+
+    def page_status():
+        # a plain (sync) function waiting for a JavaScript promise
+        response = pyjs.run_sync(pyjs.js.fetch(pyjs.js.location.href))
+        return response.status
+
+    page_status()  # 200
     ```
     """
     if not jspi_enabled():

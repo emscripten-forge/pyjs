@@ -15,6 +15,7 @@ import functools
 import http.server
 import json
 import threading
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -125,9 +126,25 @@ async def run_page(page_dir, browser_name="chromium", options=None, headless=Tru
         server.shutdown()
 
 
-def run(page_dir, browser_name, options, result_json=None, meta=None):
-    """`run` command: run the page, print the result, return the exit code"""
+def run(page_dir, browser_name, options, result_json=None, meta=None, retries=0, retry_delay=10):
+    """`run` command: run the page, print the result, return the exit code.
+
+    `retries`: rerun (after `retry_delay` seconds) when pyjs could not be
+    brought up at all (the page result has an `error`, no test ran), e.g. a
+    network error while installing the test packages (npm pages, mambajs).
+    Failed tests are never retried.
+    """
     result = asyncio.run(run_page(page_dir, browser_name, options))
+    for attempt in range(1, retries + 1):
+        if "error" not in result:
+            break
+        print(
+            f"\nsetup failed, retry {attempt} / {retries} in {retry_delay}s: "
+            f"{result['error'].splitlines()[0]}",
+            flush=True,
+        )
+        time.sleep(retry_delay)
+        result = asyncio.run(run_page(page_dir, browser_name, options))
     if meta:
         result["build"] = meta
     if result_json:

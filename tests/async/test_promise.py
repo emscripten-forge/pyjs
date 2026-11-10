@@ -218,3 +218,26 @@ async def test_run_sync_rejection_classes():
         assert e.name == "AbortError", e.name
     else:
         raise AssertionError("expected JsException")
+
+
+async def test_promise_rejection_is_not_unhandled():
+    # a rejected promise awaited from python is handled: pyjs must not create a
+    # derived promise whose rejection nobody handles (unhandledrejection event)
+    counter = js.Function(
+        """
+        const counter = { n: 0 };
+        counter.listener = () => { counter.n += 1; };
+        globalThis.addEventListener("unhandledrejection", counter.listener);
+        return counter;
+        """
+    )()
+    try:
+        await _await_exception(_rejected("new Error('handled')"))
+        # unhandled rejections are reported at the end of the task they happen
+        # in: two later tasks (order, not time) are after any report
+        next_task = js.Function("return new Promise((resolve) => setTimeout(resolve, 0));")
+        await next_task()
+        await next_task()
+        assert counter.n == 0, f"{counter.n} unhandled rejection(s)"
+    finally:
+        js.globalThis.removeEventListener("unhandledrejection", counter.listener)

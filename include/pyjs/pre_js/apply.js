@@ -17,25 +17,24 @@ function isPromise(p) {
 
 
 Module['_apply_try_catch'] = function(obj, args, is_generated_proxy) {
+    // delete the argument proxies pyjs created for this call
+    const delete_generated_proxies = () => {
+        for (let i = 0; i < is_generated_proxy.length; ++i) {
+            if (is_generated_proxy[i]) {
+                args[i].delete();
+            }
+        }
+    };
     try {
         let res = obj(...args);
-        if(isPromise(res)){
-            res.then((value) => {
-                for(let i=0; i<is_generated_proxy.length; ++i)
-                {
-                    if(is_generated_proxy[i]){
-                        args[i].delete();
-                    }
-                }
-            });
-        }
-        else{
-            for(let i=0; i<is_generated_proxy.length; ++i)
-            {
-                if(is_generated_proxy[i]){
-                    args[i].delete();
-                }
-            }
+        if (isPromise(res)) {
+            // the arguments may be used until the promise settles. Both cases:
+            // a fulfillment-only then() leaked them on rejection and created a
+            // derived promise whose rejection nobody handled (an
+            // `unhandledrejection` for every rejected promise, also awaited ones)
+            res.then(delete_generated_proxies, delete_generated_proxies);
+        } else {
+            delete_generated_proxies();
         }
         return _wrap_return_value(res);
     } catch (e) {

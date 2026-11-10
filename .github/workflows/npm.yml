@@ -108,4 +108,5 @@ jobs:
       # authenticated via OIDC (trusted publisher), provenance is attached
       # automatically
       - name: Publish
-        run: npm publish dist/*.tgz --access public
+        # ./ : a local file (`dist/x.tgz` alone is read as github shorthand <owner>/<repo>)
+        run: npm publish ./dist/*.tgz --access public

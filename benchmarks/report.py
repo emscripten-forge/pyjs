@@ -41,14 +41,16 @@ def report(paths):
     for path in paths:
         result = json.loads(Path(path).read_text())
         build = result.get("build", {})
-        title = " / ".join(build.get(k, "?") for k in ("wasm_type", "browser", "mode"))
+        # older result files: `backend` (browser-main / browser-worker), no browser
+        mode = build.get("mode", build.get("backend", "?"))
+        title = " / ".join([build.get("wasm_type", "?"), build.get("browser", "chromium"), mode])
         env = result.get("environment", {})
         parts.append(f"## {title}")
         parts.append(
             f"git `{build.get('git_rev', '?')}`, "
             f"{env.get('pointer_bits', '?')} bit, {env.get('user_agent', '')}"
         )
-        if not result.get("ok", False):
+        if result.get("ok") is False:
             parts.append("**some benchmarks failed**")
         parts.append(table(result))
     return "\n\n".join(parts) + "\n"

@@ -18,36 +18,8 @@ compiled Python. The API is loosely based on the FFI of
 ## Documentation
 
 See the [documentation](https://emscripten-forge.github.io/pyjs/).
+Or go directely to the [playground](https://emscripten-forge.github.io/pyjs/playground.html) to try it out.
 
-## Try it out
-
-* the [Python REPL](https://emscripten-forge.github.io/pyjs/try.html) in the docs
-* the [JupyterLite playground](https://emscripten-forge.github.io/pyjs/lite/)
-* to create your own JupyterLite deployments, use
-  [xeus-lite-demo](https://github.com/jupyterlite/xeus-lite-demo)
-
-## Installation
-
-pyjs is installed into an emscripten-forge environment:
-
-```yaml
-# environment.yml
-name: my-pyjs-env
-channels:
-  - https://repo.prefix.dev/emscripten-forge/6x
-  - conda-forge
-dependencies:
-  - pyjs-dev
-  - numpy
-```
-
-```bash
-micromamba create -f environment.yml --platform emscripten-wasm32 --prefix /path/to/env
-```
-
-See [deploying pyjs](https://emscripten-forge.github.io/pyjs/installation.html)
-for how to pack the environment with [empack](https://github.com/emscripten-forge/empack)
-and load it in the browser.
 
 ## Quickstart
 

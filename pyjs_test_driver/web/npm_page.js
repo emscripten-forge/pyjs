@@ -7,5 +7,10 @@ const PACKAGES = @PACKAGES@;
 
 /** an initialized pyjs (the env of the package + the test packages) */
 export async function createPyjs(options) {
-  return initializePyjsRuntime({ extraPackages: PACKAGES, preloadSharedLibs: options.preload });
+  return initializePyjsRuntime({
+    extraPackages: PACKAGES,
+    preloadSharedLibs: options.preload,
+    // tests/npm/test_archives.py: an archive unpacked before python starts
+    archives: [{ url: "/test-data/archive_init.tar.gz", path: "/unpacked_at_init" }],
+  });
 }

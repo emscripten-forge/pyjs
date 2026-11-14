@@ -21,6 +21,8 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
+from . import test_archives, test_channel
+
 ROOT = Path(__file__).resolve().parent.parent
 SUITES = {"tests": ROOT / "tests", "benchmarks": ROOT / "benchmarks"}
 # a hang guard only (a failed JSPI suspension can hang a page), not a speed limit
@@ -28,6 +30,10 @@ TIMEOUT_S = 30 * 60
 # generated test data (no binary files in the repository): the download tests
 # (tests/sync/test_http.py, tests/async/test_jspi.py) fetch these
 TEST_DATA = {"/test-data/all_bytes.bin": bytes(range(256)) * 256}
+# + a self-hosted conda channel at /test-channel/ (tests/npm/test_channel.py)
+TEST_DATA.update(test_channel.build())
+# + archives the npm package unpacks (tests/npm/test_archives.py)
+TEST_DATA.update(test_archives.build())
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -80,6 +86,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def log_message(self, *args):
         """quiet: the console of the page is the interesting output"""
+
+    def log_error(self, format, *args):
+        """failed requests (404, ...) with their path: the browser console only
+        says "Failed to load resource" """
+        print(f"[driver] {self.command} {self.path}: {format % args}", flush=True)
 
 
 def suite_files(directory):

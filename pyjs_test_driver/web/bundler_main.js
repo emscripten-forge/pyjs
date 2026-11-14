@@ -11,6 +11,8 @@ const PACKAGES = @PACKAGES@;
 async function createPyjs(options) {
   return initializePyjsRuntime({
     extraPackages: PACKAGES,
+    // tests/npm/test_archives.py: an archive unpacked before python starts
+    archives: [{ url: "/test-data/archive_init.tar.gz", path: "/unpacked_at_init" }],
     preloadSharedLibs: options.preload,
     cdnUrl: new URL("pyjs/", globalThis.location.href).href,
   });

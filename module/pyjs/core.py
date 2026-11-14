@@ -366,6 +366,69 @@ def cancel_main_loop():
     else:
         warnings.warn("No main loop callback is set to cancel.", UserWarning)
 
+class AnimationFrameLoop:
+    """Handle of a loop started by `request_animation_frame_loop`."""
+
+    def __init__(self, callback):
+        self._callback = callback
+        self._running = True
+
+    @property
+    def running(self) -> bool:
+        """True until the loop stopped (callback returned falsy, raised, or `cancel`)."""
+        return self._running
+
+    def cancel(self):
+        """Stop the loop before the next frame."""
+        self._running = False
+
+    def _tick(self, time_ms):
+        # one frame: called by the C side, returns whether to continue
+        if not self._running:
+            return False
+        try:
+            keep_running = bool(self._callback(time_ms))
+        except BaseException:
+            self._running = False
+            raise
+        if not keep_running:
+            self._running = False
+        return keep_running
+
+
+def request_animation_frame_loop(callback) -> AnimationFrameLoop:
+    """Call `callback(time_ms)` once per browser animation frame.
+
+    Uses `emscripten_request_animation_frame_loop` (`requestAnimationFrame`).
+    The loop runs while `callback` returns something truthy; it stops when it
+    returns something falsy, raises (the exception is printed), or the returned
+    handle's `cancel()` is called. Each frame is a synchronous call from JS
+    into Python, like the asyncio task steps.
+
+    Args:
+        callback: `callback(time_ms: float) -> bool`.
+
+    Returns:
+        an `AnimationFrameLoop` handle (`running`, `cancel()`).
+    """
+    loop = AnimationFrameLoop(callback)
+    pyjs_core._request_animation_frame_loop(loop._tick)
+    return loop
+
+
+def set_canvas(canvas) -> None:
+    """Make `canvas` the target of emscripten's GL / SDL / html5 code.
+
+    Sets `Module.canvas` (used by SDL2) and registers it as `"#canvas"` (used by
+    `emscripten_webgl_create_context("#canvas", ...)` and html5 event
+    functions), so C / C++ code in extension modules renders into it.
+
+    Args:
+        canvas: a JS `HTMLCanvasElement` (main thread) or `OffscreenCanvas`.
+    """
+    pyjs_core._module._set_canvas(canvas)
+
+
 def jspi_enabled() -> bool:
     """Whether JSPI (JavaScript Promise Integration) is used: the browser supports
     it (``WebAssembly.Suspending`` / ``WebAssembly.promising``) and it was not

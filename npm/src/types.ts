@@ -54,6 +54,14 @@ export interface PyjsModule {
    */
   installPackages(specs: string[], options?: IInstallOptions): Promise<string[]>;
 
+  /**
+   * Fetch an archive and unpack it (untarjs) into the emscripten file system
+   * below `archive.path`, e.g. python sources that are not a conda package:
+   * `await pyjs.unpackArchive({ url: "examples.tar.gz", path: "/examples" })`.
+   * Returns the absolute paths of the written files.
+   */
+  unpackArchive(archive: IArchive): Promise<string[]>;
+
   /** the target architecture of this runtime */
   readonly pyjsArch: "wasm32" | "wasm64";
   /** python version of the runtime, e.g. `[3, 14, 3]` */
@@ -71,7 +79,23 @@ export interface IInstallOptions {
   verbose?: boolean;
 }
 
+/**
+ * An archive unpacked into the emscripten file system: a tar file,
+ * optionally compressed (gzip, bzip2, zstd, ...; detected from the content).
+ */
+export interface IArchive {
+  /** URL of the archive (relative URLs resolve against the page) */
+  url: string | URL;
+  /** directory the archive is unpacked into (created if needed), e.g. `/examples` */
+  path: string;
+}
+
 export interface IInitializeOptions {
+  /**
+   * archives unpacked into the file system before the interpreter starts
+   * (python sources, data files, ...), see `PyjsModule.unpackArchive`
+   */
+  archives?: IArchive[];
   /** conda packages installed before the interpreter starts, e.g. `["numpy>=2"]` */
   extraPackages?: string[];
   /** alias of `extraPackages` */

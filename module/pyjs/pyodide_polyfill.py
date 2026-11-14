@@ -24,8 +24,18 @@ def install_pyodide_polyfill():
     # urllib3 (contrib/emscripten) uses fetch + run_sync when can_run_sync()
     pyodide.ffi.can_run_sync = can_run_sync
     pyodide.ffi.run_sync = run_sync
+    pyodide.code = sys.modules["pyodide.code"] = types.ModuleType("code")
+    pyodide.code.run_js = _run_js
     pyodide.__getattr__ = _pyodide__getattr__
     pyodide.ffi.__getattr__ = _pyodide__getattr__
+    pyodide.code.__getattr__ = _pyodide__getattr__
+
+
+def _run_js(code: str) -> Any:
+    """`pyodide.code.run_js`: evaluate JS `code` in the global scope (indirect
+    eval) and return the value of its last expression."""
+    import pyjs_core
+    return pyjs_core.js.eval(code)
 
 
 

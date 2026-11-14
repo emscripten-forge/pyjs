@@ -57,6 +57,18 @@ def test_pyodide_polyfill():
         ffi.foo
 
 
+def test_pyodide_polyfill_run_js():
+    """`pyodide.code.run_js` evaluates JS in the global scope (imgui_bundle
+    uses it to build JS helpers)."""
+    from pyodide.code import run_js
+    assert run_js("1 + 2") == 3
+    make_pair = run_js("(a, b) => [a, b]")
+    assert pyjs.to_py(make_pair(1, "two")) == [1, "two"]
+    run_js("var _pyjs_test_run_js_global = 42")
+    assert pyjs.js._pyjs_test_run_js_global == 42
+    run_js("delete globalThis._pyjs_test_run_js_global")
+
+
 def test_create_once_callable_nullary():
     def pyfunc():
         return "hello_from_pyfunc"

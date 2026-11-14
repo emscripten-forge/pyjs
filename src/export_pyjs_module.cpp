@@ -1,6 +1,7 @@
 #include <pybind11/pybind11.h>
 
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #include <emscripten/val.h>
 #include <emscripten/bind.h>
 
@@ -56,6 +57,40 @@ namespace pyjs
        emscripten_cancel_main_loop();
     };
 
+    // one requestAnimationFrame tick: calls the Python callable with the frame
+    // time (ms); the loop continues while it returns something truthy. The
+    // loop owns a reference to the callable, released when the loop ends
+    // (falsy result or exception).
+    bool animation_frame_callback(double time, void* user_data)
+    {
+        auto callable = reinterpret_cast<PyObject*>(user_data);
+        PyObject* time_obj = PyFloat_FromDouble(time);
+        PyObject* result = time_obj ? PyObject_CallOneArg(callable, time_obj) : nullptr;
+        Py_XDECREF(time_obj);
+
+        bool keep_running = false;
+        if (result == nullptr)
+        {
+            std::cerr << "Error in animation frame callback, stopping the loop:" << std::endl;
+            PyErr_Print();
+        }
+        else
+        {
+            const int truth = PyObject_IsTrue(result);
+            Py_DECREF(result);
+            if (truth < 0)
+            {
+                PyErr_Print();
+            }
+            keep_running = truth > 0;
+        }
+        if (!keep_running)
+        {
+            Py_DECREF(callable);
+        }
+        return keep_running;
+    }
+
 
     void export_main_loop_callbacks(py::module_& pyjs_module)
     {
@@ -98,6 +133,14 @@ namespace pyjs
         pyjs_module.def("_set_noop_main_loop", []() {
             // This will set a no-op main loop
             emscripten_set_main_loop(noop_callback, 1, false); // set a no-op loop to avoid errors
+        });
+
+        // requestAnimationFrame loop (emscripten_request_animation_frame_loop):
+        // callback(time_ms) -> bool, runs until it returns something falsy
+        pyjs_module.def("_request_animation_frame_loop", [](py::handle callback) {
+            PyObject* callable = callback.ptr();
+            Py_INCREF(callable);  // released by animation_frame_callback
+            emscripten_request_animation_frame_loop(animation_frame_callback, callable);
         });
                         
     }

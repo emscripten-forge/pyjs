@@ -60,6 +60,19 @@ for side modules. Tests: `tests/sync/test_webgpu.py` (in the runtime),
 `tests/async/test_webgpu.py` (adapter / device; skips without `navigator.gpu` or
 adapter, the usual case headless).
 
+WebGL2 / SDL2: `MAIN_MODULE=1` implies `INCLUDE_FULL_LIBRARY`, so emscripten's
+GL JS is always in the runtime, but only at WebGL1 level. cmake options
+`PYJS_WEBGL` (`-lGL -sMAX_WEBGL_VERSION=2 -sFULL_ES3`) and `PYJS_SDL2`
+(`-sUSE_SDL=2`, port downloaded on first use), both default ON, link them
+**only into the runtime** (`PRIVATE` on `pyjs_runtime_browser`, not INTERFACE:
+downstream executables like xeus-python are not forced to). Side modules
+(imgui-bundle, ctypes / PyOpenGL via `ctypes.CDLL(None)`) resolve GL / SDL from
+the main module. Python: `pyjs.set_canvas(canvas)` (`Module.canvas` +
+`specialHTMLTargets["#canvas"]`, `pre_js/canvas.js`),
+`pyjs.request_animation_frame_loop(cb)` (`emscripten_request_animation_frame_loop`,
+`src/export_pyjs_module.cpp`). Tests: `tests/sync/test_webgl.py` (context via
+ctypes; skips without WebGL2), `tests/async/test_animation_frame.py`.
+
 Memory: the runtime is linked with `-sMAXIMUM_MEMORY` = 4GB (wasm32) / 16GB
 (wasm64) (cmake cache var `PYJS_MAXIMUM_MEMORY`; emscripten's default is 2GB, also
 for wasm64). `tests/sync/test_memory.py` allocates beyond 2 GiB / 4 GiB and
@@ -267,7 +280,31 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   `async_exec_eval`, `to_js`, ...) + `installPackages(specs)`; the
   `bootstrap_from_empack_packed_environment` / `init_phase_*` API stays as is.
 - Tests: the full test suite on npm pages (both archs x main / worker) and on
-  the 5 bundler pages (see Tests).
+  the 5 bundler pages (see Tests). npm-only tests: `tests/npm/test_*.py`
+  (async), run by `tests/main.py` only with option `npm_package` (the harness
+  sets it when the Module has `installPackages`; the recipe never runs them).
+  `tests/npm/test_channel.py` installs from a self-hosted channel (static
+  files, like GitHub Pages next to docs) that the driver generates at
+  `/test-channel/` (`pyjs_test_driver/test_channel.py`: noarch python package
+  + arch package, rattler-build output layout). The rattler gateway first
+  probes `repodata_shards.msgpack.zst` / `repodata.json.zst` / `.bz2` (404s
+  are fine), then reads `repodata.json`.
+- Channel order = priority. mambajs' `install` appends new channels *after*
+  the lock's (the shipped env: emscripten-forge, conda-forge), so `solve` in
+  `runtime.ts` puts the requested channels first (`formatChannels` from
+  mambajs-core): a self-hosted CI build must win over a published package
+  (`test_self_hosted_channel_has_priority`: a fake `tabulate` 0.0.1 beats
+  conda-forge's 0.9.x).
+- Archives: option `archives: [{url, path}]` (unpacked with untarjs before
+  python starts) / `Module.unpackArchive({url, path})` (later, then
+  `importlib.invalidate_caches()`); files written with absolute paths
+  (cwd-independent), directory entries skipped, paths outside `path` rejected.
+  Tests: `tests/npm/test_archives.py` with archives the driver generates
+  (`pyjs_test_driver/test_archives.py`); the npm / bundler pages pass one in
+  `archives`.
+- mambajs-core creates the dirs of relative package paths relative to the
+  *cwd* but writes the files below the prefix `/`: `applyLock` in
+  `runtime.ts` runs with cwd `/` (Python may have changed it).
 - CI: `.github/workflows/npm.yml` builds + tests (all browsers), publishes on
   release tags (`4.1.0`, must equal the package version) / manual dispatch;
   npm trusted publishing (OIDC, configured on npmjs.com for this repo +
@@ -358,3 +395,7 @@ permission on any Bash command it cannot statically analyze. Therefore:
   commands: one plain command per call.
 - Don't read outside the repo (`~`, `which`, other envs) to discover the setup;
   ask the user instead.
+- Subagents do not reliably follow these rules on their own: every subagent
+  prompt repeats them (one plain command per call, literal absolute paths, no
+  pipes, no redirects like `2>/dev/null`, no `&&` / `;`, no `$(...)`, no `cd`;
+  the Read tool for file contents).

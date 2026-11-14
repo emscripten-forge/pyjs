@@ -51,10 +51,12 @@ The tests / benchmarks mount `module/pyjs` from the source tree and take the
 runtime (`pyjs_runtime_browser.{js,wasm}`) from the build dir, so Python-only
 changes need no rebuild (the script still runs cmake/make, which is a no-op).
 
-WebGPU: the runtime is linked with `--use-port=emdawnwebgpu` (cmake option
-`PYJS_WEBGPU`, default ON; emscripten downloads the port on first use). As a
-`MAIN_MODULE` it carries the whole JS side of `webgpu.h` (`Module.WebGPU`,
-`wgpu*`) for side modules. Tests: `tests/sync/test_webgpu.py` (in the runtime),
+WebGPU: `--use-port=emdawnwebgpu` is an `INTERFACE` link option of the `pyjs`
+target (cmake option `PYJS_WEBGPU`, default ON; emscripten downloads the port
+on first use), so every executable linking pyjs gets it: the runtime and, via
+the exported `pyjsTargets.cmake`, xeus-python. As a `MAIN_MODULE` such an
+executable carries the whole JS side of `webgpu.h` (`Module.WebGPU`, `wgpu*`)
+for side modules. Tests: `tests/sync/test_webgpu.py` (in the runtime),
 `tests/async/test_webgpu.py` (adapter / device; skips without `navigator.gpu` or
 adapter, the usual case headless).
 

@@ -17,8 +17,10 @@ compiled Python. The API is loosely based on the FFI of
 
 ## Documentation
 
+
+
 See the [documentation](https://emscripten-forge.github.io/pyjs/).
-Or go directely to the [playground](https://emscripten-forge.github.io/pyjs/playground.html) to try it out.
+Or go directely to the [playground](https://emscripten-forge.github.io/pyjs/playground/index.html) to try it out.
 
 
 ## Quickstart

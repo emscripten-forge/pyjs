@@ -51,6 +51,15 @@ The tests / benchmarks mount `module/pyjs` from the source tree and take the
 runtime (`pyjs_runtime_browser.{js,wasm}`) from the build dir, so Python-only
 changes need no rebuild (the script still runs cmake/make, which is a no-op).
 
+WebGPU: `--use-port=emdawnwebgpu` is an `INTERFACE` link option of the `pyjs`
+target (cmake option `PYJS_WEBGPU`, default ON; emscripten downloads the port
+on first use), so every executable linking pyjs gets it: the runtime and, via
+the exported `pyjsTargets.cmake`, xeus-python. As a `MAIN_MODULE` such an
+executable carries the whole JS side of `webgpu.h` (`Module.WebGPU`, `wgpu*`)
+for side modules. Tests: `tests/sync/test_webgpu.py` (in the runtime),
+`tests/async/test_webgpu.py` (adapter / device; skips without `navigator.gpu` or
+adapter, the usual case headless).
+
 Memory: the runtime is linked with `-sMAXIMUM_MEMORY` = 4GB (wasm32) / 16GB
 (wasm64) (cmake cache var `PYJS_MAXIMUM_MEMORY`; emscripten's default is 2GB, also
 for wasm64). `tests/sync/test_memory.py` allocates beyond 2 GiB / 4 GiB and
@@ -328,3 +337,24 @@ pure-JS benchmarks (`raw_js_*`) show the run-to-run noise.
   markdown tables to the job summary, the json files are artifacts.
 - `.github/workflows/docs.yml`: `./build_local.sh docs`,
   deploys `docs_build/html` to GitHub Pages from `main`.
+
+
+
+
+## Shell commands (for Claude)
+
+This environment blocks reads outside the working directory and asks for
+permission on any Bash command it cannot statically analyze. Therefore:
+
+- Use literal absolute paths in Bash commands. Do not use shell variables
+  (`S=...; cd $S`), `for` loops, or `$(...)` to build paths.
+- Do not `cd` into computed directories; one command per target.
+- Temporary files (e.g. cloned pyjs sources for API diffs) go in the session
+  scratchpad, addressed by literal absolute path.
+- Change files only with the Edit / Write tools. Never `sed -i`, `awk`, `perl -i`
+  or heredoc redirects to modify files (they cannot be checked, show no diff,
+  and BSD sed on macOS silently ignores GNU syntax like `\b`).
+- No process substitution `<(...)`, `$(...)`, or `;`/`&&` chains of several
+  commands: one plain command per call.
+- Don't read outside the repo (`~`, `which`, other envs) to discover the setup;
+  ask the user instead.

@@ -16,6 +16,10 @@ else()
     set(PYJS_MAXIMUM_MEMORY "4GB" CACHE STRING "-sMAXIMUM_MEMORY of the pyjs runtime")
 endif()
 
+# WebGPU (webgpu.h) via emscripten's emdawnwebgpu port, linked into every
+# executable using pyjs: as MAIN_MODULE it carries the JS implementation for
+# side modules
+option(PYJS_WEBGPU "Enable WebGPU support (emdawnwebgpu port)" ON)
 
 
 if (NOT DEFINED PY_VERSION)
@@ -123,6 +127,13 @@ target_link_options(pyjs
     PUBLIC "SHELL: -lembind"
 )
 
+# INTERFACE: reaches every executable linking pyjs (the runtime below, and via
+# the exported pyjsTargets.cmake e.g. xeus-python); the static lib itself does
+# not use webgpu.h
+if(PYJS_WEBGPU)
+    target_link_options(pyjs INTERFACE "SHELL: --use-port=emdawnwebgpu")
+endif()
+
 set_target_properties(pyjs PROPERTIES
     PUBLIC_HEADER "${PYJS_HEADERS}"
 )
@@ -227,6 +238,7 @@ target_link_options(pyjs_runtime_browser
     PUBLIC "SHELL: --pre-js pyjs_pre.js"
     PUBLIC "SHELL: -lembind"
 )
+
 
 
 # target_link_options(pyjs_runtime_browser PRIVATE

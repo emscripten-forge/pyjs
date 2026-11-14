@@ -16,6 +16,9 @@ else()
     set(PYJS_MAXIMUM_MEMORY "4GB" CACHE STRING "-sMAXIMUM_MEMORY of the pyjs runtime")
 endif()
 
+# WebGPU (webgpu.h) via emscripten's emdawnwebgpu port: the runtime is a
+# MAIN_MODULE, so its JS implementation is available to side modules
+option(PYJS_WEBGPU "Enable WebGPU support (emdawnwebgpu port)" ON)
 
 
 if (NOT DEFINED PY_VERSION)
@@ -227,6 +230,11 @@ target_link_options(pyjs_runtime_browser
     PUBLIC "SHELL: --pre-js pyjs_pre.js"
     PUBLIC "SHELL: -lembind"
 )
+
+if(PYJS_WEBGPU)
+    target_compile_options(pyjs_runtime_browser PUBLIC "SHELL: --use-port=emdawnwebgpu")
+    target_link_options(pyjs_runtime_browser PUBLIC "SHELL: --use-port=emdawnwebgpu")
+endif()
 
 
 # target_link_options(pyjs_runtime_browser PRIVATE

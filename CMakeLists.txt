@@ -21,6 +21,15 @@ endif()
 # side modules
 option(PYJS_WEBGPU "Enable WebGPU support (emdawnwebgpu port)" ON)
 
+# OpenGL ES 3 / WebGL2 in the runtime (emscripten's GL JS library is always
+# included in a MAIN_MODULE=1 runtime, but only at WebGL1 level without these
+# flags)
+option(PYJS_WEBGL "Enable WebGL2 / OpenGL ES 3 support in the runtime" ON)
+
+# SDL2 (emscripten port) in the runtime: window / input / GL context for side
+# modules like imgui-bundle's hello_imgui; must live in the main module
+option(PYJS_SDL2 "Enable SDL2 support (emscripten sdl2 port) in the runtime" ON)
+
 
 if (NOT DEFINED PY_VERSION)
     # raise an error if the user has not set PY_VERSION
@@ -52,6 +61,7 @@ set(PREJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/fetch.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/load_pkg.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/literal_map.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/canvas.js
 )
 set(POSTJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/post_js/fixes.js
@@ -238,6 +248,19 @@ target_link_options(pyjs_runtime_browser
     PUBLIC "SHELL: --pre-js pyjs_pre.js"
     PUBLIC "SHELL: -lembind"
 )
+
+# graphics only in the runtime (not INTERFACE on pyjs: downstream executables
+# like xeus-python are not forced to link them)
+if(PYJS_WEBGL)
+    target_link_options(pyjs_runtime_browser PRIVATE
+        "SHELL: -lGL"
+        "SHELL: -sMAX_WEBGL_VERSION=2"
+        "SHELL: -sFULL_ES3"
+    )
+endif()
+if(PYJS_SDL2)
+    target_link_options(pyjs_runtime_browser PRIVATE "SHELL: -sUSE_SDL=2")
+endif()
 
 
 

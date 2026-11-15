@@ -46,7 +46,10 @@ export async function runSuite(createPyjs, options) {
     globalThis.pyjs = pyjs;
     const suiteUrl = new URL(`/${options.entry}`, globalThis.location.href).href;
     await writeSuite(pyjs, suiteUrl, options.entry);
-    const suiteOptions = JSON.stringify({ ...options, tests_url: suiteUrl });
+    // npm_package: pyjs is the npm package (it has installPackages): enables
+    // the tests of its own features (tests/npm)
+    const npmPackage = typeof pyjs.installPackages === "function";
+    const suiteOptions = JSON.stringify({ ...options, tests_url: suiteUrl, npm_package: npmPackage });
     const resultJson = await pyjs.async_exec_eval(
       `import json, sys\n` +
         `sys.path.insert(0, "/${options.entry}")\n` +

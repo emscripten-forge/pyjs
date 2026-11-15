@@ -79,6 +79,21 @@ Every JavaScript value is a `pyjs.JsValue` in Python (defined in the C++ core
 .. autoapifunction:: pyjs.cancel_main_loop
 ```
 
+## Graphics: WebGL2 / OpenGL ES 3, SDL2
+
+The runtime contains emscripten's WebGL2 (OpenGL ES 3) and SDL2 support, so
+extension modules using GLES 3 or SDL2 (e.g. via `ctypes` or C++) work in the
+browser. They render into the canvas set with `set_canvas`.
+
+```{eval-rst}
+.. autoapifunction:: pyjs.set_canvas
+
+.. autoapifunction:: pyjs.request_animation_frame_loop
+
+.. autoapiclass:: pyjs.AnimationFrameLoop
+   :members:
+```
+
 ## JavaScript errors
 
 JavaScript errors (thrown or rejected promises) are raised as `JsException`

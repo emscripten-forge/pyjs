@@ -84,7 +84,8 @@ JavaScript modules, so bundlers do not copy them; two ways to deploy them:
 | option | default | |
 |---|---|---|
 | `extraPackages` | `[]` | conda packages installed before Python starts |
-| `channels` | emscripten-forge 6x, conda-forge | channels for extra packages |
+| `channels` | emscripten-forge 6x, conda-forge | channels for extra packages (also self-hosted ones, see below) |
+| `archives` | `[]` | archives unpacked into the file system before Python starts, see below |
 | `assetsUrl` | `assets/` next to the module | url of a self-hosted copy of `assets/` (`copy-assets`) |
 | `cdnUrl` | jsDelivr, this exact version | where `assets/` is loaded from when not next to the module |
 | `cdnFallback` | `true` | `false`: error instead of loading from `cdnUrl` |
@@ -92,6 +93,38 @@ JavaScript modules, so bundlers do not copy them; two ways to deploy them:
 | `print` / `printErr` | `console.log` / `console.warn` | stdout / stderr |
 | `logger`, `verbose` | silent | progress messages |
 | `moduleOptions` | | extra properties of the emscripten Module |
+
+## Your own packages and files
+
+**Self-hosted conda packages**: the output directory of `rattler-build`
+(`noarch/`, `emscripten-wasm32/`, ... with their `repodata.json`) is a conda
+channel made of static files. Deploy it next to your page (e.g. on GitHub
+Pages) and list it first: channels listed earlier have priority (your build
+of a package wins over a published one), the other packages still come from
+emscripten-forge:
+
+```js
+const pyjs = await initializePyjsRuntime({
+  channels: [
+    new URL("channel", location.href).href, // absolute url
+    "https://repo.prefix.dev/emscripten-forge/6x",
+    "conda-forge",
+  ],
+  extraPackages: ["my-package"],
+});
+```
+
+**Files that are not a package** (python sources, data): pack them as a
+(compressed) tar archive, e.g. `tar czf examples.tar.gz -C examples .`; pyjs
+unpacks it (untarjs) into the file system, before Python starts or later:
+
+```js
+const pyjs = await initializePyjsRuntime({
+  archives: [{ url: "examples.tar.gz", path: "/examples" }],
+});
+await pyjs.unpackArchive({ url: "more_data.tar.bz2", path: "/data" });
+pyjs.exec("import sys; sys.path.insert(0, '/examples')");
+```
 
 ## wasm32 or wasm64?
 

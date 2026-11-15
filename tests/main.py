@@ -9,10 +9,12 @@ emscripten file system of a page with an initialized pyjs and awaits
 2. async Python tests: `async/test_*.py` (every `async def test_*`, own runner:
    pytest cannot await in the browser, the event loop cannot be blocked)
 3. sync Python tests: `sync/test_*.py` via pytest
+4. npm package only: async Python tests of its own features (`installPackages`,
+   ...): `npm/test_*.py`
 
 options (from the driver): `disable_jspi` (test like in a browser without
 JSPI, with the same build), `tests_url` (url of this directory, for the JS
-modules).
+modules), `npm_package` (pyjs is the npm package).
 """
 
 import collections
@@ -63,10 +65,10 @@ def load_module(path):
     return module
 
 
-async def run_async_tests():
-    """await every `async def test_*` in async/test_*.py"""
+async def run_async_tests(directory="async"):
+    """await every `async def test_*` in <directory>/test_*.py"""
     counts = collections.Counter()
-    for path in sorted((HERE / "async").glob("test_*.py")):
+    for path in sorted((HERE / directory).glob("test_*.py")):
         module = load_module(path)
         for name, fn in vars(module).items():
             if not (name.startswith("test_") and inspect.iscoroutinefunction(fn)):
@@ -121,10 +123,14 @@ async def main(options):
     summary["async"] = await run_async_tests()
     section("SYNC TESTS (pytest)")
     summary["sync"] = run_sync_tests()
+    if options.get("npm_package"):
+        section("NPM PACKAGE TESTS")
+        summary["npm"] = await run_async_tests("npm")
     summary["seconds"] = round(time.time() - t0, 1)
     summary["ok"] = (
         not summary["js"].get("failed")
         and not summary["async"].get("failed")
         and summary["sync"]["exit_code"] == 0
+        and not summary.get("npm", {}).get("failed")
     )
     return summary

@@ -12,6 +12,7 @@ import {
   bootstrapPython,
   computeCondaPackagesDiff,
   empackLockToMambajsLock,
+  formatChannels,
   getPythonVersion,
   installPackagesToEmscriptenFS,
   loadSharedLibs,
@@ -27,7 +28,7 @@ import { DEFAULT_CHANNELS, PACKAGE_NAME, DEFAULT_CDN_URL } from "./constants";
 // a plain (unminified, not bundled by us) module: keeps the `webpackIgnore` /
 // `@vite-ignore` hints of its `import(url)` for the bundlers of our users
 import loadRuntime from "./load-runtime.js";
-import type { IInitializeOptions, IInstallOptions, ILogger, PyjsModule } from "./types";
+import type { IArchive, IInitializeOptions, IInstallOptions, ILogger, PyjsModule } from "./types";
 
 export type Arch = "wasm32" | "wasm64";
 
@@ -143,8 +144,18 @@ async function solve(
   logger: ILogger
 ): Promise<ILock> {
   const { install } = await loadSolver();
-  // `install` extends the channels of the lock it gets
-  return install(specs, structuredClone(lock), channels, logger);
+  // channel order = priority. mambajs' `install` would append new channels
+  // after the ones of the lock (the env shipped with the package:
+  // emscripten-forge, conda-forge), so a self-hosted channel could never
+  // override a published package. Put the requested channels first.
+  const base = structuredClone(lock);
+  const requested = formatChannels(channels, logger);
+  base.channels = [
+    ...requested.channels,
+    ...base.channels.filter((channel) => !requested.channels.includes(channel)),
+  ];
+  base.channelInfo = { ...base.channelInfo, ...requested.channelInfo };
+  return install(specs, base, [], logger);
 }
 
 interface IState {
@@ -167,6 +178,21 @@ interface IState {
  * the ones replaced by them). Returns the shared libs of the new packages.
  */
 async function applyLock(state: IState, newLock: ILock): Promise<{ installed: string[]; sharedLibs: TSharedLibsMap }> {
+  // mambajs-core creates the directories of a package's relative paths
+  // relative to the cwd, but writes the files below the prefix ("/"): run it
+  // with cwd "/" (Python may have changed it) and restore it afterwards
+  const FS = state.Module.FS;
+  const cwd = FS.cwd();
+  FS.chdir("/");
+  try {
+    return await applyLockInRoot(state, newLock);
+  } finally {
+    FS.chdir(cwd);
+  }
+}
+
+/** applyLock, with cwd "/" */
+async function applyLockInRoot(state: IState, newLock: ILock): Promise<{ installed: string[]; sharedLibs: TSharedLibsMap }> {
   const diff = computeCondaPackagesDiff({ oldLock: state.lock, newLock });
 
   const newPackages: ISolvedPackages = {};
@@ -231,6 +257,47 @@ async function installPackages(state: IState, specs: string[], options: IInstall
     state.Module.exec("import importlib\nimportlib.invalidate_caches()");
   }
   return installed;
+}
+
+/** "/a/b/" + "c/d.py" -> "/a/b/c/d.py" (absolute, no "." / ".." / empty parts) */
+function joinFsPath(dir: string, relative: string): string {
+  const parts: string[] = [];
+  for (const part of `${dir}/${relative}`.split("/")) {
+    if (part === "" || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      parts.pop();
+    } else {
+      parts.push(part);
+    }
+  }
+  return `/${parts.join("/")}`;
+}
+
+/**
+ * Fetch `archive` and unpack it (untarjs) below `archive.path` (absolute
+ * paths: independent of the cwd). Returns the written paths.
+ */
+async function unpackArchive(Module: any, untarjs: IUnpackJSAPI, archive: IArchive, logger: ILogger): Promise<string[]> {
+  const url = new URL(archive.url.toString(), globalThis.location?.href).href;
+  logger.log(`pyjs: unpacking ${url} into ${archive.path}`);
+  const files = await untarjs.extract(url);
+  const root = joinFsPath(archive.path, "");
+  const written: string[] = [];
+  for (const [name, data] of Object.entries(files)) {
+    if (name.endsWith("/") || !data) {
+      continue; // a directory entry: created with the files below it
+    }
+    const path = joinFsPath(archive.path, name);
+    if (root !== "/" && !path.startsWith(`${root}/`)) {
+      throw new Error(`pyjs: archive ${url} has a path outside of ${archive.path}: ${name}`);
+    }
+    Module.FS.mkdirTree(path.slice(0, path.lastIndexOf("/")) || "/");
+    Module.FS.writeFile(path, data);
+    written.push(path);
+  }
+  return written;
 }
 
 /**
@@ -305,6 +372,10 @@ export async function initialize(arch: Arch, options: IInitializeOptions = {}): 
     sharedLibs = { ...sharedLibs, ...extra.sharedLibs };
   }
 
+  for (const archive of options.archives ?? []) {
+    await unpackArchive(Module, untarjs, archive, logger);
+  }
+
   // emscripten (>= 4) ignores the `fs` option mambajs-core passes to
   // `loadDynamicLibrary`: dependencies of shared libs (e.g. numpy ->
   // libopenblas.so) are found via LD_LIBRARY_PATH, otherwise they are fetched
@@ -322,6 +393,15 @@ export async function initialize(arch: Arch, options: IInitializeOptions = {}): 
   // one install at a time (they change the same file system / lock)
   Module.installPackages = (specs: string[], installOptions?: IInstallOptions) => {
     const result = state.queue.then(() => installPackages(state, specs, installOptions));
+    state.queue = result.catch(() => {});
+    return result;
+  };
+  Module.unpackArchive = (archive: IArchive) => {
+    const result = state.queue.then(async () => {
+      const written = await unpackArchive(Module, untarjs, archive, state.logger);
+      Module.exec("import importlib\nimportlib.invalidate_caches()");
+      return written;
+    });
     state.queue = result.catch(() => {});
     return result;
   };

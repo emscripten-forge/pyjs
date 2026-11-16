@@ -1,4 +1,5 @@
 import contextlib
+import contextvars
 import json
 import sys
 import types
@@ -481,7 +482,10 @@ def _run_sync_js(js_promise):
     if task is not None:
         _tasks._leave_task(loop, task)
     try:
-        ret, _ = pyjs_core.internal.run_sync(js_promise)
+        # suspend inside a copy of the current context: python code entered
+        # while this stack is suspended (e.g. a kernel handling the next
+        # message) would otherwise write its ContextVars into this task's context
+        ret, _ = contextvars.copy_context().run(pyjs_core.internal.run_sync, js_promise)
     finally:
         if task is not None:
             _tasks._enter_task(loop, task)

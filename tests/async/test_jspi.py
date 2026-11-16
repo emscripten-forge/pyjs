@@ -165,6 +165,54 @@ async def test_jspi_concurrent_tasks():
     assert pyjs.can_run_sync()
 
 
+async def test_jspi_run_sync_keeps_context():
+    if not pyjs.jspi_enabled():
+        return
+    import contextvars
+
+    cv = contextvars.ContextVar("cv")
+    cv.set("task")
+
+    # a synchronous JS -> python entry while this task is suspended
+    # (like a kernel handling the next execute_request)
+    def reentrant():
+        cv.set("reentrant")
+
+    js_callable = pyjs.create_once_callable(reentrant)
+    js.setTimeout(js_callable, 0)
+    pyjs.run_sync(_delayed_promise(None, 50))
+    assert cv.get() == "task", cv.get()
+
+
+async def test_jspi_run_sync_keeps_context_deterministic():
+    if not pyjs.jspi_enabled():
+        return
+    import contextvars
+
+    cv = contextvars.ContextVar("cv")
+    cv.set("task")
+
+    # the promise is resolved by the re-entrant callback itself, so run_sync
+    # can only return after the re-entry happened (no timing assumptions)
+    deferred = js.Function(
+        "let resolve; const p = new Promise((r) => { resolve = r; }); return [p, resolve];"
+    )()
+    promise, resolve = deferred[0], deferred[1]
+    ran = []
+
+    # a synchronous JS -> python entry while this task is suspended
+    # (like a kernel handling the next execute_request)
+    def reentrant():
+        cv.set("reentrant")
+        ran.append(True)
+        resolve(None)
+
+    js.setTimeout(pyjs.create_once_callable(reentrant), 0)
+    pyjs.run_sync(promise)
+    assert ran, "re-entrant callback did not run"
+    assert cv.get() == "task", cv.get()
+
+
 async def test_jspi_urllib3_uses_jspi():
     try:
         from urllib3.contrib.emscripten.fetch import has_jspi

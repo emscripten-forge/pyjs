@@ -4,12 +4,11 @@ name: benchmarks
 # browser, main thread + worker. The results are shown on the summary page of
 # each job (benchmarks/report.py) and uploaded as json. CI runners are shared
 # and noisy: compare the rows of one run, not absolute numbers across runs.
+# Manual only (Actions -> benchmarks -> Run workflow): nothing uses the
+# results automatically.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  pull_request:
 
 # a new run (push / PR update) cancels the older run of the same workflow on
 # the same branch / PR (release tags: each tag its own group, never cancelled)

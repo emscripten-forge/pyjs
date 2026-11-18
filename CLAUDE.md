@@ -416,8 +416,8 @@ pure-JS benchmarks (`raw_js_*`) show the run-to-run noise.
 - `.github/workflows/npm.yml`: `pixi run test-npm`, uploads
   `build_root/npm/tgz/*.tgz`, publishes it on release tags.
 - `.github/workflows/bench.yml`: `pixi run bench <wasm> <browser>` for wasm32 /
-  wasm64 x chromium / firefox / webkit (main thread + worker), on pushes to
-  `main`, PRs and manually; `benchmarks/report.py` writes the results as
+  wasm64 x chromium / firefox / webkit (main thread + worker), manual only
+  (workflow_dispatch); `benchmarks/report.py` writes the results as
   markdown tables to the job summary, the json files are artifacts.
 - `.github/workflows/docs.yml`: `pixi run docs docs_build/html`,
   deploys `docs_build/html` to GitHub Pages from `main`.

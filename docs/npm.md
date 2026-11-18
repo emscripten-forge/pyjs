@@ -101,7 +101,12 @@ accepts both, specs and pinned packages.
   the page is hidden) or right away with `await pyjs.saveBytecode()`.
   Python checks each `.pyc` against the modification time + size of its
   source (kept from the archive), a stale one is compiled again.
-  `bytecodeCache: false` turns it off.
+  `bytecodeCache: false` turns it off. So does python itself when it writes
+  no bytecode: `sys.dont_write_bytecode = True` / `PYTHONDONTWRITEBYTECODE`
+  (also `PYTHONPYCACHEPREFIX` moves the files out of reach). Code edited at
+  runtime needs neither: delete the edited files' `.pyc` before re-importing
+  (`importlib.util.cache_from_source(path)`), python also recompiles when the
+  source's mtime or size changed.
 * **Archives** are not cached by default (an archive URL may change its
   content). `{url, path, cache: true}` caches one like a package: its
   unpacked files and the bytecode of its `.py` files, by URL + `path`. Only

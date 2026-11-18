@@ -18,8 +18,8 @@ The CI runs the same tasks, so local == CI. Only pixi >= 0.84 is needed
 pixi run build wasm32                        # build pyjs (archs: wasm32 | wasm64 | "wasm32 wasm64")
 pixi run test wasm32                         # npm package of the arch + browser tests (main + worker)
 pixi run test wasm64 "chromium firefox webkit"
-# test <arch> [browsers] [modes] [test_env default|no-numpy] [jspi on|off]
-pixi run test wasm32 chromium "main worker" default off   # JSPI switched off at runtime
+# test <arch> [browsers] [modes] [numpy|no-numpy] [jspi|no-jspi]
+pixi run test wasm32 chromium "main worker" numpy no-jspi  # JSPI switched off at runtime
 pixi run test wasm32 chromium main no-numpy
 pixi run bench wasm32 [browsers] [modes] [filter]          # benchmarks
 pixi run docs [out dir]                      # npm package + sphinx docs
@@ -245,7 +245,7 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   CPython thread state LIFO); `can_run_sync()` is False in sync JS callbacks,
   while another `run_sync` waits, and for promising calls nested in running
   wasm (`depth`). `run_sync` leaves / re-enters the current asyncio task.
-- Tests: `pixi run test <wasm> <browsers> "main worker" default off` switches JSPI off at
+- Tests: `pixi run test <wasm> <browsers> "main worker" numpy no-jspi` switches JSPI off at
   runtime (`run --disable-jspi` -> option `disable_jspi` ->
   `pyjs.core._disable_jspi()` in `tests/main.py`), CI runs both. A browser without the APIs at all can be
   simulated with playwright: `delete WebAssembly.Suspending` in an init script.

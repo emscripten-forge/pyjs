@@ -30,6 +30,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/c-ares-1.34.9-hebe6cf0_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/charset-normalizer-3.5.2-h1114479_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/cmake-4.5.0-hff7ac6b_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/gh-2.104.0-hfc2019e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/greenlet-3.5.6-py314hf3b331d_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/icu-79.1-py314hb486520_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/keyutils-1.6.3-h7cc23a3_1.conda
@@ -176,6 +177,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/bzip2-1.0.8-h4e30115_10.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/c-ares-1.34.9-h74c22ad_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/cmake-4.5.0-h07a7c03_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/gh-2.104.0-h2ef8fd1_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/greenlet-3.5.6-py314hd38aa5a_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/icu-79.1-py311h7f96da7_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/krb5-1.22.2-h34f8a20_2.conda
@@ -375,6 +377,14 @@ packages:
   run_exports: {}
   size: 27320556
   timestamp: 1794549486278
+- conda: https://conda.anaconda.org/conda-forge/linux-64/gh-2.104.0-hfc2019e_0.conda
+  sha256: b6f29a66e5f050af9d3021a02a3366a56bd06b525a542612a9b2ff3979d98845
+  md5: 5b31c881c248717a85aedcac5b195463
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports: {}
+  size: 13705609
+  timestamp: 1794517336481
 - conda: https://conda.anaconda.org/conda-forge/linux-64/greenlet-3.5.6-py314hf3b331d_1.conda
   sha256: 2e380479efab87d234de6065c885f645761b8b829fd0065b53c8334aa89f102f
   md5: 3de8c700f3f32a5fb955966ba90eb22d
@@ -1636,6 +1646,14 @@ packages:
   run_exports: {}
   size: 21062243
   timestamp: 1794549508193
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/gh-2.104.0-h2ef8fd1_0.conda
+  sha256: d02e404bd3b62066c1f94bdce62b9c1706a3093b01e33adc08d90f5310605d4d
+  md5: 5f06d3f503c613789064981b2243f123
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports: {}
+  size: 12330416
+  timestamp: 1794517356680
 - conda: https://conda.anaconda.org/conda-forge/osx-arm64/greenlet-3.5.6-py314hd38aa5a_1.conda
   sha256: 7281ad2105c08562eeadf7dc8c1194c0713135e86a5488923b5167be1375a5f3
   md5: ac1f518bfa62b49a6760d65f02f77ff9

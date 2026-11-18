@@ -49,7 +49,7 @@ jobs:
 
       # the same build, JSPI switched off at runtime (like a browser without JSPI)
       - name: Test without JSPI (browser main thread + worker)
-        run: pixi run test ${{ matrix.wasm }} ${{ matrix.browser }} "main worker" default off
+        run: pixi run test ${{ matrix.wasm }} ${{ matrix.browser }} "main worker" numpy no-jspi
 
       - name: Test without numpy (browser main thread)
         run: pixi run test ${{ matrix.wasm }} ${{ matrix.browser }} main no-numpy

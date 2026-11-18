@@ -3,7 +3,8 @@
 #   pixi run build wasm32                       # build pyjs (wasm32 | wasm64 | "wasm32 wasm64")
 #   pixi run test wasm32                        # + npm package (this arch), tests in the browser
 #   pixi run test wasm64 "chromium firefox webkit"
-#   pixi run test wasm32 chromium "main worker" no-numpy off   # test_env, jspi
+#   pixi run test wasm32 chromium main no-numpy               # without numpy
+#   pixi run test wasm32 chromium "main worker" numpy no-jspi # JSPI switched off
 #   pixi run bench wasm32                       # benchmarks (bench wasm32 chromium "main worker" async)
 #   pixi run npm-package                        # the npm package (wasm32 + wasm64)
 #   pixi run test-npm                           # + its full test (both archs, bundlers, lock CLI)
@@ -45,6 +46,8 @@ nodejs = "*"
 # pyjs_test_driver: playwright (driver + browsers) + its python API
 playwright = "*"
 playwright-python = "*"
+# GitHub CLI (PRs, reviews, CI runs)
+gh = "*"
 # documentation
 sphinx = "*"
 sphinx-autoapi = "*"
@@ -208,7 +211,7 @@ cmd = "playwright install {{ browsers }}"
 description = "The test page of the npm package (build_root/pages/npm_<arch>)"
 args = [
   { arg = "arch", choices = ["wasm32", "wasm64"] },
-  { arg = "test_env", default = "default", choices = ["default", "no-numpy"] },
+  { arg = "test_env", default = "numpy", choices = ["numpy", "no-numpy"] },
 ]
 cmd = '''
 python -m pyjs_test_driver build-page npm --package build_root/npm/package --arch {{ arch }} \
@@ -223,8 +226,8 @@ args = [
   { arg = "arch", choices = ["wasm32", "wasm64"] },
   { arg = "browsers", default = "chromium" },
   { arg = "modes", default = "main worker" },
-  { arg = "test_env", default = "default", choices = ["default", "no-numpy"] },
-  { arg = "jspi", default = "on", choices = ["on", "off"] },
+  { arg = "test_env", default = "numpy", choices = ["numpy", "no-numpy"] },
+  { arg = "jspi", default = "jspi", choices = ["jspi", "no-jspi"] },
 ]
 depends-on = [
   { task = "test-page", args = ["{{ arch }}", "{{ test_env }}"] },
@@ -232,17 +235,17 @@ depends-on = [
 ]
 cmd = '''
 python -m pyjs_test_driver run build_root/pages/npm_{{ arch }} --label "npm {{ arch }}" \
-    --browser {{ browsers }} --mode {{ modes }} --retries 5 {% if jspi == "off" %}--disable-jspi{% endif %}
+    --browser {{ browsers }} --mode {{ modes }} --retries 5 {% if jspi == "no-jspi" %}--disable-jspi{% endif %}
 '''
 
 [tasks.test]
-description = "Build the npm package of an arch, run the test suite on it: test <arch> [browsers] [modes] [test_env] [jspi]"
+description = "Build the npm package of an arch, run the test suite on it: test <arch> [browsers] [modes] [numpy|no-numpy] [jspi|no-jspi]"
 args = [
   { arg = "arch", choices = ["wasm32", "wasm64"] },
   { arg = "browsers", default = "chromium" },
   { arg = "modes", default = "main worker" },
-  { arg = "test_env", default = "default", choices = ["default", "no-numpy"] },
-  { arg = "jspi", default = "on", choices = ["on", "off"] },
+  { arg = "test_env", default = "numpy", choices = ["numpy", "no-numpy"] },
+  { arg = "jspi", default = "jspi", choices = ["jspi", "no-jspi"] },
 ]
 depends-on = [
   { task = "npm-package", args = ["{{ arch }}"] },

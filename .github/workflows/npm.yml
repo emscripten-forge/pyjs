@@ -49,8 +49,6 @@ jobs:
       - name: Install the browsers
         run: pixi run playwright install --with-deps chromium firefox webkit
 
-      # wasm32 + wasm64 (all browsers, main thread + module worker), the lock
-      # CLI, the bundler apps
       - name: Build and test the npm package
         run: pixi run test-npm
 

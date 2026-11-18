@@ -39,9 +39,9 @@ its output dir first in `channels` of `pixi.toml`, then `pixi run ...`
 ```bash
 pixi run test wasm32
 pixi run test wasm64 "chromium firefox webkit"
-# test <arch> [browsers] [modes] [test_env] [jspi]
-pixi run test wasm32 chromium main no-numpy     # without numpy
-pixi run test wasm32 chromium "main worker" default off   # JSPI switched off
+# test <arch> [browsers] [modes] [numpy|no-numpy] [jspi|no-jspi]
+pixi run test wasm32 chromium main no-numpy                 # without numpy
+pixi run test wasm32 chromium "main worker" numpy no-jspi   # JSPI switched off
 ```
 
 `test` builds the npm package of that architecture and runs the suite on it;

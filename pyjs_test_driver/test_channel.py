@@ -12,7 +12,8 @@ the layout rattler-build writes to its output dir:
     emscripten-wasm64/...
 
 The noarch package (a python module) depends on the arch package (a data file
-naming its arch), like `pyb2d3-sandbox` on `pyb2d3`. A fake `tabulate` 0.0.1
+naming its arch), like a pure python package on top of a compiled extension
+(`seaborn` on `matplotlib-base`). A fake `tabulate` 0.0.1
 (conda-forge has 0.9.x) tests that the self-hosted channel has priority (a CI
 build of a package must win over the published one).
 

@@ -1,5 +1,13 @@
-"""Check the output of `npx <pkg> lock tabulate -o <file>` (pixi task `test-lock`):
-every architecture pins a tabulate package with its sha256."""
+"""Smoke test of the npm package's `lock` CLI (pixi task `test-lock`).
+
+`npx <pkg> lock <specs>` solves package specs in node, at build time, and
+writes the pinned packages ({arch: [{url, sha256}]}) that apps pass as `urls`
+to `initializePyjsRuntime` (no solver in the browser). The CLI is a separate
+node bundle (`bin/lock.mjs`) that no browser test covers, so the task runs it
+for real (`lock tabulate`, against the real channels) and this script checks
+its output: every architecture of the package pins a tabulate package, with a
+sha256 (needed for `verifySha256`).
+"""
 
 import json
 import sys

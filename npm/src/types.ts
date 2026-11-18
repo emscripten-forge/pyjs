@@ -150,7 +150,10 @@ export interface PyjsModule {
    */
   readonly installTimings?: Readonly<Record<string, number>>;
 
-  /** the target architecture of this runtime */
+  /**
+   * the architecture of this runtime: `"wasm32"` or `"wasm64"`, given by the
+   * entry it was loaded from (`.` / `./wasm32` or `./wasm64`)
+   */
   readonly pyjsArch: "wasm32" | "wasm64";
   /** python version of the runtime, e.g. `[3, 14, 3]` */
   readonly pythonVersion: number[];

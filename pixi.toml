@@ -1,0 +1,325 @@
+# Build, test and benchmark pyjs, build the npm package and the docs:
+#
+#   pixi run build wasm32                       # build pyjs (wasm32 | wasm64 | "wasm32 wasm64")
+#   pixi run test wasm32                        # + npm package (this arch), tests in the browser
+#   pixi run test wasm64 "chromium firefox webkit"
+#   pixi run test wasm32 chromium "main worker" no-numpy off   # test_env, jspi
+#   pixi run bench wasm32                       # benchmarks (bench wasm32 chromium "main worker" async)
+#   pixi run npm-package                        # the npm package (wasm32 + wasm64)
+#   pixi run test-npm                           # + its full test (both archs, bundlers, lock CLI)
+#   pixi run docs                               # npm package + sphinx docs
+#   pixi task list                              # all tasks
+#
+# Environments (in .pixi/envs/): `default` = the native tools (emscripten,
+# cmake, node, playwright, sphinx); `host-<arch>` = what pyjs is built against;
+# `npm-env-<arch>` = the python shipped in the npm package. The emscripten
+# environments cannot run here: the task `envs` installs them with
+# `pixi install --platform`. Build output: build_root/ (not in git).
+[workspace]
+name = "pyjs"
+# emscripten-forge 6x (emscripten 6.0.8), first: its emscripten builds win.
+# A local recipe build (rattler-build output dir) goes in front of it.
+channels = ["https://repo.prefix.dev/emscripten-forge/6x", "conda-forge"]
+# (emscripten-core 6.0.8 of the 6x channel: no osx-64 build)
+platforms = ["osx-arm64", "linux-64", "emscripten-wasm32", "emscripten-wasm64"]
+requires-pixi = ">=0.84"
+
+########################################
+# environments
+########################################
+# the native tools, one environment for wasm32 and wasm64
+[feature.dev]
+platforms = ["osx-arm64", "linux-64"]
+channels = ["conda-forge", "https://repo.prefix.dev/emscripten-forge/6x"]
+
+[feature.dev.dependencies]
+python = "3.14.*"
+cmake = "*"
+# emscripten itself; -m64 for wasm64 is added by the tasks (that is all the
+# emscripten_emscripten-wasm64 package would add)
+emscripten-core = "==6.0.8"
+# packs conda envs for the browser (npm package)
+empack = ">=6.0.0"
+# npm package, bundler test pages
+nodejs = "*"
+# pyjs_test_driver: playwright (driver + browsers) + its python API
+playwright = "*"
+playwright-python = "*"
+# documentation
+sphinx = "*"
+sphinx-autoapi = "*"
+myst-parser = "*"
+pydata-sphinx-theme = "*"
+
+[feature.dev.activation.env]
+# = the python of the host environments (paths in the env, cmake)
+PY_VER = "3.14"
+
+# what pyjs is built against (incl. libarchive-static for src/extract.cpp)
+[feature.host.dependencies]
+python = "3.14.*"
+libpython-static = "*"
+pybind11 = "*"
+emscripten-abi = "==6.0.8"
+numpy = "*"
+zlib-static = "*"
+libsqlite-static = "*"
+libbzip2-static = "*"
+zstd-static = "*"
+# archive extraction in the runtime (only tar / zip, gzip / bzip2 / zstd are
+# enabled, libxml2 is not linked)
+libarchive-static = "*"
+
+# the python + stdlib of the npm package (pip / ca-certificates: as in the
+# environments micromamba created before)
+[feature.npm-env.dependencies]
+python = "3.14.*"
+emscripten-abi = "==6.0.8"
+pip = "*"
+ca-certificates = "*"
+
+[feature.wasm32]
+platforms = ["emscripten-wasm32"]
+
+[feature.wasm64]
+platforms = ["emscripten-wasm64"]
+
+[environments]
+default = ["dev"]
+host-wasm32 = { features = ["host", "wasm32"], no-default-feature = true }
+host-wasm64 = { features = ["host", "wasm64"], no-default-feature = true }
+npm-env-wasm32 = { features = ["npm-env", "wasm32"], no-default-feature = true }
+npm-env-wasm64 = { features = ["npm-env", "wasm64"], no-default-feature = true }
+
+########################################
+# tasks (all in the default environment). `archs`: one or both architectures
+# ("wasm32 wasm64"), the steps loop over them.
+########################################
+[tasks.envs]
+description = "Install the emscripten environments (host + npm python) of the archs"
+args = [{ arg = "archs", default = "wasm32 wasm64" }]
+cmd = '''
+set -e
+{% for arch in archs | split %}
+pixi install -e host-{{ arch }} --platform emscripten-{{ arch }}
+pixi install -e npm-env-{{ arch }} --platform emscripten-{{ arch }}
+{% endfor %}
+'''
+
+# cmake: -m64 for wasm64 must be in CMAKE_C_FLAGS on the command line (the
+# toolchain file decides 32 / 64 bit from it, before the environment's CFLAGS)
+# and in EMCC_CFLAGS (every emcc call, e.g. the ports). The libraries are
+# linked from CMAKE_INSTALL_PREFIX (= the host env; nothing is installed).
+[tasks.configure]
+description = "Configure the cmake build of pyjs (build_root/build_<arch>)"
+args = [{ arg = "archs", default = "wasm32 wasm64" }]
+depends-on = [{ task = "envs", args = ["{{ archs }}"] }]
+cmd = '''
+set -e
+{% for arch in archs | split %}
+EMCC_CFLAGS="$EMCC_CFLAGS{% if arch == 'wasm64' %} -m64{% endif %}" emcmake cmake -S . -B build_root/build_{{ arch }} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }} \
+    -DCMAKE_FIND_ROOT_PATH=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }} \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
+    -DCMAKE_INSTALL_PREFIX=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }} \
+    {% if arch == 'wasm64' %}-DCMAKE_C_FLAGS=-m64 -DCMAKE_CXX_FLAGS=-m64 -DWASM64=TRUE{% else %}-DWASM64=FALSE{% endif %} \
+    -DBUILD_RUNTIME_BROWSER=ON \
+    -DBUILD_RUNTIME_NODE=OFF \
+    -DLINK_LIBLZMA=ON \
+    -DPY_VERSION=$PY_VER \
+    -DPYTHON_SITE_PACKAGES=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }}/lib/python$PY_VER/site-packages \
+    -DPython_INCLUDE_DIRS=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }}/include/python$PY_VER \
+    -DPython_LIBRARY=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }}/lib/libpython$PY_VER.a \
+    -DPython_LIBRARIES=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }}/lib/libpython$PY_VER.a \
+    -DPython_EXECUTABLE=$CONDA_PREFIX/bin/python \
+    -DPython_Interpreter_FOUND=TRUE \
+    -DPython_FOUND=TRUE \
+    -DPYTHON_MODULE_EXTENSION=.so \
+    -DPYTHON_MODULE_EXT_SUFFIX=.so \
+    -DPYTHON_MODULE_DEBUG_POSTFIX=
+{% endfor %}
+'''
+
+[tasks.build]
+description = "Build pyjs: build_root/build_<arch>/pyjs_runtime_browser.{js,wasm} + libpyjs.a"
+args = [{ arg = "archs", default = "wasm32 wasm64" }]
+depends-on = [{ task = "configure", args = ["{{ archs }}"] }]
+cmd = '''
+set -e
+{% for arch in archs | split %}
+EMCC_CFLAGS="$EMCC_CFLAGS{% if arch == 'wasm64' %} -m64{% endif %}" cmake --build build_root/build_{{ arch }} --parallel
+{% endfor %}
+'''
+
+# per arch build_root/npm/stage/<arch>/: the runtime + python / stdlib (empack,
+# npm/empack_config.yaml drops CPython's test suite etc.) + the pyjs module of
+# this repository + the channels / python version for mambajs
+[tasks.pack]
+description = "Stage the runtime + the packed python env of the npm package"
+args = [{ arg = "archs", default = "wasm32 wasm64" }]
+depends-on = [{ task = "build", args = ["{{ archs }}"] }]
+cmd = '''
+set -e
+{% for arch in archs | split %}
+rm -rf build_root/npm/stage/{{ arch }}
+mkdir -p build_root/npm/stage/{{ arch }}
+cp build_root/build_{{ arch }}/pyjs_runtime_browser.js build_root/build_{{ arch }}/pyjs_runtime_browser.wasm build_root/npm/stage/{{ arch }}/
+empack pack env --env-prefix $PIXI_PROJECT_ROOT/.pixi/envs/npm-env-{{ arch }} --relocate-prefix / \
+    --outdir build_root/npm/stage/{{ arch }} --config npm/empack_config.yaml --no-use-cache
+empack pack dir --host-dir module/pyjs --mount-dir /lib/python$PY_VER/site-packages/pyjs \
+    --outname pyjs_module.tar.gz --outdir build_root/npm/stage/{{ arch }}
+empack pack append --env-meta build_root/npm/stage/{{ arch }}/empack_env_meta.json \
+    --tarfile build_root/npm/stage/{{ arch }}/pyjs_module.tar.gz
+python build_utils/npm_env_meta.py build_root/npm/stage/{{ arch }}/empack_env_meta.json \
+    https://repo.prefix.dev/emscripten-forge/6x conda-forge
+{% endfor %}
+'''
+
+[tasks.npm-ci]
+description = "Install the build tooling of the npm package (npm/node_modules)"
+cwd = "npm"
+cmd = "npm ci --no-audit --no-fund"
+inputs = ["npm/package-lock.json"]
+outputs = ["npm/node_modules/.package-lock.json"]
+
+# name: $NPM_PACKAGE_NAME (default @derthorsten/pyjs), version: CMakeLists.txt
+[tasks.npm-package]
+description = "The npm package: build_root/npm/package/ + build_root/npm/tgz/*.tgz"
+args = [{ arg = "archs", default = "wasm32 wasm64" }]
+depends-on = [{ task = "pack", args = ["{{ archs }}"] }, "npm-ci"]
+cmd = '''
+set -e
+node npm/build.mjs --out build_root/npm/package {% for arch in archs | split %}--stage {{ arch }}=build_root/npm/stage/{{ arch }} {% endfor %}
+rm -rf build_root/npm/tgz
+mkdir -p build_root/npm/tgz
+npm pack ./build_root/npm/package --pack-destination build_root/npm/tgz
+echo "npm package: build_root/npm/package (publish: npm publish ./build_root/npm/tgz/*.tgz --access public)"
+'''
+
+[tasks.browsers]
+description = "Install the playwright browsers (no-op if present)"
+args = [{ arg = "browsers", default = "chromium" }]
+cmd = "playwright install {{ browsers }}"
+
+# the packages the tests install at runtime (tests/sync/test_http.py: the http
+# stack of e.g. scipy.datasets); no-numpy: pyjs must work without numpy
+[tasks.test-page]
+description = "The test page of the npm package (build_root/pages/npm_<arch>)"
+args = [
+  { arg = "arch", choices = ["wasm32", "wasm64"] },
+  { arg = "test_env", default = "default", choices = ["default", "no-numpy"] },
+]
+cmd = '''
+python -m pyjs_test_driver build-page npm --package build_root/npm/package --arch {{ arch }} \
+    --packages {% if test_env == "no-numpy" %}pytest{% else %}numpy pytest urllib3 requests pyodide-http pooch{% endif %} \
+    --out build_root/pages/npm_{{ arch }}
+'''
+
+# the npm pages need the network (test packages from prefix.dev): retry a
+# failed setup, never failed tests
+[tasks._run-tests]
+args = [
+  { arg = "arch", choices = ["wasm32", "wasm64"] },
+  { arg = "browsers", default = "chromium" },
+  { arg = "modes", default = "main worker" },
+  { arg = "test_env", default = "default", choices = ["default", "no-numpy"] },
+  { arg = "jspi", default = "on", choices = ["on", "off"] },
+]
+depends-on = [
+  { task = "test-page", args = ["{{ arch }}", "{{ test_env }}"] },
+  { task = "browsers", args = ["{{ browsers }}"] },
+]
+cmd = '''
+python -m pyjs_test_driver run build_root/pages/npm_{{ arch }} --label "npm {{ arch }}" \
+    --browser {{ browsers }} --mode {{ modes }} --retries 5 {% if jspi == "off" %}--disable-jspi{% endif %}
+'''
+
+[tasks.test]
+description = "Build the npm package of an arch, run the test suite on it: test <arch> [browsers] [modes] [test_env] [jspi]"
+args = [
+  { arg = "arch", choices = ["wasm32", "wasm64"] },
+  { arg = "browsers", default = "chromium" },
+  { arg = "modes", default = "main worker" },
+  { arg = "test_env", default = "default", choices = ["default", "no-numpy"] },
+  { arg = "jspi", default = "on", choices = ["on", "off"] },
+]
+depends-on = [
+  { task = "npm-package", args = ["{{ arch }}"] },
+  { task = "_run-tests", args = ["{{ arch }}", "{{ browsers }}", "{{ modes }}", "{{ test_env }}", "{{ jspi }}"] },
+]
+
+[tasks.test-lock]
+description = "The lock CLI of the npm package: solve a small package against the real channels"
+cmd = '''
+set -e
+node build_root/npm/package/bin/pyjs.mjs lock tabulate -o build_root/npm/lock_test.json
+python build_utils/check_lock.py build_root/npm/lock_test.json
+'''
+
+# the bundled app does not depend on the browser: chromium, main thread
+[tasks.test-bundlers]
+description = "Apps built with vite / webpack / rollup / esbuild / parcel around the packed npm package"
+depends-on = [{ task = "browsers", args = ["chromium"] }]
+cmd = '''
+set -e
+{% for bundler in ["vite", "webpack", "rollup", "esbuild", "parcel"] %}
+python -m pyjs_test_driver build-page {{ bundler }} --tgz build_root/npm/tgz \
+    --packages numpy pytest urllib3 requests pyodide-http pooch \
+    --work-dir build_root/pages/bundler_projects --out build_root/pages/{{ bundler }}
+python -m pyjs_test_driver run build_root/pages/{{ bundler }} --browser chromium --mode main --retries 5
+{% endfor %}
+'''
+
+[tasks.test-npm]
+description = "The npm package (wasm32 + wasm64) and its full test: both archs, the lock CLI, the bundlers"
+args = [{ arg = "browsers", default = "chromium firefox webkit" }]
+depends-on = [
+  { task = "npm-package", args = ["wasm32 wasm64"] },
+  { task = "_run-tests", args = ["wasm32", "{{ browsers }}"] },
+  { task = "_run-tests", args = ["wasm64", "{{ browsers }}"] },
+  "test-lock",
+  "test-bundlers",
+]
+
+# results: build_root/benchmarks/<arch>/<time>_<browser>_<mode>.json
+[tasks.bench]
+description = "Benchmarks on the npm package of an arch: bench <arch> [browsers] [modes] [filter]"
+args = [
+  { arg = "arch", choices = ["wasm32", "wasm64"] },
+  { arg = "browsers", default = "chromium" },
+  { arg = "modes", default = "main worker" },
+  { arg = "filter", default = "" },
+]
+depends-on = [
+  { task = "npm-package", args = ["{{ arch }}"] },
+  { task = "test-page", args = ["{{ arch }}"] },
+  { task = "browsers", args = ["{{ browsers }}"] },
+]
+cmd = '''
+python -m pyjs_test_driver run build_root/pages/npm_{{ arch }} --label "bench {{ arch }}" --entry benchmarks \
+    --browser {{ browsers }} --mode {{ modes }} --retries 5 --option "filter={{ filter }}" \
+    --result-json build_root/benchmarks/{{ arch }}/$(date +%Y%m%d-%H%M%S)_{browser}_{mode}.json \
+    --meta wasm_type={{ arch }} --meta git_rev=$(git rev-parse --short HEAD) --meta timestamp=$(date +%Y%m%d-%H%M%S)
+'''
+
+# the npm package next to the html (the playground loads it) + the
+# playground's packages pinned at build time (no solver in the browser)
+[tasks.docs]
+description = "The npm package + the sphinx docs: docs [out dir]"
+args = [{ arg = "out", default = "build_root/docs_html" }]
+depends-on = [{ task = "npm-package", args = ["wasm32 wasm64"] }]
+env = { PYJS_DOCS_EXTRA_DIR = "$PIXI_PROJECT_ROOT/build_root/docs_extra" }
+cmd = '''
+set -e
+rm -rf build_root/docs_extra {{ out }}
+mkdir -p build_root/docs_extra
+cp -r build_root/npm/package build_root/docs_extra/pyjs
+node build_root/docs_extra/pyjs/bin/pyjs.mjs lock numpy -o build_root/docs_extra/pyjs-lock.json
+sphinx-build -b html docs {{ out }}
+echo "docs: {{ out }}/index.html"
+'''
+
+[tasks.clean]
+description = "Delete build_root/ (the environments in .pixi/ stay)"
+cmd = "rm -rf build_root"

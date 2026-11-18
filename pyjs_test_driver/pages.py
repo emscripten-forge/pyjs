@@ -91,8 +91,11 @@ def build_npm(out, package, arch, packages):
 
 
 def build_bundler(bundler, out, tgz, packages, work_dir):
-    """page = the output of `bundler` for an app around the npm package (`tgz`)"""
+    """page = the output of `bundler` for an app around the npm package (`tgz`:
+    the packed package, or the directory with it)"""
     tgz = Path(tgz).resolve()
+    if tgz.is_dir():
+        (tgz,) = tgz.glob("*.tgz")
     with tarfile.open(tgz) as tar:
         name = json.load(tar.extractfile("package/package.json"))["name"]
 

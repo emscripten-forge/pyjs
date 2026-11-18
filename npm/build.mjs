@@ -1,10 +1,12 @@
-// Assemble the pyjs npm package (called by build_local.sh npm).
+// Assemble the pyjs npm package (pixi task `npm-package`).
 //
-//   node build.mjs --out <package dir> --name <npm name> --version <version>
+//   node build.mjs --out <package dir> [--name <npm name>] [--version <version>]
 //                  --stage wasm32=<dir> [--stage wasm64=<dir>] [--no-minify]
 //
 // <dir> of a stage: pyjs_runtime_browser.{js,wasm} + the empack packed env
-// (empack_env_meta.json + tarballs), see build_local.sh.
+// (empack_env_meta.json + tarballs), see the pixi task `pack`.
+// Defaults: the name from $NPM_PACKAGE_NAME (else @derthorsten/pyjs), the
+// version from `project(pyjs VERSION ...)` in CMakeLists.txt.
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -12,6 +14,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** the version of `project(pyjs VERSION x.y.z)` in CMakeLists.txt */
+function cmakeVersion() {
+  const cmake = fs.readFileSync(path.join(here, "..", "CMakeLists.txt"), "utf8");
+  const match = cmake.match(/project\(pyjs VERSION ([0-9.]+)/);
+  if (!match) throw new Error("no `project(pyjs VERSION ...)` in CMakeLists.txt");
+  return match[1];
+}
 
 function parseArgs(argv) {
   const args = { stages: {}, minify: true };
@@ -26,10 +36,10 @@ function parseArgs(argv) {
     } else if (a === "--no-minify") args.minify = false;
     else throw new Error(`unknown argument ${a}`);
   }
-  for (const k of ["out", "name", "version"]) {
-    if (!args[k]) throw new Error(`--${k} is required`);
-  }
-  // (a package of one architecture is fine, e.g. `build_local.sh test wasm64`)
+  if (!args.out) throw new Error("--out is required");
+  args.name ??= process.env.NPM_PACKAGE_NAME || "@derthorsten/pyjs";
+  args.version ??= cmakeVersion();
+  // (a package of one architecture is fine, e.g. `pixi run test wasm64`)
   if (Object.keys(args.stages).length === 0) throw new Error("--stage <arch>=<dir> is required");
   return args;
 }

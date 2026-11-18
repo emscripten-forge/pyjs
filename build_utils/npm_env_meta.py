@@ -1,4 +1,4 @@
-"""Complete an empack_env_meta.json for the npm package (build_local.sh npm).
+"""Complete an empack_env_meta.json for the npm package (pixi task `pack`).
 
 mambajs (`empackLockToMambajsLock`) needs the channels of the environment, and
 the specs are the base of every later solve (`installPackages`): python is

@@ -69,7 +69,7 @@ The returned object is the pyjs runtime (the emscripten `Module`): `exec`,
 | `files` | `[]` | files (`{path, data}` / `{path, url}`) written before python starts |
 | `channels` | emscripten-forge 6x, conda-forge | channels the specs are solved against |
 | `cache` | `true` | package cache in Cache Storage (`false`, or a cache name) |
-| `bytecodeCache` | `true` (with `cache`) | keep python's `.pyc` files of the packages for the next visit |
+| `bytecodeCache` | `true` (with `cache`) | keep python's `.pyc` files of the packages for the next visit (saved by `await pyjs.saveBytecode()`) |
 | `verifySha256` | `false` | check sha256 values where given |
 | `onProgress` | | `{item, phase, done, total}`: solve / download / cached / extract / link / start |
 | `wasmModule` | | the runtime compiled already (`compileRuntime()`) |

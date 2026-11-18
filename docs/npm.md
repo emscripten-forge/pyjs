@@ -97,8 +97,19 @@ accepts both, specs and pinned packages.
   of the python environment are kept too (`<cache name>-bytecode`, by package
   URL) and come back with the package, so imports do not compile the sources
   again (the imports above: 2.2 s -> 0.5 s, python's start 0.36 s -> 0.09 s).
-  They are saved when there are new ones (checked every few seconds and when
-  the page is hidden) or right away with `await pyjs.saveBytecode()`.
+  **Saving is up to the app:** call `await pyjs.saveBytecode()` once the
+  imports are done (it stores only what python wrote since the last save;
+  await it before a reload). Nothing saves periodically; the only automatic
+  save is a best-effort one when the page becomes hidden (main thread only: a
+  closing page may be gone before the write completes; workers must call
+  `saveBytecode()` themselves).
+
+  ```js
+  pyjs.exec("import numpy, scipy.linalg");
+  await pyjs.saveBytecode();
+  ```
+
+  Restoring is automatic (with the package).
   Python checks each `.pyc` against the modification time + size of its
   source (kept from the archive), a stale one is compiled again.
   `bytecodeCache: false` turns it off. So does python itself when it writes
@@ -184,7 +195,7 @@ JavaScript modules, so bundlers do not copy them; two ways to deploy them:
 | `files` | `[]` | files (`{path, data}` or `{path, url}`) written before Python starts |
 | `channels` | emscripten-forge 6x, conda-forge | channels the specs are solved against (also self-hosted ones, see below) |
 | `cache` | `true` | package cache in Cache Storage (`false`, or a cache name) |
-| `bytecodeCache` | `true` (with `cache`) | keep python's `.pyc` files of the packages for the next visit |
+| `bytecodeCache` | `true` (with `cache`) | keep python's `.pyc` files of the packages for the next visit (saved by `saveBytecode()`) |
 | `verifySha256` | `false` | check the sha256 of packages / archives that have one |
 | `onProgress` | | progress events (see above) |
 | `wasmModule` | | the runtime wasm compiled already (`compileRuntime()`) |
@@ -248,6 +259,13 @@ wasm32 is the default and works in all browsers. wasm64 (memory64) allows
 more than 4 GB of memory (pyjs is linked with up to 16 GB) but needs a
 browser with memory64 support. Extra packages are taken from the matching
 channel subdir (`emscripten-wasm32` / `emscripten-wasm64`).
+
+## Changes in 5.2
+
+* The bytecode cache no longer saves every few seconds (that listed every
+  `__pycache__` directory periodically, an unpredictable cost): it saves on
+  `await pyjs.saveBytecode()` (call it once the imports are done) and, best
+  effort, when the page becomes hidden.
 
 ## Changes in 5.1
 

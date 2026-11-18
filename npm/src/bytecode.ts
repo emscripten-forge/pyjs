@@ -4,15 +4,15 @@
  * URL and restored with the package on the next visit, so imports load
  * bytecode instead of compiling the sources again.
  *
- * Python writes the files at import time; they are saved when there are new
- * ones (checked every few seconds, and when the page is hidden) or on
- * `Module.saveBytecode()`. Python validates every cache file against the
- * modification time + size of its source, which the extraction keeps from the
- * archive: a stale or foreign file is recompiled, never used.
+ * Python writes the files at import time; they are saved on
+ * `Module.saveBytecode()` (the app calls it, e.g. once after its imports) and,
+ * best effort, when the page becomes hidden (main thread only: a closing page
+ * may be gone before the async write completes). Nothing runs periodically.
+ * Python validates every cache file against the modification time + size of
+ * its source, which the extraction keeps from the archive: a stale or foreign
+ * file is recompiled, never used.
  */
 import { bytecodeFiles } from "./install";
-
-const CHECK_INTERVAL_MS = 3000;
 
 /** a unit of the bytecode cache: one package (or env tarball) */
 interface IUnit {
@@ -96,10 +96,12 @@ export class BytecodeCache {
     return this.saving;
   }
 
-  /** save automatically: every few seconds when there is something new, and when the page is hidden */
+  /**
+   * save when the page becomes hidden (tab switch, minimize, navigation,
+   * close; best effort). Event driven, no periodic work; workers have no
+   * such event (there only `saveBytecode()` saves)
+   */
   watch(): void {
-    const timer: any = setInterval(() => this.save(), CHECK_INTERVAL_MS);
-    timer?.unref?.(); // (node: does not keep the process alive)
     const doc = (globalThis as any).document;
     doc?.addEventListener?.("visibilitychange", () => {
       if (doc.visibilityState === "hidden") {

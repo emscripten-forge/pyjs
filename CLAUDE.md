@@ -369,6 +369,12 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   unknown paths with index.html) -> `cdnUrl` (default jsDelivr, exact
   version, baked in via esbuild `define`) unless `cdnFallback: false`.
   Self-hosting: `npx <pkg> copy-assets <dir>` (`npm/bin/pyjs.mjs`).
+  The runtime wasm (~14 MB) is fetched normally, caching is left to the
+  browser's HTTP cache (deliberately not in Cache Storage). A dev server
+  without ETag / cache headers answers 200 on every reload (seen in webgym:
+  once per page with `compileRuntime`); CDN / `immutable` headers give a
+  cache hit. A Cache Storage copy would need the package version in its key
+  (`copy-assets` paths are not versioned).
   Bundler pitfalls handled in `build.mjs`: no `new URL("<dir literal>",
   import.meta.url)` (Parcel fails on directories), the runtime `import(url)`
   lives in the unminified `dist/load-runtime.js` (esbuild's minifier drops

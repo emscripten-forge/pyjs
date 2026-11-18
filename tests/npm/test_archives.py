@@ -1,3 +1,6 @@
+import asyncio
+import importlib
+import importlib.util
 import os
 import sys
 
@@ -43,3 +46,62 @@ async def test_unpack_archive_at_runtime():
     finally:
         sys.path.remove("/unpacked/at/runtime")
     assert unpacked_runtime_pkg.VALUE == "runtime"
+
+
+ARCHIVE_URL = "/test-data/archive_runtime.tar.bz2"
+
+
+def _archive(path, cache):
+    """an archive option for `unpackArchive` (JS object)"""
+    return pyjs.js.Function(
+        "url", "path", "cache", "return {url: url, path: path, cache: cache}"
+    )(ARCHIVE_URL, path, cache)
+
+
+def _cache_key(path):
+    """the key of an archive in the caches: its absolute URL + the destination"""
+    url = str(pyjs.js.URL.new(ARCHIVE_URL, pyjs.js.location.href).href)
+    return f"{url}?pyjs-archive-path={pyjs.js.encodeURIComponent(path)}"
+
+
+async def _cached(cache_name, key):
+    """the cache entry, waiting up to ~5 s (written in the background)"""
+    cache = await pyjs.js.caches.open(cache_name)
+    for _ in range(100):
+        if await cache.match(key) is not None:
+            return True
+        await asyncio.sleep(0.05)
+    return False
+
+
+async def test_archive_cache():
+    """`cache: true`: the unpacked files and their bytecode are cached by URL +
+    path; unpacking it again needs no download and brings back both. Without
+    it (the default) nothing is cached."""
+    if not pyjs.js.Function("return typeof caches !== 'undefined'")():
+        return  # (no Cache Storage here)
+    path = "/cached/archive"
+    module_file = f"{path}/unpacked_runtime_pkg/__init__.py"
+    await pyjs_core._module.unpackArchive(_archive(path, True))
+    sys.modules.pop("unpacked_runtime_pkg", None)  # (imported from another path before)
+    sys.path.insert(0, path)
+    try:
+        import unpacked_runtime_pkg as cached_pkg  # (writes its .pyc)
+    finally:
+        sys.path.remove(path)
+    assert cached_pkg.__file__ == module_file
+    pyc = importlib.util.cache_from_source(module_file)
+    assert os.path.exists(pyc)
+    await pyjs_core._module.saveBytecode()
+    assert await _cached("pyjs-packages-v2", _cache_key(path))
+    assert await _cached("pyjs-packages-v2-bytecode", _cache_key(path))
+    # (the earlier test unpacked it without `cache`)
+    assert await (await pyjs.js.caches.open("pyjs-packages-v2")).match(_cache_key("/unpacked/at/runtime")) is None
+
+    os.unlink(module_file)
+    os.unlink(pyc)
+    pyjs.js.performance.clearResourceTimings()
+    await pyjs_core._module.unpackArchive(_archive(path, True))
+    fetched = pyjs.to_py(pyjs.js.Function("return performance.getEntriesByType('resource').map((e) => e.name)")())
+    assert not any(ARCHIVE_URL in u for u in fetched), fetched
+    assert os.path.exists(module_file) and os.path.exists(pyc)

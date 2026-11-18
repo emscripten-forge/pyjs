@@ -65,7 +65,7 @@ The returned object is the pyjs runtime (the emscripten `Module`): `exec`,
 |---|---|---|
 | `packages` | `[]` | conda package specs, solved + installed before python starts |
 | `urls` | `[]` | pinned conda packages (`{url, sha256?}` / URL strings), no solver |
-| `archives` | `[]` | archives (`{url, path}`: tar / zip, gzip / bzip2 / zstd) unpacked before python starts |
+| `archives` | `[]` | archives (`{url, path, cache?}`: tar / zip, gzip / bzip2 / zstd) unpacked before python starts; `cache: true` caches them like packages (immutable URLs only) |
 | `files` | `[]` | files (`{path, data}` / `{path, url}`) written before python starts |
 | `channels` | emscripten-forge 6x, conda-forge | channels the specs are solved against |
 | `cache` | `true` | package cache in Cache Storage (`false`, or a cache name) |

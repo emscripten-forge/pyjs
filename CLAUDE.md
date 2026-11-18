@@ -348,6 +348,10 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   before python starts) / `Module.unpackArchive({url, path})` (later, then
   `importlib.invalidate_caches()`); paths resolved against `path` (never the
   cwd), directory entries not listed, paths outside `path` rejected.
+  `cache: true` (5.1, opt-in: archive URLs may change content) caches an
+  archive like a package: unpacked tar in `pyjs-packages-v2` + bytecode,
+  key = URL + `?pyjs-archive-path=<path>` (`loadArchive` / `installArchive`
+  in `runtime.ts`); bypassed with `verifySha256` + sha256.
   Tests: `tests/npm/test_archives.py` with archives the driver generates
   (`pyjs_test_driver/test_archives.py`); the npm / bundler pages pass one in
   `archives`.

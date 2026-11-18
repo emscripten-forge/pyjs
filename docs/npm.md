@@ -102,6 +102,11 @@ accepts both, specs and pinned packages.
   Python checks each `.pyc` against the modification time + size of its
   source (kept from the archive), a stale one is compiled again.
   `bytecodeCache: false` turns it off.
+* **Archives** are not cached by default (an archive URL may change its
+  content). `{url, path, cache: true}` caches one like a package: its
+  unpacked files and the bytecode of its `.py` files, by URL + `path`. Only
+  for URLs whose content never changes, e.g. with a content hash in the file
+  name: a cached archive is not downloaded again.
 * **sha256:** not checked by default (hashing large packages costs time);
   `verifySha256: true` checks every package / archive that has a `sha256`
   (such packages are then always downloaded: the cached layout cannot be
@@ -170,7 +175,7 @@ JavaScript modules, so bundlers do not copy them; two ways to deploy them:
 |---|---|---|
 | `packages` | `[]` | conda package specs, solved and installed before Python starts |
 | `urls` | `[]` | pinned conda packages (`{url, sha256?}` or URL strings), no solver |
-| `archives` | `[]` | archives (`{url, path, sha256?}`) unpacked before Python starts, see below |
+| `archives` | `[]` | archives (`{url, path, sha256?, cache?}`) unpacked before Python starts, see below |
 | `files` | `[]` | files (`{path, data}` or `{path, url}`) written before Python starts |
 | `channels` | emscripten-forge 6x, conda-forge | channels the specs are solved against (also self-hosted ones, see below) |
 | `cache` | `true` | package cache in Cache Storage (`false`, or a cache name) |
@@ -224,12 +229,25 @@ await pyjs.addFiles([{ path: "/data/extra.csv", url: "extra.csv" }]);
 pyjs.exec("import sys; sys.path.insert(0, '/examples')");
 ```
 
+A filtered package (stripped of tests, headers, docs, ...) as an archive with
+a content hash in its name gets the package caches with `cache: true`: a
+small first download, and later visits only untar and load cached bytecode:
+
+```js
+archives: [{ url: "packages-3f9a1c2e.tar.gz", path: "/", cache: true }],
+```
+
 ## wasm32 or wasm64?
 
 wasm32 is the default and works in all browsers. wasm64 (memory64) allows
 more than 4 GB of memory (pyjs is linked with up to 16 GB) but needs a
 browser with memory64 support. Extra packages are taken from the matching
 channel subdir (`emscripten-wasm32` / `emscripten-wasm64`).
+
+## Changes in 5.1
+
+* Archives can be cached like packages: `{url, path, cache: true}` (unpacked
+  files + bytecode), see Caching above.
 
 ## Changes in 5.0
 

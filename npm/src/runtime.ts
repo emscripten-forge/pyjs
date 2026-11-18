@@ -315,12 +315,62 @@ function solve(state: IState, specs: string[], channels: string[], logger: ILogg
   });
 }
 
-/** archives / files with a URL: their downloads (started at once) */
+/** an archive to unpack: from the archive cache (its unpacked files as tar) or downloaded */
+interface ILoadedArchive {
+  archive: IArchive;
+  url: string;
+  /** the cache key (`cache: true` only): the URL + the destination */
+  key?: string;
+  extracted?: Uint8Array;
+  bytes?: Uint8Array;
+  bytecode?: Uint8Array;
+}
+
+/**
+ * an archive with `cache: true` is cached like a package (its unpacked files
+ * and their bytecode, by URL + destination: the URL must change when the
+ * content does); without, it is downloaded (sha256 checked when asked)
+ */
+async function loadArchive(state: IState, archive: IArchive): Promise<ILoadedArchive> {
+  const url = new URL(archive.url.toString(), pageUrl()).href;
+  const checked = state.verify && !!archive.sha256;
+  if (!archive.cache || !state.cacheName || checked) {
+    const bytes = await fetchBytes(url, { item: url, sha256: archive.sha256, verify: state.verify, onProgress: state.onProgress });
+    return { archive, url, bytes };
+  }
+  const key = `${url}${url.includes("?") ? "&" : "?"}pyjs-archive-path=${encodeURIComponent(archive.path)}`;
+  const bytecode = state.bytecode?.read(key);
+  const cached = await readExtracted(state.cacheName, key);
+  if (cached) {
+    state.onProgress?.({ item: url, phase: "cached", done: cached.tar.length, total: cached.tar.length });
+    return { archive, url, key, extracted: cached.tar, bytecode: await bytecode };
+  }
+  const bytes = await fetchBytes(url, { item: url, onProgress: state.onProgress });
+  return { archive, url, key, bytes, bytecode: await bytecode };
+}
+
+/** archives: their downloads / cache reads (started at once) */
 function downloadArchives(state: IState, archives: IArchive[]) {
-  return archives.map((a) => {
-    const url = new URL(a.url.toString(), pageUrl()).href;
-    return { archive: a, bytes: deferred(fetchBytes(url, { item: url, sha256: a.sha256, verify: state.verify, onProgress: state.onProgress })) };
-  });
+  return archives.map((archive) => ({ archive, loaded: deferred(loadArchive(state, archive)) }));
+}
+
+/** unpack a loaded archive below its path (cached: stored in the background) -> its files and shared libraries */
+function installArchive(state: IState, loaded: ILoadedArchive): { files: string[]; sharedLibs: string[] } {
+  const { archive, key } = loaded;
+  let result: { files: string[]; sharedLibs: string[]; tar?: Uint8Array };
+  if (loaded.extracted) {
+    result = extractArchive(state.Module, loaded.extracted, archive.path);
+  } else {
+    result = extractArchive(state.Module, loaded.bytes as Uint8Array, archive.path, !!key);
+    if (key && result.tar) {
+      storeExtracted(state.cacheName, key, result.tar, []); // (not awaited: the next visit uses it)
+    }
+  }
+  if (key) {
+    state.bytecode?.add(`archive:${key}`, key, result.files, loaded.bytecode);
+  }
+  state.onProgress?.({ item: loaded.url, phase: "extract", done: 1, total: 1 });
+  return { files: result.files, sharedLibs: result.sharedLibs };
 }
 function downloadFiles(state: IState, files: IFile[]) {
   return files.map((f) => {
@@ -443,8 +493,13 @@ export async function initialize(arch: Arch, options: IInitializeOptions = {}): 
   add("waitSolve", t);
   const installed = await installDownloaded(state, packageDownloads, onProgress);
   sharedLibs.push(...installed.sharedLibs);
-  for (const { archive, bytes } of archives) {
-    sharedLibs.push(...extractArchive(Module, await bytes, archive.path).sharedLibs);
+  for (const { loaded } of archives) {
+    t = performance.now();
+    const archive = await loaded;
+    add("waitDownloads", t);
+    t = performance.now();
+    sharedLibs.push(...installArchive(state, archive).sharedLibs);
+    add("extractArchives", t);
   }
   for (const { file, data } of files) {
     writeFile(Module, file.path, await data);
@@ -525,8 +580,7 @@ function attachInstallers(state: IState): void {
 
   Module.unpackArchive = (archive: IArchive) =>
     enqueue(state, async () => {
-      const [download] = downloadArchives(state, [archive]);
-      const result = extractArchive(Module, await download.bytes, archive.path);
+      const result = installArchive(state, await loadArchive(state, archive));
       await linkSharedLibs(state, result.sharedLibs, state.onProgress);
       invalidateCaches();
       return result.files;

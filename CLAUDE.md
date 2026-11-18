@@ -305,8 +305,10 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   `verifySha256` + sha256); bytecode cache (`bytecode.ts`,
   `pyjs-packages-v2-bytecode`, by package / env tarball URL): the `.pyc`
   files of each package's `.py` files (`Module._tar_files`), restored with
-  the package, saved when `__pycache__` entry counts grow (3 s interval,
-  page hidden, `Module.saveBytecode()`). Valid because the extraction keeps
+  the package, saved (units whose `__pycache__` entry counts grew) only on
+  `Module.saveBytecode()` and, best effort, on `visibilitychange` -> hidden
+  (main thread): no interval since 5.2 (periodic readdirs of every
+  `__pycache__` = unpredictable cost). Valid because the extraction keeps
   the archive mtimes (`set_mtime`) and `relocate` restores them (python
   checks a `.pyc` against source mtime + size); then extraction in order
   env tarballs -> packages (`install.ts`: conda layout, `site-packages/` ->

@@ -137,9 +137,11 @@ export interface PyjsModule {
   addFiles(files: IFile[]): Promise<void>;
 
   /**
-   * save new bytecode of the packages to the bytecode cache now (also done
-   * automatically every few seconds and when the page is hidden); a no-op
-   * without the cache
+   * save the bytecode python wrote since the last save (packages, the python
+   * environment, archives with `cache: true`) to the bytecode cache. Call it
+   * once the imports are done (await it before a reload). Besides, it is only
+   * tried when the page becomes hidden (best effort, main thread only):
+   * nothing saves periodically. A no-op without the cache
    */
   saveBytecode(): Promise<void>;
 
@@ -225,7 +227,7 @@ export interface IInitializeOptions extends IAssetsOptions {
    * keep python's bytecode (`__pycache__/*.pyc`) of the packages and the
    * python environment in Cache Storage ("<cache name>-bytecode"), so imports
    * on the next visit do not compile the sources again (default: true when
-   * `cache` is on); saved automatically, see `PyjsModule.saveBytecode`
+   * `cache` is on); restored automatically, saved by `PyjsModule.saveBytecode`
    */
   bytecodeCache?: boolean;
   /** check the sha256 of packages / archives that have one (default: false) */

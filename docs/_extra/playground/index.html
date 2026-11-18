@@ -439,8 +439,8 @@ async function run() {
     await pyjs.async_exec_eval(editorApi.get());
     // (imports included: fast when their bytecode came from the cache)
     if (myRun === runId) status(`done in ${((performance.now() - t0) / 1000).toFixed(2)} s`);
-    // keep the bytecode of this run's imports for the next visit (also automatic)
-    pyjs.saveBytecode();
+    // keep the bytecode of this run's imports for the next visit
+    await pyjs.saveBytecode();
   } catch (e) {
     write(pyErrorText(e), true);
     status("error");

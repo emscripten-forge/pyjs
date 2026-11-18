@@ -1,61 +1,58 @@
-Module._is_initialized = false
+// Starting python. The file system must already hold the python environment
+// (stdlib at /lib/pythonX.Y, packages in its site-packages): filling it is the
+// job of the embedder (e.g. the npm package, xeus-python), not of pyjs.
+Module._is_initialized = false;
+let _python_started = false;
 
+/**
+ * start the interpreter once the file system is filled (synchronous); then
+ * python runs and Module.exec / eval / exec_eval / async_exec_eval / to_js
+ * exist. Calling it again does nothing.
+ * options: {env: {NAME: value} (extra environment variables)}
+ */
+Module['startPython'] = function(options) {
+    if (!_python_started) {
+        _startPython(options || {});
+        _python_started = true;
+    }
+};
 
-
-Module['init_phase_1'] = async function(prefix, python_version, verbose) {
-
-    let version_str = `${python_version[0]}.${python_version[1]}`;
+function _startPython(options) {
+    const [major, minor] = Module._python_version();
+    const version_str = `${major}.${minor}`;
+    const stdlib = `/lib/python${version_str}`;
+    if (!Module.FS.analyzePath(stdlib).exists) {
+        throw new Error(
+            `pyjs: the file system has no ${stdlib} (the python standard library): ` +
+            "fill the file system before calling startPython()"
+        );
+    }
 
     // list of python objects we need to delete when cleaning up
-    let py_objects = []
-    Module._py_objects = py_objects
+    Module._py_objects = [];
 
-    // return empty promise when already initialized
-    if(Module["_is_initialized"])
-    {
-        return Promise.resolve();
-    }
-    var p = await Module['_wait_run_dependencies']();
-
-    if(prefix == "/"){
-        Module.setenv("LANG", "en_US.UTF-8");
-
-        // LC_COLLATE="C"
-        // LC_CTYPE="UTF-8"
-        // LC_MESSAGES="C"
-        // LC_MONETARY="C"
-        // LC_NUMERIC="C"
-        // LC_TIME="C"
-        // Module.setenv("LC_COLLATE", "C");
-        // Module.setenv("LC_CTYPE", "UTF-8");
-        // Module.setenv("LC_MESSAGES", "C");
-        // Module.setenv("LC_MONETARY", "C");
-        // Module.setenv("LC_NUMERIC", "C");
-        // Module.setenv("LC_TIME", "C");
-
-        const pypath = `/lib/python${version_str}/site-packages:/usr/lib/python${version_str}/site-packages`;
-        var side_path = `/lib/python${version_str}/site-packages`;
-
-        Module.setenv("PYTHONHOME", `/`);
-        Module.setenv("PYTHONPATH", pypath);
-        Module.create_directories(side_path);
-    }
-    else{
-        throw new Error("prefix must be / in wasm build");
+    const site_packages = `${stdlib}/site-packages`;
+    Module.setenv("LANG", "en_US.UTF-8");
+    Module.setenv("PYTHONHOME", "/");
+    Module.setenv("PYTHONPATH", `${site_packages}:/usr/lib/python${version_str}/site-packages`);
+    Module.create_directories(site_packages);
+    for (const [name, value] of Object.entries(options.env || {})) {
+        Module.setenv(name, String(value));
     }
 
-
-
-
-    // Module["_interpreter"] = new Module["_Interpreter"]()
     if (Module["_jspi_state"].supported) {
         Module["_jspi_install"]();
     }
 
     Module["_initialize_interpreter"]();
+    _bindInterpreter();
+    _importPyjs();
+    // keep the runtime alive: python is entered from JS events from now on
+    Module.runtimeKeepalivePush();
+}
 
-
-
+/** Module.exec / eval / eval_file and the JS side of the pyobject class */
+function _bindInterpreter() {
     var default_scope  = Module["main_scope"]()
     Module["default_scope"] = default_scope;
 
@@ -165,7 +162,8 @@ Module['init_phase_1'] = async function(prefix, python_version, verbose) {
     };
 }
 
-Module['init_phase_2'] =  function(prefix, python_version, verbose) {
+/** import pyjs, the JS entry points into it (exec_eval, to_js, ...) and the mocks */
+function _importPyjs() {
     let default_scope = Module["default_scope"];
 
     // make the python pyjs module easy available

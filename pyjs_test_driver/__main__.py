@@ -12,9 +12,8 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
 
     build = sub.add_parser("build-page", help="create a page dir")
-    build.add_argument("kind", choices=["vanilla", "npm", *pages.BUNDLERS])
+    build.add_argument("kind", choices=["npm", *pages.BUNDLERS])
     build.add_argument("--out", required=True, help="page dir to create")
-    build.add_argument("--assets", help="vanilla: runtime + empack-packed env")
     build.add_argument("--package", help="npm: the npm package dir")
     build.add_argument("--tgz", help="bundlers: the packed npm package")
     build.add_argument("--arch", default="wasm32", choices=["wasm32", "wasm64"], help="npm")
@@ -39,9 +38,7 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     if args.command == "build-page":
-        if args.kind == "vanilla":
-            pages.build_vanilla(args.out, args.assets)
-        elif args.kind == "npm":
+        if args.kind == "npm":
             pages.build_npm(args.out, args.package, args.arch, args.packages)
         else:
             pages.build_bundler(args.kind, args.out, args.tgz, args.packages, args.work_dir)

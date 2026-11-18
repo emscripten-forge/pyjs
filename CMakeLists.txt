@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.0)
-project(pyjs VERSION 4.4.1 DESCRIPTION "pyjs")
+project(pyjs VERSION 5.0.0 DESCRIPTION "pyjs")
 
 
 # cmake module directory
@@ -53,13 +53,9 @@ set(PREJS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/shortcuts.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/operators.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/platform.js
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/wait_for_dependencies.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/init.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/cleanup.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/make_proxy.js
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/dynload/dynload.js
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/fetch.js
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/load_pkg.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/literal_map.js
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs/pre_js/canvas.js
 )
@@ -97,9 +93,6 @@ set(PYJS_HEADERS
     include/pyjs/export_js_proxy.hpp
     include/pyjs/export_py_object.hpp
     include/pyjs/export_pyjs_module.hpp
-    include/pyjs/untar.hpp
-    include/pyjs/install_conda_file.hpp
-    include/pyjs/inflate.hpp
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_pre.js
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_post.js
 )
@@ -114,9 +107,6 @@ add_library(pyjs STATIC
     src/export_py_object.cpp
     src/convert.cpp
     src/export_pyjs_module.cpp
-    src/inflate.cpp
-    src/untar.cpp
-    src/install_conda_file.cpp
 )
 if(WASM64)
     target_compile_options(pyjs PUBLIC -m64)
@@ -189,7 +179,9 @@ find_package(pybind11 CONFIG)
 
 
 
-add_executable(pyjs_runtime_browser src/runtime.cpp )
+# the runtime; src/extract.cpp (libarchive) only here, not in libpyjs:
+# embedders like xeus-python fill the file system themselves
+add_executable(pyjs_runtime_browser src/runtime.cpp src/extract.cpp)
 SET(ENVIRONMENT "web,worker")
 target_compile_definitions(pyjs_runtime_browser PUBLIC -DPYTEST_DRIVER_WEB)
 
@@ -212,7 +204,11 @@ target_compile_options(pyjs_runtime_browser PRIVATE -fPIC)
 # include the dir where pybind11 is installed, so that we can find the pybind11Config.cmake file
 include_directories(${pybind11_INCLUDE_DIRS})
 
-target_link_libraries(pyjs_runtime_browser PRIVATE    ${PYTHON_LIBRARIES} pyjs)
+# libarchive first: it needs bz2 / z / zstd from PYTHON_LIBRARIES
+target_link_libraries(pyjs_runtime_browser PRIVATE
+    ${CMAKE_INSTALL_PREFIX}/lib/libarchive.a
+    ${PYTHON_LIBRARIES}
+    pyjs)
 
 
 

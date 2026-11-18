@@ -15,3 +15,7 @@ dependencies:
   - zlib-static
   - libsqlite-static
   - libbzip2-static
+  - zstd-static
+  # archive extraction in the runtime (src/extract.cpp; only tar / zip and
+  # gzip / bzip2 / zstd are enabled, libxml2 is not linked)
+  - libarchive-static

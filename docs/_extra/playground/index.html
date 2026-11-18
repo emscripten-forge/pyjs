@@ -31,6 +31,8 @@
   button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
   button:disabled { opacity: 0.5; }
   #status { color: var(--muted); font-size: 13px; }
+  #progress { width: 160px; height: 8px; accent-color: var(--accent); }
+  #progress[hidden] { display: none; }
   main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
   #editor-pane { border-right: 1px solid var(--border); min-width: 0; min-height: 0; }
   #editor, #fallback-editor { width: 100%; height: 100%; }
@@ -64,6 +66,7 @@
   <button id="run" class="primary" disabled>Run (Ctrl+Enter)</button>
   <button id="stop" disabled>Stop</button>
   <span class="spacer"></span>
+  <progress id="progress" max="1" value="0"></progress>
   <span id="status">loading python…</span>
 </header>
 <main>
@@ -84,10 +87,14 @@ const params = new URLSearchParams(location.search);
 // default: the npm package deployed next to this page (docs: <html root>/pyjs/)
 const PKG = params.get("pkg") ?? new URL("../pyjs", location.href).href;
 const ARCH = params.get("arch") === "wasm64" ? "wasm64" : "index";
-// conda packages solved + downloaded by mambajs (emscripten-forge / conda-forge)
-// before python starts: `?packages=numpy,pandas` (default numpy, `?packages=`
-// for none); more later from python via `await install([...])`
-const PACKAGES = (params.get("packages") ?? "numpy").split(",").map((p) => p.trim()).filter(Boolean);
+// conda packages installed before python starts. Default: numpy, pinned at
+// docs build time (`npx <package> lock numpy` -> ../pyjs-lock.json): no solver,
+// no repodata in the browser, the package files come from the package cache on
+// the next visit. `?packages=numpy,pandas` solves other specs in the browser
+// (`?packages=` for none); more later from python via `await install([...])`
+const PACKAGES_PARAM = params.get("packages");
+const PACKAGES = (PACKAGES_PARAM ?? "numpy").split(",").map((p) => p.trim()).filter(Boolean);
+const LOCK_URL = new URL("../pyjs-lock.json", location.href).href;
 
 const MONACO = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2";
 
@@ -176,7 +183,7 @@ def on_click(event):
 
 on("click", on_click)
 `,
-  "numpy": `# numpy was downloaded via mambajs when the page loaded (extraPackages);
+  "numpy": `# numpy was installed when the page loaded (pinned at docs build time, option urls);
 # more packages: await install(["scipy"])
 # renders a plasma with numpy and copies the pixels to the canvas in one call
 from pyjs import js
@@ -247,6 +254,67 @@ print(f"scipy {scipy.__version__}: {sol.message}")
 
 const $ = (id) => document.getElementById(id);
 const status = (text) => { $("status").textContent = text; };
+
+/**
+ * progress of initializePyjsRuntime / installPackages (option `onProgress`):
+ * the bytes of all downloads in the bar, then extracting / linking / starting
+ */
+function createProgress() {
+  const bar = $("progress");
+  const items = new Map(); // item -> {done, total}
+  const fromCache = new Set(); // items taken from the package cache
+  let cached = 0;
+  const mb = (n) => (n / 1e6).toFixed(1);
+  bar.hidden = false;
+  const onProgress = (p) => {
+    if (p.phase === "cached") fromCache.add(p.item);
+    if (p.phase === "download" || p.phase === "cached") {
+      items.set(p.item, { done: p.done, total: p.total || p.done });
+      if (p.phase === "cached") cached += 1;
+      let done = 0, total = 0;
+      for (const v of items.values()) { done += v.done; total += v.total; }
+      bar.value = total ? done / total : 0;
+      const fromCache = cached ? `, ${cached} from the cache` : "";
+      status(`downloading ${mb(done)} / ${mb(total)} MB (${items.size} files${fromCache})…`);
+    } else if (p.phase === "solve") {
+      status(p.done ? "solved" : "solving package specs…");
+    } else if (p.phase === "extract") {
+      status(`unpacking ${p.item}…`);
+    } else if (p.phase === "link") {
+      status(`loading ${p.total} shared libraries…`);
+    } else if (p.phase === "start") {
+      status("starting python…");
+    }
+  };
+  // "3 of 12 packages from the cache" (packages: items that were extracted)
+  onProgress.cacheSummary = (extracted) => `${[...extracted].filter((i) => fromCache.has(i)).length} of ${extracted.size} packages from the cache`;
+  return onProgress;
+}
+
+/** a line about where the initialization / an install spent its time (Module.initTimings / installTimings) */
+function timingsText(t) {
+  const parts = [
+    ["solve", t.solve],
+    ["download", t.waitDownloads],
+    ["unpack", (t.extractEnv ?? 0) + (t.extractPackages ?? 0)],
+    ["python start", t.start],
+    ["shared libraries", t.link],
+    ["import caches", t.invalidateCaches],
+  ].filter(([, ms]) => ms !== undefined);
+  return parts.map(([name, ms]) => `${name} ${ms} ms`).join(" · ");
+}
+
+/** the pinned packages of the docs build for this arch, or undefined (other packages asked for, no lock file) */
+async function pinnedPackages() {
+  if (PACKAGES_PARAM !== null) return undefined;
+  try {
+    const response = await fetch(LOCK_URL);
+    if (!response.ok) return undefined;
+    return (await response.json())[ARCH === "wasm64" ? "wasm64" : "wasm32"];
+  } catch {
+    return undefined;
+  }
+}
 const out = $("output");
 /** append a line to the output panel (python stdout / stderr, errors) */
 function write(text, isError = false) {
@@ -367,8 +435,12 @@ async function run() {
   try {
     pyjs.exec("_remove_listeners()");         // event handlers of the previous run
     pyjs.exec("stopped = _make_stopped()");   // a fresh `stopped()` per run
+    const t0 = performance.now();
     await pyjs.async_exec_eval(editorApi.get());
-    if (myRun === runId) status("done");
+    // (imports included: fast when their bytecode came from the cache)
+    if (myRun === runId) status(`done in ${((performance.now() - t0) / 1000).toFixed(2)} s`);
+    // keep the bytecode of this run's imports for the next visit (also automatic)
+    pyjs.saveBytecode();
   } catch (e) {
     write(pyErrorText(e), true);
     status("error");
@@ -393,13 +465,25 @@ $("run").addEventListener("click", run);
 $("stop").addEventListener("click", () => { runId += 1; $("stop").disabled = true; status("stopped"); });
 
 try {
-  const { initializePyjsRuntime } = await import(`${PKG}/dist/${ARCH}.js`);
-  if (PACKAGES.length) status(`loading python + ${PACKAGES.join(", ")} (mambajs)…`);
+  const t0 = performance.now();
+  const [{ initializePyjsRuntime }, pinned] = await Promise.all([
+    import(`${PKG}/dist/${ARCH}.js`),
+    pinnedPackages(),
+  ]);
+  const progress = createProgress();
+  const extracted = new Set();
   pyjs = await initializePyjsRuntime({
-    extraPackages: PACKAGES,
+    // pinned (no solver) when the docs build wrote a lock, else solved specs
+    ...(pinned ? { urls: pinned } : { packages: PACKAGES }),
+    onProgress: (p) => {
+      if (p.phase === "extract") extracted.add(p.item);
+      progress(p);
+    },
     print: (text) => write(text),
     printErr: (text) => write(text, true),
   });
+  const loadSeconds = ((performance.now() - t0) / 1000).toFixed(1);
+  $("progress").hidden = true;
   // helpers for the examples: `stopped()` (Stop / a new run) and
   // `await install([...])` (conda packages via mambajs)
   window.pyjsCurrentRun = () => runId;
@@ -413,7 +497,14 @@ try {
   window.pyjsInstall = async (specsJson, verbose) => {
     const specs = JSON.parse(specsJson);
     status(`installing ${specs.join(", ")}…`);
-    const installed = await pyjs.installPackages(specs, verbose ? { logger: panelLogger } : {});
+    const onProgress = createProgress();
+    const installed = await pyjs.installPackages(specs, {
+      onProgress,
+      ...(verbose ? { logger: panelLogger } : {}),
+    });
+    $("progress").hidden = true;
+    const t = pyjs.installTimings;
+    write(`installed ${installed.length} packages in ${(t.total / 1000).toFixed(1)} s, ${onProgress.cacheSummary(new Set(installed))}\n${timingsText(t)}`);
     status("running…");
     return installed;
   };
@@ -446,7 +537,9 @@ def _remove_listeners():
         handle.delete()
 `);
   const extra = PACKAGES.length ? ` + ${PACKAGES.join(", ")}` : "";
-  status(`python ${pyjs.pythonVersion.join(".")}${extra} (${pyjs.pyjsArch}) ready`);
+  const how = pinned ? "pinned" : PACKAGES.length ? "solved" : "";
+  status(`python ${pyjs.pythonVersion.join(".")}${extra} (${pyjs.pyjsArch}${how ? `, ${how}` : ""}) ready in ${loadSeconds} s`);
+  write(`ready in ${loadSeconds} s, ${progress.cacheSummary(extracted)}\n${timingsText(pyjs.initTimings)}`);
   $("run").disabled = false;
   window.pyjsReady = true;
   if (params.get("run") === "1") run();

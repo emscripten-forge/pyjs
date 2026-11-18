@@ -5,8 +5,6 @@
 
 #include <pyjs/export_py_object.hpp>
 #include <pyjs/convert.hpp>
-#include <pyjs/untar.hpp>
-#include <pyjs/install_conda_file.hpp>
 
 #include <pybind11/embed.h>
 #include <emscripten/bind.h>
@@ -130,9 +128,16 @@ namespace pyjs
         em::function("is_directory", &is_directory);
 
 
-        em::function("_untar", &untar);
-        em::function("_install_conda_file", &install_conda_file);
         em::function("setenv", &set_env);
+
+        // [major, minor] of the python this runtime is linked with (startPython)
+        em::function("_python_version", +[]() -> em::val
+        {
+            em::val v = em::val::array();
+            v.call<void>("push", PY_MAJOR_VERSION);
+            v.call<void>("push", PY_MINOR_VERSION);
+            return v;
+        });
 
         // py-object (proxy)
         export_py_object();

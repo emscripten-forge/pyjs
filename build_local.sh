@@ -4,9 +4,9 @@
 # all tools come from conda environments, created on the first run.
 #
 #   ./build_local.sh build wasm32|wasm64   build pyjs
-#   ./build_local.sh test  wasm32|wasm64   build pyjs, run the tests in the browser
-#   ./build_local.sh bench wasm32|wasm64   build pyjs, run the benchmarks in the browser
-#   ./build_local.sh npm [--test]          build the npm package (+ run the tests on it)
+#   ./build_local.sh test  wasm32|wasm64   build the npm package (this arch), run the tests on it
+#   ./build_local.sh bench wasm32|wasm64   build the npm package (this arch), run the benchmarks
+#   ./build_local.sh npm [--test]          build the npm package (+ tests: all ARCHS + bundlers)
 #   ./build_local.sh docs                  build the npm package + the docs
 #
 #   --fresh   delete the environments and build directories first
@@ -31,7 +31,6 @@
 #   dev_prefix/              native tools: emscripten, cmake, node, playwright, ...
 #   host_prefix_<arch>/      what pyjs is built against (python, pybind11, ...)
 #   build_<arch>/            cmake build directory of pyjs
-#   test_env_<name>_<arch>/  python + test packages for the tests in the browser
 #   npm_env_<arch>/          python + stdlib, shipped in the npm package
 #   pages/                   web pages the tests run on (pyjs_test_driver)
 #   npm/                     the npm package (npm/package/, npm/*.tgz)
@@ -80,8 +79,7 @@ NUM_JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
 CHANNELS=(https://repo.prefix.dev/emscripten-forge/6x conda-forge)
 
 # the packages the tests need (tests/sync/test_http.py: the http stack of
-# e.g. scipy.datasets). Test pages with the raw runtime get them packed into
-# the test env, npm pages install them at runtime (mambajs).
+# e.g. scipy.datasets), solved and installed at runtime by the npm pages
 case "$TEST_ENV" in
     default)  TEST_PACKAGES=(numpy pytest urllib3 requests pyodide-http pooch) ;;
     no-numpy) TEST_PACKAGES=(pytest) ;;  # pyjs must work without (optional) numpy
@@ -183,8 +181,6 @@ use_arch() {
     PLATFORM="emscripten-$ARCH"
     export PREFIX="$BUILD_ROOT/host_prefix_$ARCH"
     BUILD_DIR="$BUILD_ROOT/build_$ARCH"
-    TEST_ENV_PREFIX="$BUILD_ROOT/test_env_${TEST_ENV//-/_}_$ARCH"
-    VANILLA_PAGE="$BUILD_ROOT/pages/vanilla_$ARCH"
     if [ "$ARCH" = "wasm64" ]; then
         export EMCC_CFLAGS="$EMCC_CFLAGS_WASM32 -m64"
     else
@@ -251,14 +247,6 @@ pack_runtime() {
     empack pack append --env-meta "$out/empack_env_meta.json" --tarfile "$out/pyjs_module.tar.gz"
 }
 
-# build_vanilla_page: the test page with the raw runtime of this build and the
-# test packages packed by empack (VANILLA_PAGE)
-build_vanilla_page() {
-    create_env_from_packages "$TEST_ENV_PREFIX" "$PLATFORM" "${PYTHON_PACKAGES[@]}" "${TEST_PACKAGES[@]}"
-    pack_runtime "$TEST_ENV_PREFIX" "$BUILD_ROOT/pages/vanilla_assets_$ARCH"
-    test_driver build-page vanilla --assets "$BUILD_ROOT/pages/vanilla_assets_$ARCH" --out "$VANILLA_PAGE"
-}
-
 # run_tests <label> <page dir> <browsers> <modes> [test_driver run args...]:
 # the test suite on a page, for every browser and mode. Adds a line per run
 # to SUMMARY, returns 1 if one failed.
@@ -317,19 +305,41 @@ build_npm_package() {
     echo "  publish:   cd $BUILD_ROOT/npm/package && npm publish --access public"
 }
 
-# test_npm_package: the test suite on the npm package (both architectures)
-# and on apps built with the common bundlers around it
+# build_npm_page <arch>: the test page of the npm package (build_root/pages/npm_<arch>)
+build_npm_page() {
+    test_driver build-page npm --package "$BUILD_ROOT/npm/package" --arch "$1" \
+        --packages "${TEST_PACKAGES[@]}" --out "$BUILD_ROOT/pages/npm_$1"
+}
+
+# the arguments of the test runs: the npm pages need the network (test
+# packages from prefix.dev): retry a failed setup, never failed tests
+test_run_args() {
+    printf -- '--retries\n5\n'
+    [ "${DISABLE_JSPI:-0}" = "1" ] && printf -- '--disable-jspi\n'
+    return 0
+}
+
+# test_npm_package: the test suite on the npm package (all ARCHS) and on apps
+# built with the common bundlers around it
 test_npm_package() {
     local arch bundler ret=0 tgz
     tgz="$(ls "$BUILD_ROOT"/npm/*.tgz)"
     install_browsers
     for arch in $ARCHS; do
-        test_driver build-page npm --package "$BUILD_ROOT/npm/package" --arch "$arch" \
-            --packages "${TEST_PACKAGES[@]}" --out "$BUILD_ROOT/pages/npm_$arch"
-        # the npm pages need the network (test packages via mambajs from
-        # prefix.dev): retry a failed setup, never failed tests
-        run_tests "npm $arch" "$BUILD_ROOT/pages/npm_$arch" "$BROWSERS" "$MODES" --retries 5 || ret=1
+        build_npm_page "$arch"
+        # shellcheck disable=SC2046
+        run_tests "npm $arch" "$BUILD_ROOT/pages/npm_$arch" "$BROWSERS" "$MODES" $(test_run_args) || ret=1
     done
+    # the lock CLI (node): solve a small package against the real channels
+    section "npm lock"
+    if node "$BUILD_ROOT/npm/package/bin/pyjs.mjs" lock tabulate -o "$BUILD_ROOT/npm/lock_test.json" &&
+        python -c 'import json, sys; lock = json.load(open(sys.argv[1])); assert lock and all(any("/tabulate-" in p["url"] and p.get("sha256") for p in pkgs) for pkgs in lock.values()), lock' \
+            "$BUILD_ROOT/npm/lock_test.json"; then
+        SUMMARY+=("  PASSED  npm lock")
+    else
+        SUMMARY+=("  FAILED  npm lock")
+        ret=1
+    fi
     # the bundled app does not depend on the browser: the first browser, main thread
     if [ "${NPM_TEST_BUNDLERS:-1}" = "1" ]; then
         for bundler in vite webpack rollup esbuild parcel; do
@@ -354,14 +364,15 @@ cmd_build() {
     build_pyjs
 }
 
+# the npm package of this arch only, its page, the tests (browsers x modes)
 cmd_test() {
-    local jspi=() ret=0
-    [ "${DISABLE_JSPI:-0}" = "1" ] && jspi=(--disable-jspi)
-    use_arch "$ARCH"
-    build_pyjs
-    build_vanilla_page
+    local ret=0
+    ARCHS="$ARCH"
+    build_npm_package
+    build_npm_page "$ARCH"
     install_browsers
-    run_tests "vanilla $ARCH" "$VANILLA_PAGE" "$BROWSERS" "$MODES" ${jspi[@]+"${jspi[@]}"} || ret=1
+    # shellcheck disable=SC2046
+    run_tests "npm $ARCH" "$BUILD_ROOT/pages/npm_$ARCH" "$BROWSERS" "$MODES" $(test_run_args) || ret=1
     print_summary
     return "$ret"
 }
@@ -369,9 +380,9 @@ cmd_test() {
 # results: build_root/benchmarks/<arch>/<time>_<git rev>_<browser>_<mode>.{log,json}
 cmd_bench() {
     local out="$BUILD_ROOT/benchmarks/$ARCH" rev stamp browser mode name ret=0
-    use_arch "$ARCH"
-    build_pyjs
-    build_vanilla_page
+    ARCHS="$ARCH"
+    build_npm_package
+    build_npm_page "$ARCH"
     install_browsers
     mkdir -p "$out"
     rev="$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -381,7 +392,8 @@ cmd_bench() {
         for mode in $MODES; do
             section "benchmarks $ARCH: $browser / $mode"
             name="${browser}_$mode"
-            test_driver run "$VANILLA_PAGE" --entry benchmarks --browser "$browser" --mode "$mode" \
+            test_driver run "$BUILD_ROOT/pages/npm_$ARCH" --entry benchmarks --browser "$browser" --mode "$mode" \
+                --retries 5 \
                 --option "filter=${BENCH_FILTER:-}" \
                 --result-json "$out/${stamp}_$name.json" \
                 --meta "wasm_type=$ARCH" --meta "git_rev=$rev" --meta "timestamp=$stamp" \
@@ -405,6 +417,8 @@ cmd_docs() {
     rm -rf "$BUILD_ROOT/docs_extra" "$DOCS_OUT_DIR"
     mkdir -p "$BUILD_ROOT/docs_extra"
     cp -R "$BUILD_ROOT/npm/package" "$BUILD_ROOT/docs_extra/pyjs"
+    # the playground's packages pinned at build time: no solver in the browser
+    node "$BUILD_ROOT/docs_extra/pyjs/bin/pyjs.mjs" lock numpy -o "$BUILD_ROOT/docs_extra/pyjs-lock.json"
     PYJS_DOCS_EXTRA_DIR="$BUILD_ROOT/docs_extra" NPM_PACKAGE_NAME="$NPM_PACKAGE_NAME" \
         sphinx-build -b html "$SRC_DIR/docs" "$DOCS_OUT_DIR"
     echo "docs: $DOCS_OUT_DIR/index.html"

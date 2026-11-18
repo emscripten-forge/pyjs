@@ -39,8 +39,7 @@ Everything lives in `build_root/` (gitignored, never commit):
 | dir | env file | |
 |---|---|---|
 | `dev_prefix` | `environment-dev.yml` | native, **one for wasm32 + wasm64**: `emscripten-core`, cmake, empack, node, playwright (+ playwright-python), sphinx |
-| `host_prefix_<wasm>` | `environment-host.yml` | emscripten env pyjs is built against + installed into |
-| `test_env_<name>_<wasm>` | none: `PYTHON_PACKAGES` + `TEST_PACKAGES` in build_local.sh | env of the vanilla test page (`<name>` = `TEST_ENV`: `default` / `no_numpy`) |
+| `host_prefix_<wasm>` | `environment-host.yml` | emscripten env pyjs is built against + installed into (incl. `libarchive-static` for `src/extract.cpp`) |
 | `npm_env_<wasm>` | none: `PYTHON_PACKAGES` | `npm`: the env shipped in the package (python only) |
 | `build_<wasm>` | | cmake build dir |
 | `pages/` | | test pages (`pyjs_test_driver build-page`), `pages/bundler_projects/` the bundler apps |
@@ -82,9 +81,13 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
 ### Gotchas in build_local.sh
 - Structure (top to bottom): command line, settings, helpers, dev env
   (activated once), one architecture (`use_arch`, `build_pyjs`,
-  `pack_runtime`, `build_vanilla_page`, `run_tests`), npm
-  (`build_npm_package`, `test_npm_package`), the `cmd_*` commands. `npm` /
-  `docs` loop over `ARCHS` in one process. Must stay readable by humans.
+  `pack_runtime`, `run_tests`), npm (`build_npm_package`, `build_npm_page`,
+  `test_npm_package`), the `cmd_*` commands. `npm` / `docs` loop over `ARCHS`
+  in one process; `test` / `bench` set `ARCHS=<arch>`. Must stay readable by
+  humans.
+- The host env is only created when missing: after a change of
+  `environment-host.yml` delete `build_root/host_prefix_<wasm>` (micromamba
+  `install` into it fails: it runs the emscripten python for pip interop).
 - One dev env for both architectures: it has `emscripten-core`, not
   `emscripten_emscripten-wasm32` / `-wasm64` (those only depend on
   emscripten-core and, for wasm64, add `-m64` in their activation).
@@ -135,10 +138,11 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   sets `globalThis.pyjs`, awaits `main(options)`), sets
   `window.__pyjs_result`; worker mode: `worker.js`, console + result relayed
   via postMessage.
-- Page kinds: `vanilla` (raw `pyjs_runtime_browser.js` via indirect eval +
-  `bootstrap_from_empack_packed_environment` with the empack-packed
-  test env: the classic API xeus-python uses), `npm` (the package,
-  `TEST_PACKAGES` via `extraPackages` / mambajs, network), `vite` / `webpack`
+- Only npm-based pages (pyjs 5: the vanilla page is gone; `test <arch>`
+  builds the npm package of that arch). Page kinds: `npm` (the package,
+  `TEST_PACKAGES` via `packages` (solved), a test-channel package via `urls`
+  (pinned), `archives`, `files`, `onProgress` recorded in
+  `globalThis.__pyjs_progress`; network), `vite` / `webpack`
   / `rollup` / `esbuild` / `parcel` (bundled app around
   `web/bundler_main.js`, runtime files via `copy-assets` + `cdnUrl`, main
   thread only, built with `CI=true`).
@@ -266,45 +270,74 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   the solver from replacing the running python) -> `build_root/npm/stage/<wasm>/`;
   then `build_root/npm/package/` + `npm pack` -> `build_root/npm/*.tgz`.
   `ARCHS=wasm32` (local only), `NPM_TEST_BUNDLERS=0`.
-- Init (`runtime.ts`) = the jupyterlite-xeus path via mambajs-core:
-  `createModule` (`assets/<arch>/pyjs_runtime_browser.mjs` = the classic
-  MODULARIZE js + `export default createModule`, located via
-  `import.meta.url`) -> `bootstrapEmpackPackedEnvironment` (untarjs into
-  `Module.FS` *before* python starts) -> extra packages (mambajs `install`,
-  lock platform `emscripten-<arch>`) -> `bootstrapPython` (=
-  `init_phase_1/2`) -> `loadSharedLibs` (main thread only). untarjs is
-  created by us with its wasm at `dist/untarjs.wasm` (mambajs-core's own
-  copy would look for `./unpack-*.wasm` relative to the page). The packages
-  `python` / `pyjs` are never replaced by `installPackages`.
-- Returns the existing Module (`exec`, `eval`, `exec_eval`,
-  `async_exec_eval`, `to_js`, ...) + `installPackages(specs)`; the
-  `bootstrap_from_empack_packed_environment` / `init_phase_*` API stays as is.
+- pyjs 5 init: the core (libpyjs + pre/post js) never fills the file system
+  or preloads shared libs; whoever fills it calls `Module.startPython()` (synchronous)
+  (`pre_js/init.js`: python version from C++ `_python_version`, error without
+  `/lib/pythonX.Y`, idempotent). The classic API (`bootstrap_from_empack_*`,
+  `init_phase_*`, `_untar`, `_install_conda_file`, untar/inflate C++,
+  `load_pkg.js`, `dynload.js`, `fetch.js`) is gone. The runtime target
+  (not libpyjs) has `src/extract.cpp`: `Module._extract_archive(bytes, dest,
+  {conda, meta, rename})` on libarchive (tar / zip, gzip / bzip2 / zstd, no
+  xz; .conda = zip of pkg-/info-*.tar.zst), own write loop (no `..` /
+  absolute paths / writes through the archive's symlinks; hard links ->
+  copies), returns `{files, sharedLibs, meta}`. Tests: `tests/sync/test_extract.py`.
+- npm init (`runtime.ts`), all in parallel: `createModule` (or `wasmModule`
+  via `instantiateWasm`), solve (`solve.ts`: mambajs, lazy chunk, also
+  `empackLockToMambajsLock` / `formatChannels` / `computePackageUrl` from it:
+  the main bundle has no mambajs / untarjs), downloads (`fetch.ts`: byte
+  progress, sha256 only with `verifySha256`, max 6 parallel); package cache
+  (Cache Storage `pyjs-packages-v2`, by package URL): the installed layout
+  as uncompressed tar (`_extract_archive` option `tar`) + relocation
+  placeholders in a header, a warm install only untars (bypassed with
+  `verifySha256` + sha256); bytecode cache (`bytecode.ts`,
+  `pyjs-packages-v2-bytecode`, by package / env tarball URL): the `.pyc`
+  files of each package's `.py` files (`Module._tar_files`), restored with
+  the package, saved when `__pycache__` entry counts grow (3 s interval,
+  page hidden, `Module.saveBytecode()`). Valid because the extraction keeps
+  the archive mtimes (`set_mtime`) and `relocate` restores them (python
+  checks a `.pyc` against source mtime + size); then extraction in order
+  env tarballs -> packages (`install.ts`: conda layout, `site-packages/` ->
+  `lib/pythonX.Y/site-packages/`, `info/paths.json` text placeholders -> "",
+  per-package file lists, old files removed before a replacement) ->
+  `archives` -> `files` -> `startPython` -> `sharedlibs.ts` (dlopen promise,
+  libs RTLD_GLOBAL first, `.cpython-*.so` / lib-dynload RTLD_LOCAL; main
+  thread only; *after* python started: extension modules' static
+  initializers use the C API, e.g. matplotlib's ft2font crashes otherwise).
+  `Module.initTimings`: phase times (ms) of the init, `Module.installTimings`
+  of the last `installPackages` (`state.timings` points to the running one). Options: `packages` (specs), `urls` (pinned
+  `{url, sha256?}`), `archives`, `files`, `cache`, `verifySha256`,
+  `onProgress`, `wasmModule`, `env`. `python` / `pyjs` are never replaced.
+- Returns the Module + `installPackages(specs | pinned)`, `unpackArchive`,
+  `addFiles` (serialized in a queue). Entries also export `compileRuntime()`.
+  CLI: `npx <pkg> lock <specs>` (`src/lock.ts`, bundled for node into
+  `bin/lock.mjs`) -> `{wasm32: [{url, sha256}], ...}`; the docs build pins the
+  playground's numpy with it (`pyjs-lock.json`).
 - Tests: the full test suite on npm pages (both archs x main / worker) and on
   the 5 bundler pages (see Tests). npm-only tests: `tests/npm/test_*.py`
   (async), run by `tests/main.py` only with option `npm_package` (the harness
-  sets it when the Module has `installPackages`; the recipe never runs them).
+  sets it when the Module has `installPackages`); `test_install.py`: pinned at
+  init / runtime, `.conda`, relocation, replacing, sha256, cache, bytecode
+  cache, progress, `compileRuntime`.
   `tests/npm/test_channel.py` installs from a self-hosted channel (static
   files, like GitHub Pages next to docs) that the driver generates at
   `/test-channel/` (`pyjs_test_driver/test_channel.py`: noarch python package
-  + arch package, rattler-build output layout). The rattler gateway first
+  + arch package, rattler-build output layout; unindexed for pinned tests: a
+  `.conda` package, arch package v2.0.0). The rattler gateway first
   probes `repodata_shards.msgpack.zst` / `repodata.json.zst` / `.bz2` (404s
   are fine), then reads `repodata.json`.
 - Channel order = priority. mambajs' `install` appends new channels *after*
   the lock's (the shipped env: emscripten-forge, conda-forge), so `solve` in
-  `runtime.ts` puts the requested channels first (`formatChannels` from
+  `solve.ts` puts the requested channels first (`formatChannels` from
   mambajs-core): a self-hosted CI build must win over a published package
   (`test_self_hosted_channel_has_priority`: a fake `tabulate` 0.0.1 beats
   conda-forge's 0.9.x).
-- Archives: option `archives: [{url, path}]` (unpacked with untarjs before
-  python starts) / `Module.unpackArchive({url, path})` (later, then
-  `importlib.invalidate_caches()`); files written with absolute paths
-  (cwd-independent), directory entries skipped, paths outside `path` rejected.
+- Archives: option `archives: [{url, path}]` (unpacked by `_extract_archive`
+  before python starts) / `Module.unpackArchive({url, path})` (later, then
+  `importlib.invalidate_caches()`); paths resolved against `path` (never the
+  cwd), directory entries not listed, paths outside `path` rejected.
   Tests: `tests/npm/test_archives.py` with archives the driver generates
   (`pyjs_test_driver/test_archives.py`); the npm / bundler pages pass one in
   `archives`.
-- mambajs-core creates the dirs of relative package paths relative to the
-  *cwd* but writes the files below the prefix `/`: `applyLock` in
-  `runtime.ts` runs with cwd `/` (Python may have changed it).
 - CI: `.github/workflows/npm.yml` builds + tests (all browsers), publishes on
   release tags (`4.1.0`, must equal the package version) / manual dispatch;
   npm trusted publishing (OIDC, configured on npmjs.com for this repo +
@@ -312,7 +345,7 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   `cd build_root/npm/package && npm publish --access public`.
 - On jsDelivr import `dist/index.js` directly, not `/+esm` (re-bundling
   breaks the `import.meta.url` asset paths).
-- Assets (`assets/untarjs.wasm`, `assets/<arch>/`: runtime + packed env) are
+- Assets (`assets/<arch>/`: runtime + packed env) are
   fetched at runtime, bundlers do not copy them. Lookup (`resolveAssets` in
   `runtime.ts`): `assetsUrl` -> `assets/` next to the module (probe of
   `<arch>/empack_env_meta.json`, must parse as env meta: dev servers answer
@@ -324,7 +357,7 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   lives in the unminified `dist/load-runtime.js` (esbuild's minifier drops
   the `webpackIgnore` / `@vite-ignore` comments), `__filename` /
   `__dirname` defined as `undefined` (webpack rewrites `typeof __filename`
-  in the untarjs glue).
+  in the untarjs glue bundled by mambajs-core, lazy solver chunk).
 - `build_utils/npm_bundler_test.py` (part of `npm --test`,
   `NPM_TEST_BUNDLERS=0` skips it): vite, webpack, rollup, esbuild, parcel,
   each self-hosted (`copy-assets`) and with the CDN fallback (`cdnUrl` ->

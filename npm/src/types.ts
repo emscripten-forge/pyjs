@@ -44,6 +44,13 @@ export interface IArchive {
   path: string;
   /** checked only with `verifySha256: true` */
   sha256?: string;
+  /**
+   * cache the archive like a package (default: false): its unpacked files
+   * and python's bytecode of its `.py` files, by URL + `path`. Only for
+   * URLs whose content never changes (e.g. a content hash in the file
+   * name): a cached archive is not downloaded again
+   */
+  cache?: boolean;
 }
 
 /** A file written into the emscripten file system: its content or a URL. */

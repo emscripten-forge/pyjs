@@ -142,10 +142,19 @@ export function installExtracted(Module: any, extracted: IExtractedPackage): { f
   return { files: result.files, sharedLibs: result.sharedLibs };
 }
 
-/** extract any archive below `dest` -> its files and shared libraries */
-export function extractArchive(Module: any, bytes: Uint8Array, dest: string): { files: string[]; sharedLibs: string[] } {
-  const result: IExtracted = Module._extract_archive(bytes, dest, {});
-  return { files: result.files, sharedLibs: result.sharedLibs };
+/**
+ * extract any archive below `dest` -> its files and shared libraries; with
+ * `keep`, also what was written as an uncompressed tar (paths relative to
+ * `dest`) for the archive cache
+ */
+export function extractArchive(
+  Module: any,
+  bytes: Uint8Array,
+  dest: string,
+  keep = false
+): { files: string[]; sharedLibs: string[]; tar?: Uint8Array } {
+  const result: IExtracted = Module._extract_archive(bytes, dest, { tar: keep });
+  return { files: result.files, sharedLibs: result.sharedLibs, tar: keep ? result.tar : undefined };
 }
 
 /** remove the files of a package (replaced / removed) */

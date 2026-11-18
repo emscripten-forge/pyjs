@@ -9,47 +9,54 @@ Targets: Python 3.14, emscripten 6.0.8, emscripten-forge `6x` channel
 Packaged by the emscripten-forge recipe `recipes/recipes_wasm/pyjs` (packages
 `pyjs` = python module, `libpyjs-static` = lib + runtime js/wasm, `pyjs-dev` = both).
 
-## Build / test locally: always via `build_local.sh`
+## Build / test locally: always via pixi tasks (`pixi.toml`)
 
-The CI uses the same script, so local == CI. Only micromamba is needed.
+The CI runs the same tasks, so local == CI. Only pixi >= 0.84 is needed
+(older ones do not know `emscripten-wasm64`; `pixi self-update`).
 
 ```bash
-./build_local.sh build wasm32                # build + install pyjs
-./build_local.sh test wasm32                 # + browser tests (main thread + worker)
-BROWSERS="chromium firefox webkit" ./build_local.sh test wasm64
-DISABLE_JSPI=1 ./build_local.sh test wasm32  # JSPI switched off at runtime
-TEST_ENV=no-numpy ./build_local.sh test wasm32
-./build_local.sh bench wasm32                # benchmarks
-BENCH_FILTER=async ./build_local.sh bench wasm32
-./build_local.sh docs                        # npm package + sphinx docs
-./build_local.sh npm [--test]                # npm package (wasm32 + wasm64)
-./build_local.sh test wasm32 --fresh         # recreate envs / build dirs first
+pixi run build wasm32                        # build pyjs (archs: wasm32 | wasm64 | "wasm32 wasm64")
+pixi run test wasm32                         # npm package of the arch + browser tests (main + worker)
+pixi run test wasm64 "chromium firefox webkit"
+# test <arch> [browsers] [modes] [numpy|no-numpy] [jspi|no-jspi]
+pixi run test wasm32 chromium "main worker" numpy no-jspi  # JSPI switched off at runtime
+pixi run test wasm32 chromium main no-numpy
+pixi run bench wasm32 [browsers] [modes] [filter]          # benchmarks
+pixi run docs [out dir]                      # npm package + sphinx docs
+pixi run npm-package [archs]                 # npm package (default wasm32 + wasm64)
+pixi run test-npm [browsers]                 # npm package + both archs, lock CLI, bundlers
+pixi run clean                               # rm -rf build_root (envs stay)
 ```
 
-Useful env vars (full list at the top of the script): `ARCHS` (archs of
-docs / npm, default both), `BROWSERS` (chromium firefox webkit; webkit = Safari engine),
-`MODES` (main worker), `BENCH_FILTER`, `BUILD_ENV_PREFIX`
-(use an existing dev env, never deleted; CI), `TEST_ENV` (`default` |
-`no-numpy`: `TEST_PACKAGES`),
-`PLAYWRIGHT_INSTALL_ARGS` (`--with-deps` on CI), `DOCS_OUT_DIR`, `DISABLE_JSPI=1`,
-`EXTRA_CHANNELS` (channels searched first when creating envs).
+Task chain (tasks with args loop over `archs` via MiniJinja `| split`):
+`envs` (`pixi install -e host-<arch> / npm-env-<arch> --platform
+emscripten-<arch>`) -> `configure` (emcmake) -> `build` -> `pack` (empack
+-> `build_root/npm/stage/<arch>/`) -> `npm-package` (+ `npm-ci`) ->
+`test-page` -> `_run-tests` (`pyjs_test_driver run` loops browsers x modes
+itself and prints the summary). `test-npm` = alias of `npm-package`,
+`_run-tests` per arch, `test-lock`, `test-bundlers`.
 
-Everything lives in `build_root/` (gitignored, never commit):
+Environments (`pixi.lock`, `.pixi/envs/`, gitignored):
 
-| dir | env file | |
-|---|---|---|
-| `dev_prefix` | `environment-dev.yml` | native, **one for wasm32 + wasm64**: `emscripten-core`, cmake, empack, node, playwright (+ playwright-python), sphinx |
-| `host_prefix_<wasm>` | `environment-host.yml` | emscripten env pyjs is built against + installed into |
-| `test_env_<name>_<wasm>` | none: `PYTHON_PACKAGES` + `TEST_PACKAGES` in build_local.sh | env of the vanilla test page (`<name>` = `TEST_ENV`: `default` / `no_numpy`) |
-| `npm_env_<wasm>` | none: `PYTHON_PACKAGES` | `npm`: the env shipped in the package (python only) |
-| `build_<wasm>` | | cmake build dir |
-| `pages/` | | test pages (`pyjs_test_driver build-page`), `pages/bundler_projects/` the bundler apps |
-| `benchmarks/<wasm>/` | | benchmark logs + json |
-| `docs_html/` | | built docs |
+| env | |
+|---|---|
+| `default` (feature `dev`) | native, **one for wasm32 + wasm64**: `emscripten-core`, cmake, empack, node, playwright (+ playwright-python), sphinx |
+| `host-<wasm>` | emscripten env pyjs is built against (incl. `libarchive-static` for `src/extract.cpp`); nothing is installed into it |
+| `npm-env-<wasm>` | the python env shipped in the npm package (python, pip, ca-certificates) |
+
+Build output in `build_root/` (gitignored, never commit):
+
+| dir | |
+|---|---|
+| `build_<wasm>` | cmake build dir |
+| `npm/stage/<wasm>`, `npm/package`, `npm/tgz/*.tgz` | npm package |
+| `pages/` | test pages (`pyjs_test_driver build-page`), `pages/bundler_projects/` the bundler apps |
+| `benchmarks/<wasm>/` | benchmark json |
+| `docs_html/` | built docs |
 
 The tests / benchmarks mount `module/pyjs` from the source tree and take the
 runtime (`pyjs_runtime_browser.{js,wasm}`) from the build dir, so Python-only
-changes need no rebuild (the script still runs cmake/make, which is a no-op).
+changes need no rebuild (the tasks still run cmake, which is a no-op).
 
 WebGPU: `--use-port=emdawnwebgpu` is an `INTERFACE` link option of the `pyjs`
 target (cmake option `PYJS_WEBGPU`, default ON; emscripten downloads the port
@@ -79,19 +86,28 @@ for wasm64). `tests/sync/test_memory.py` allocates beyond 2 GiB / 4 GiB and
 passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
 `Py_ssize_t` is 32 bit, so it allocates chunks).
 
-### Gotchas in build_local.sh
-- Structure (top to bottom): command line, settings, helpers, dev env
-  (activated once), one architecture (`use_arch`, `build_pyjs`,
-  `pack_runtime`, `build_vanilla_page`, `run_tests`), npm
-  (`build_npm_package`, `test_npm_package`), the `cmd_*` commands. `npm` /
-  `docs` loop over `ARCHS` in one process. Must stay readable by humans.
+### Gotchas of the pixi setup
+- Channels: workspace `6x, conda-forge` (emscripten builds of 6x win, strict
+  priority); the `dev` feature prepends `conda-forge, 6x` (native tools
+  from conda-forge, `emscripten-core` only exists in 6x; no osx-64 build of
+  it, so the dev env is osx-arm64 + linux-64 only). A local recipe build
+  (rattler-build output dir) goes first in the workspace channels.
+- The emscripten envs cannot be installed by `pixi run` / setup-pixi
+  ("unsupported-platform"): only `pixi install -e <env> --platform
+  emscripten-<arch>` (task `envs`, nested pixi call: pixi must be on PATH).
+- Task args are positional, in the order of `args`; several words in one arg
+  (`"chromium firefox"`) are split by MiniJinja `| split` / argparse
+  `nargs="+"`. Arg names: no dashes. Multi-line `cmd`s start with `set -e`
+  (deno_task_shell does not stop on errors otherwise); backslash line
+  continuations need TOML literal strings (`'''`).
 - One dev env for both architectures: it has `emscripten-core`, not
   `emscripten_emscripten-wasm32` / `-wasm64` (those only depend on
   emscripten-core and, for wasm64, add `-m64` in their activation).
-  `use_arch` adds `-m64` to `EMCC_CFLAGS` (reaches every emcc call) for
-  wasm64 only. The `CMAKE_ARGS` of the activation are not used (they bake in
-  `PREFIX` at activation time), `build_pyjs` passes everything explicitly.
-  The emscripten library cache keeps `wasm32-emscripten` /
+  `configure` / `build` add `-m64` to `EMCC_CFLAGS` (reaches every emcc call,
+  e.g. the ports) for wasm64 only. The `CMAKE_ARGS` of the activation are not
+  used, `configure` passes everything explicitly; the host libraries are
+  linked from `CMAKE_INSTALL_PREFIX` (= the host env, never installed into).
+  The emscripten library cache (in the dev env) keeps `wasm32-emscripten` /
   `wasm64-emscripten` apart.
 - cmake + wasm64: `-m64` must be in `CMAKE_C_FLAGS` on the command line:
   `Emscripten.cmake` decides `CMAKE_SIZEOF_VOID_P` from `CMAKE_C_FLAGS`
@@ -102,15 +118,13 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   problem: 64 bit binaries, but their `*ConfigVersion.cmake` say 32 bit (and
   reject 64 bit projects). Not used by pyjs anymore (the docs do not build
   xeus-python), matters for projects building against them. Never edit env
-  files in place: micromamba hardlinks them to its package cache.
-- Activation scripts are not `set -u` safe (wrapped in `set +u`).
+  files in place: they are hardlinked to the package cache.
 - `CMakeLists.txt` runs `$ENV{CONDA_PREFIX}/bin/python` (merge_js.py), so
-  `CONDA_PREFIX` must be the build env.
-- empack finds its default config via `sys.prefix.startswith(CONDA_PREFIX)` (plain
-  string prefix): a stale `CONDA_PREFIX=.../build_prefix` breaks envs named
-  `.../build_prefix_wasm32`. Run things with the right env activated.
-- Do not edit `build_local.sh` while it runs (bash reads scripts lazily, you get
-  bogus syntax errors).
+  `CONDA_PREFIX` must be the dev env (it is, in every task).
+- empack finds its default config via `sys.prefix.startswith(CONDA_PREFIX)`.
+- A build dir configured with another toolchain path (e.g. an old env) gets
+  its cmake cache reset on the next configure ("You have changed variables
+  that require your cache to be deleted"): harmless, it reconfigures.
 
 ## Tests
 
@@ -135,10 +149,11 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   sets `globalThis.pyjs`, awaits `main(options)`), sets
   `window.__pyjs_result`; worker mode: `worker.js`, console + result relayed
   via postMessage.
-- Page kinds: `vanilla` (raw `pyjs_runtime_browser.js` via indirect eval +
-  `bootstrap_from_empack_packed_environment` with the empack-packed
-  test env: the classic API xeus-python uses), `npm` (the package,
-  `TEST_PACKAGES` via `extraPackages` / mambajs, network), `vite` / `webpack`
+- Only npm-based pages (pyjs 5: the vanilla page is gone; `test <arch>`
+  builds the npm package of that arch). Page kinds: `npm` (the package,
+  `TEST_PACKAGES` via `packages` (solved), a test-channel package via `urls`
+  (pinned), `archives`, `files`, `onProgress` recorded in
+  `globalThis.__pyjs_progress`; network), `vite` / `webpack`
   / `rollup` / `esbuild` / `parcel` (bundled app around
   `web/bundler_main.js`, runtime files via `copy-assets` + `cdnUrl`, main
   thread only, built with `CI=true`).
@@ -230,7 +245,7 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   CPython thread state LIFO); `can_run_sync()` is False in sync JS callbacks,
   while another `run_sync` waits, and for promising calls nested in running
   wasm (`depth`). `run_sync` leaves / re-enters the current asyncio task.
-- Tests: `DISABLE_JSPI=1 ./build_local.sh test <wasm>` switches JSPI off at
+- Tests: `pixi run test <wasm> <browsers> "main worker" numpy no-jspi` switches JSPI off at
   runtime (`run --disable-jspi` -> option `disable_jspi` ->
   `pyjs.core._disable_jspi()` in `tests/main.py`), CI runs both. A browser without the APIs at all can be
   simulated with playwright: `delete WebAssembly.Suspending` in an init script.
@@ -241,70 +256,101 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   Needs libpython from the emscripten-forge python recipe with the trampoline
   patches (0016 / 0017 + wasm64 `emscripten_trampoline_inner_wasm64.c`,
   build >= 6).
-- Test a local recipe build: `EXTRA_CHANNELS=<recipes>/output ./build_local.sh ...`
-  with a fresh host env (`rm -rf build_root/host_prefix_<wasm>`); rattler-build
-  may leave a stale `repodata.json` when it overwrites a package with the same
-  file name, and micromamba then rejects the "wrong size" package.
+- Test a local recipe build: put `<recipes>/output` first in the workspace
+  `channels` of `pixi.toml` (re-solves `pixi.lock`; do not commit that);
+  rattler-build may leave a stale `repodata.json` when it overwrites a
+  package with the same file name, and the installer then rejects the "wrong
+  size" package.
 - With JSPI, urllib3 uses its `fetch` path (`pyodide.ffi.run_sync` polyfill);
   it slices `Uint8Array.to_py()` results, so `TypedArrayBuffer` supports
   memoryview-style indexing (`module/pyjs/convert.py`).
 
-## npm package (`npm/`, `build_local.sh npm`)
+## npm package (`npm/`, `pixi run npm-package`)
 
 - One package with both builds: `.` (= wasm32), `./wasm32`, `./wasm64`; name via
   `NPM_PACKAGE_NAME` (now `@derthorsten/pyjs`, later `@emscripten-forge/pyjs`),
-  version = `project(pyjs VERSION ...)` in CMakeLists.txt. TypeScript in
+  version = `project(pyjs VERSION ...)` in CMakeLists.txt (both read by
+  build.mjs itself, `--name` / `--version` override). TypeScript in
   `npm/src/` (`runtime.ts` = the init), assembled by `npm/build.mjs` (esbuild:
   self-contained ESM, all files incl. chunks in `dist/`; the solver mambajs +
   rattler, ~6 MB, is a lazy chunk). The published `package.json` is written by
   build.mjs (`npm/package.json` is only the build tooling).
-- `./build_local.sh npm [--test]`: per arch (`ARCHS`): normal pyjs build, env from
-  `PYTHON_PACKAGES` (python only) packed by empack with
+- `pixi run npm-package [archs]`: per arch: normal pyjs build, the env
+  `npm-env-<arch>` packed by empack (task `pack`) with
   `npm/empack_config.yaml` (drops CPython's `test/` = 75% of the python
   package), + `module/pyjs` as mount, `build_utils/npm_env_meta.py` adds
   channels + a pinned python spec (mambajs needs `channels`; the pin keeps
   the solver from replacing the running python) -> `build_root/npm/stage/<wasm>/`;
-  then `build_root/npm/package/` + `npm pack` -> `build_root/npm/*.tgz`.
-  `ARCHS=wasm32` (local only), `NPM_TEST_BUNDLERS=0`.
-- Init (`runtime.ts`) = the jupyterlite-xeus path via mambajs-core:
-  `createModule` (`assets/<arch>/pyjs_runtime_browser.mjs` = the classic
-  MODULARIZE js + `export default createModule`, located via
-  `import.meta.url`) -> `bootstrapEmpackPackedEnvironment` (untarjs into
-  `Module.FS` *before* python starts) -> extra packages (mambajs `install`,
-  lock platform `emscripten-<arch>`) -> `bootstrapPython` (=
-  `init_phase_1/2`) -> `loadSharedLibs` (main thread only). untarjs is
-  created by us with its wasm at `dist/untarjs.wasm` (mambajs-core's own
-  copy would look for `./unpack-*.wasm` relative to the page). The packages
-  `python` / `pyjs` are never replaced by `installPackages`.
-- Returns the existing Module (`exec`, `eval`, `exec_eval`,
-  `async_exec_eval`, `to_js`, ...) + `installPackages(specs)`; the
-  `bootstrap_from_empack_packed_environment` / `init_phase_*` API stays as is.
+  then `build_root/npm/package/` + `npm pack` -> `build_root/npm/tgz/*.tgz`.
+  `pixi run test-npm` tests it fully (bundlers: `pixi run test-bundlers` alone).
+- pyjs 5 init: the core (libpyjs + pre/post js) never fills the file system
+  or preloads shared libs; whoever fills it calls `Module.startPython()` (synchronous)
+  (`pre_js/init.js`: python version from C++ `_python_version`, error without
+  `/lib/pythonX.Y`, idempotent). The classic API (`bootstrap_from_empack_*`,
+  `init_phase_*`, `_untar`, `_install_conda_file`, untar/inflate C++,
+  `load_pkg.js`, `dynload.js`, `fetch.js`) is gone. The runtime target
+  (not libpyjs) has `src/extract.cpp`: `Module._extract_archive(bytes, dest,
+  {conda, meta, rename})` on libarchive (tar / zip, gzip / bzip2 / zstd, no
+  xz; .conda = zip of pkg-/info-*.tar.zst), own write loop (no `..` /
+  absolute paths / writes through the archive's symlinks; hard links ->
+  copies), returns `{files, sharedLibs, meta}`. Tests: `tests/sync/test_extract.py`.
+- npm init (`runtime.ts`), all in parallel: `createModule` (or `wasmModule`
+  via `instantiateWasm`), solve (`solve.ts`: mambajs, lazy chunk, also
+  `empackLockToMambajsLock` / `formatChannels` / `computePackageUrl` from it:
+  the main bundle has no mambajs / untarjs), downloads (`fetch.ts`: byte
+  progress, sha256 only with `verifySha256`, max 6 parallel); package cache
+  (Cache Storage `pyjs-packages-v2`, by package URL): the installed layout
+  as uncompressed tar (`_extract_archive` option `tar`) + relocation
+  placeholders in a header, a warm install only untars (bypassed with
+  `verifySha256` + sha256); bytecode cache (`bytecode.ts`,
+  `pyjs-packages-v2-bytecode`, by package / env tarball URL): the `.pyc`
+  files of each package's `.py` files (`Module._tar_files`), restored with
+  the package, saved when `__pycache__` entry counts grow (3 s interval,
+  page hidden, `Module.saveBytecode()`). Valid because the extraction keeps
+  the archive mtimes (`set_mtime`) and `relocate` restores them (python
+  checks a `.pyc` against source mtime + size); then extraction in order
+  env tarballs -> packages (`install.ts`: conda layout, `site-packages/` ->
+  `lib/pythonX.Y/site-packages/`, `info/paths.json` text placeholders -> "",
+  per-package file lists, old files removed before a replacement) ->
+  `archives` -> `files` -> `startPython` -> `sharedlibs.ts` (dlopen promise,
+  libs RTLD_GLOBAL first, `.cpython-*.so` / lib-dynload RTLD_LOCAL; main
+  thread only; *after* python started: extension modules' static
+  initializers use the C API, e.g. matplotlib's ft2font crashes otherwise).
+  `Module.initTimings`: phase times (ms) of the init, `Module.installTimings`
+  of the last `installPackages` (`state.timings` points to the running one). Options: `packages` (specs), `urls` (pinned
+  `{url, sha256?}`), `archives`, `files`, `cache`, `verifySha256`,
+  `onProgress`, `wasmModule`, `env`. `python` / `pyjs` are never replaced.
+- Returns the Module + `installPackages(specs | pinned)`, `unpackArchive`,
+  `addFiles` (serialized in a queue). Entries also export `compileRuntime()`.
+  CLI: `npx <pkg> lock <specs>` (`src/lock.ts`, bundled for node into
+  `bin/lock.mjs`) -> `{wasm32: [{url, sha256}], ...}`; the docs build pins the
+  playground's numpy with it (`pyjs-lock.json`).
 - Tests: the full test suite on npm pages (both archs x main / worker) and on
   the 5 bundler pages (see Tests). npm-only tests: `tests/npm/test_*.py`
   (async), run by `tests/main.py` only with option `npm_package` (the harness
-  sets it when the Module has `installPackages`; the recipe never runs them).
+  sets it when the Module has `installPackages`); `test_install.py`: pinned at
+  init / runtime, `.conda`, relocation, replacing, sha256, cache, bytecode
+  cache, progress, `compileRuntime`.
   `tests/npm/test_channel.py` installs from a self-hosted channel (static
   files, like GitHub Pages next to docs) that the driver generates at
   `/test-channel/` (`pyjs_test_driver/test_channel.py`: noarch python package
-  + arch package, rattler-build output layout). The rattler gateway first
+  + arch package, rattler-build output layout; unindexed for pinned tests: a
+  `.conda` package, arch package v2.0.0). The rattler gateway first
   probes `repodata_shards.msgpack.zst` / `repodata.json.zst` / `.bz2` (404s
   are fine), then reads `repodata.json`.
 - Channel order = priority. mambajs' `install` appends new channels *after*
   the lock's (the shipped env: emscripten-forge, conda-forge), so `solve` in
-  `runtime.ts` puts the requested channels first (`formatChannels` from
+  `solve.ts` puts the requested channels first (`formatChannels` from
   mambajs-core): a self-hosted CI build must win over a published package
   (`test_self_hosted_channel_has_priority`: a fake `tabulate` 0.0.1 beats
   conda-forge's 0.9.x).
-- Archives: option `archives: [{url, path}]` (unpacked with untarjs before
-  python starts) / `Module.unpackArchive({url, path})` (later, then
-  `importlib.invalidate_caches()`); files written with absolute paths
-  (cwd-independent), directory entries skipped, paths outside `path` rejected.
+- Archives: option `archives: [{url, path}]` (unpacked by `_extract_archive`
+  before python starts) / `Module.unpackArchive({url, path})` (later, then
+  `importlib.invalidate_caches()`); paths resolved against `path` (never the
+  cwd), directory entries not listed, paths outside `path` rejected.
   Tests: `tests/npm/test_archives.py` with archives the driver generates
   (`pyjs_test_driver/test_archives.py`); the npm / bundler pages pass one in
   `archives`.
-- mambajs-core creates the dirs of relative package paths relative to the
-  *cwd* but writes the files below the prefix `/`: `applyLock` in
-  `runtime.ts` runs with cwd `/` (Python may have changed it).
 - CI: `.github/workflows/npm.yml` builds + tests (all browsers), publishes on
   release tags (`4.1.0`, must equal the package version) / manual dispatch;
   npm trusted publishing (OIDC, configured on npmjs.com for this repo +
@@ -312,7 +358,7 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   `cd build_root/npm/package && npm publish --access public`.
 - On jsDelivr import `dist/index.js` directly, not `/+esm` (re-bundling
   breaks the `import.meta.url` asset paths).
-- Assets (`assets/untarjs.wasm`, `assets/<arch>/`: runtime + packed env) are
+- Assets (`assets/<arch>/`: runtime + packed env) are
   fetched at runtime, bundlers do not copy them. Lookup (`resolveAssets` in
   `runtime.ts`): `assetsUrl` -> `assets/` next to the module (probe of
   `<arch>/empack_env_meta.json`, must parse as env meta: dev servers answer
@@ -324,12 +370,10 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   lives in the unminified `dist/load-runtime.js` (esbuild's minifier drops
   the `webpackIgnore` / `@vite-ignore` comments), `__filename` /
   `__dirname` defined as `undefined` (webpack rewrites `typeof __filename`
-  in the untarjs glue).
-- `build_utils/npm_bundler_test.py` (part of `npm --test`,
-  `NPM_TEST_BUNDLERS=0` skips it): vite, webpack, rollup, esbuild, parcel,
-  each self-hosted (`copy-assets`) and with the CDN fallback (`cdnUrl` ->
-  a local route, the package is not published yet); projects in
-  `build_root/npm/bundler_test/<bundler>/` install the built `.tgz`.
+  in the untarjs glue bundled by mambajs-core, lazy solver chunk).
+- `pixi run test-bundlers` (part of `test-npm`): pages built with vite,
+  webpack, rollup, esbuild, parcel around the packed package
+  (`build_root/npm/tgz/`), projects in `build_root/pages/bundler_projects/`.
 
 ## Benchmarks (`benchmarks/`)
 
@@ -337,7 +381,7 @@ pytest-benchmark cannot await in the browser, so `benchmarks/harness.py` is a
 small async-aware replacement (`benchmark(fn, *args)`,
 `await benchmark.aio(coro_fn, *args)`, `ops=` for loops inside JS).
 `benchmarks/main.py` discovers `bench_*` functions in `bench_*.py` and prints a
-`PYJS_BENCH_RESULT_JSON:` line which build_local.sh extracts (files written in
+`PYJS_BENCH_RESULT_JSON:` line which the driver extracts (files written in
 the browser FS do not reach the host). Compare runs via the stored json files;
 pure-JS benchmarks (`raw_js_*`) show the run-to-run noise.
 
@@ -354,7 +398,7 @@ pure-JS benchmarks (`raw_js_*`) show the run-to-run noise.
   `docs/conf.py` (version from CMakeLists.txt).
 - Playground: `docs/_extra/playground/index.html` (monokai, Monaco from
   cdnjs, `workerMain.js` without `.min`), loads the npm package built by
-  `build_local.sh docs` and deployed as `<html root>/pyjs/`. Python helpers
+  `pixi run docs` and deployed as `<html root>/pyjs/`. Python helpers
   injected by the page: `install(specs, verbose)`, `stopped()`,
   `on(event, handler)` (canvas listeners, removed on run / example switch).
 
@@ -363,16 +407,19 @@ pure-JS benchmarks (`raw_js_*`) show the run-to-run noise.
 - All workflows: `concurrency` per workflow + PR number / ref with
   `cancel-in-progress`: a new push / PR update cancels the older run (each
   release tag is its own group).
+- All use `prefix-dev/setup-pixi` (pixi version pinned, `pixi.lock`, default
+  env cached; the emscripten envs come from the task `envs`) and
+  `pixi run playwright install --with-deps <browsers>` first.
 - `.github/workflows/main.yml`: matrix wasm32/wasm64 x chromium/firefox/webkit,
-  dev env (`environment-dev.yml`) from `setup-micromamba` (cached) ->
-  `BUILD_ENV_PREFIX` ->
-  `./build_local.sh test <wasm>`, again with `DISABLE_JSPI=1`, plus a
-  `TEST_ENV=no-numpy` run. Jobs have a timeout (a failed suspension hangs).
-- `.github/workflows/bench.yml`: `./build_local.sh bench <wasm>` for wasm32 /
-  wasm64 x chromium / firefox / webkit (main thread + worker), on pushes to
-  `main`, PRs and manually; `benchmarks/report.py` writes the results as
+  `pixi run test <wasm> <browser>`, again with JSPI off, plus a no-numpy
+  run (main thread). Jobs have a timeout (a failed suspension hangs).
+- `.github/workflows/npm.yml`: `pixi run test-npm`, uploads
+  `build_root/npm/tgz/*.tgz`, publishes it on release tags.
+- `.github/workflows/bench.yml`: `pixi run bench <wasm> <browser>` for wasm32 /
+  wasm64 x chromium / firefox / webkit (main thread + worker), manual only
+  (workflow_dispatch); `benchmarks/report.py` writes the results as
   markdown tables to the job summary, the json files are artifacts.
-- `.github/workflows/docs.yml`: `./build_local.sh docs`,
+- `.github/workflows/docs.yml`: `pixi run docs docs_build/html`,
   deploys `docs_build/html` to GitHub Pages from `main`.
 
 

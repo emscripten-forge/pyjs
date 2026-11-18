@@ -1,25 +1,20 @@
 name: benchmarks
 
-# The benchmarks (benchmarks/, build_local.sh bench) for every architecture x
+# The benchmarks (benchmarks/, pixi run bench) for every architecture x
 # browser, main thread + worker. The results are shown on the summary page of
 # each job (benchmarks/report.py) and uploaded as json. CI runners are shared
 # and noisy: compare the rows of one run, not absolute numbers across runs.
+# Manual only (Actions -> benchmarks -> Run workflow): nothing uses the
+# results automatically.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  pull_request:
 
 # a new run (push / PR update) cancels the older run of the same workflow on
 # the same branch / PR (release tags: each tag its own group, never cancelled)
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
-defaults:
-  run:
-    shell: bash -l {0}
 
 jobs:
   bench:
@@ -33,31 +28,26 @@ jobs:
         wasm: [wasm32, wasm64]
         browser: [chromium, firefox, webkit]
 
-    env:
-      BROWSERS: ${{ matrix.browser }}
-      PLAYWRIGHT_INSTALL_ARGS: --with-deps
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install micromamba and the dev env
-        uses: mamba-org/setup-micromamba@v2
+      - uses: prefix-dev/setup-pixi@v0.11.3
         with:
-          environment-file: environment-dev.yml
-          environment-name: pyjs-build
-          cache-environment: true
-          init-shell: bash
+          pixi-version: v0.84.2
+          cache: true
+
+      - name: Install the browser
+        run: pixi run playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run the benchmarks (main thread + worker)
-        run: |
-          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          ./build_local.sh bench ${{ matrix.wasm }}
+        run: pixi run bench ${{ matrix.wasm }} ${{ matrix.browser }}
 
+      # (a fresh runner: the json files of this run only)
       - name: Report
         if: always()
         run: |
           shopt -s nullglob
-          results=(build_root/benchmarks/${{ matrix.wasm }}/latest_*.json)
+          results=(build_root/benchmarks/${{ matrix.wasm }}/*.json)
           if [ ${#results[@]} -eq 0 ]; then
             echo "no benchmark results" >> "$GITHUB_STEP_SUMMARY"
             exit 0

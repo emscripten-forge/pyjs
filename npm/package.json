@@ -9,7 +9,6 @@
   "devDependencies": {
     "@emscripten-forge/mambajs": "0.24.0",
     "@emscripten-forge/mambajs-core": "0.24.0",
-    "@emscripten-forge/untarjs": "5.4.1",
     "esbuild": "0.28.2",
     "typescript": "5.9.3"
   }

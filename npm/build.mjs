@@ -1,10 +1,12 @@
-// Assemble the pyjs npm package (called by build_local.sh npm).
+// Assemble the pyjs npm package (pixi task `npm-package`).
 //
-//   node build.mjs --out <package dir> --name <npm name> --version <version>
+//   node build.mjs --out <package dir> [--name <npm name>] [--version <version>]
 //                  --stage wasm32=<dir> [--stage wasm64=<dir>] [--no-minify]
 //
 // <dir> of a stage: pyjs_runtime_browser.{js,wasm} + the empack packed env
-// (empack_env_meta.json + tarballs), see build_local.sh.
+// (empack_env_meta.json + tarballs), see the pixi task `pack`.
+// Defaults: the name from $NPM_PACKAGE_NAME (else @derthorsten/pyjs), the
+// version from `project(pyjs VERSION ...)` in CMakeLists.txt.
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -12,6 +14,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** the version of `project(pyjs VERSION x.y.z)` in CMakeLists.txt */
+function cmakeVersion() {
+  const cmake = fs.readFileSync(path.join(here, "..", "CMakeLists.txt"), "utf8");
+  const match = cmake.match(/project\(pyjs VERSION ([0-9.]+)/);
+  if (!match) throw new Error("no `project(pyjs VERSION ...)` in CMakeLists.txt");
+  return match[1];
+}
 
 function parseArgs(argv) {
   const args = { stages: {}, minify: true };
@@ -26,10 +36,11 @@ function parseArgs(argv) {
     } else if (a === "--no-minify") args.minify = false;
     else throw new Error(`unknown argument ${a}`);
   }
-  for (const k of ["out", "name", "version"]) {
-    if (!args[k]) throw new Error(`--${k} is required`);
-  }
-  if (!args.stages.wasm32) throw new Error("--stage wasm32=<dir> is required");
+  if (!args.out) throw new Error("--out is required");
+  args.name ??= process.env.NPM_PACKAGE_NAME || "@derthorsten/pyjs";
+  args.version ??= cmakeVersion();
+  // (a package of one architecture is fine, e.g. `pixi run test wasm64`)
+  if (Object.keys(args.stages).length === 0) throw new Error("--stage <arch>=<dir> is required");
   return args;
 }
 
@@ -54,15 +65,16 @@ await build({
   chunkNames: "[name]-[hash]",
   minify: args.minify,
   legalComments: "linked",
-  // untarjs imports its wasm as a module; we locate it ourselves (assets/untarjs.wasm)
+  // mambajs-core (in the lazy solver chunk) bundles an untarjs glue which
+  // imports its wasm as a module: never used (pyjs extracts with the runtime)
   loader: { ".wasm": "empty" },
-  // node-only branches of the emscripten glue of untarjs (never run in a
-  // browser) + our runtime loader (shipped unminified, see src/load-runtime.js)
+  // node-only branches of that emscripten glue (never run in a browser) + our
+  // runtime loader (shipped unminified, see src/load-runtime.js)
   external: ["fs", "path", "crypto", "url", "module", "worker_threads", "./load-runtime.js"],
   define: {
     __PYJS_PACKAGE_NAME__: JSON.stringify(args.name),
     __PYJS_PACKAGE_VERSION__: JSON.stringify(args.version),
-    // the emscripten glue of untarjs checks `typeof __filename`, which webpack
+    // the emscripten glue in mambajs-core checks `typeof __filename`, which webpack
     // rewrites (-> "__filename is not defined" in the browser)
     __filename: "undefined",
     __dirname: "undefined",
@@ -77,12 +89,29 @@ await build({
   logLevel: "warning",
 });
 fs.copyFileSync(path.join(here, "src/load-runtime.js"), path.join(dist, "load-runtime.js"));
+// the `lock` command of the CLI (node): the solver bundled in (no chunks)
+await build({
+  absWorkingDir: here,
+  entryPoints: { lock: "src/lock.ts" },
+  outdir: path.join(args.out, "bin"),
+  outExtension: { ".js": ".mjs" },
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  target: "node20",
+  minify: args.minify,
+  legalComments: "none",
+  loader: { ".wasm": "empty" },
+  define: {
+    __PYJS_PACKAGE_NAME__: JSON.stringify(args.name),
+    __PYJS_PACKAGE_VERSION__: JSON.stringify(args.version),
+  },
+  // (some bundled cjs code calls require: a real one in the ESM output)
+  banner: { js: "import { createRequire as __pyjsRequire } from 'node:module'; const require = __pyjsRequire(import.meta.url);" },
+  logLevel: "warning",
+});
 fs.mkdirSync(path.join(args.out, "assets"), { recursive: true });
-fs.copyFileSync(
-  path.join(here, "node_modules/@emscripten-forge/untarjs/lib/unpack.wasm"),
-  path.join(args.out, "assets", "untarjs.wasm")
-);
-// `npx <package> copy-assets <dir>`
+// `npx <package> copy-assets <dir>` / `lock`
 fs.mkdirSync(path.join(args.out, "bin"), { recursive: true });
 fs.copyFileSync(path.join(here, "bin/pyjs.mjs"), path.join(args.out, "bin", "pyjs.mjs"));
 fs.chmodSync(path.join(args.out, "bin", "pyjs.mjs"), 0o755);
@@ -114,7 +143,7 @@ for (const [arch, stage] of Object.entries(args.stages)) {
 // 4. package.json, README, LICENSE
 const python = (() => {
   const meta = JSON.parse(
-    fs.readFileSync(path.join(args.stages.wasm32, "empack_env_meta.json"), "utf8")
+    fs.readFileSync(path.join(Object.values(args.stages)[0], "empack_env_meta.json"), "utf8")
   );
   return meta.packages.find((p) => p.name === "python")?.version;
 })();

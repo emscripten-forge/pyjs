@@ -59,16 +59,16 @@ console.log(py_list.get(0)) // same as py_list[0] on the python side
 ## Development
 
 Building, testing, benchmarking and building the docs all go through
-`build_local.sh` (only [micromamba](https://mamba.readthedocs.io) is needed),
-the CI uses the same script:
+[pixi](https://pixi.sh) tasks (only pixi >= 0.84 is needed), the CI runs the
+same tasks:
 
 ```bash
-./build_local.sh build wasm32           # build pyjs
-./build_local.sh test wasm64            # build + run the tests in the browser
-BROWSERS="chromium firefox webkit" ./build_local.sh test wasm32
-./build_local.sh bench wasm32           # FFI / asyncio benchmarks
-./build_local.sh docs                   # sphinx docs + jupyterlite
-./build_local.sh npm                    # npm package
+pixi run build wasm32                   # build pyjs
+pixi run test wasm64                    # build + run the tests in the browser
+pixi run test wasm32 "chromium firefox webkit"
+pixi run bench wasm32                   # FFI / asyncio benchmarks
+pixi run docs                           # sphinx docs + playground
+pixi run npm-package                    # npm package
 ```
 
 See [development](https://emscripten-forge.github.io/pyjs/development.html)

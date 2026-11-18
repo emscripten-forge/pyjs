@@ -1,7 +1,7 @@
 """The pyjs benchmarks, run inside the browser.
 
 The test driver (`pyjs_test_driver run ... --entry benchmarks`, see
-`build_local.sh bench <wasm>`) writes this directory into the emscripten file
+`pixi run bench <wasm>`) writes this directory into the emscripten file
 system and awaits `main(options)`. Discovers ``bench_*`` functions (sync or
 async) in ``bench_*.py`` modules next to this file, runs them with the
 async-aware harness, prints a table and returns the results (the driver

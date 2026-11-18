@@ -12,15 +12,23 @@ the layout rattler-build writes to its output dir:
     emscripten-wasm64/...
 
 The noarch package (a python module) depends on the arch package (a data file
-naming its arch), like `pyb2d3-sandbox` on `pyb2d3`. A fake `tabulate` 0.0.1
+naming its arch), like a pure python package on top of a compiled extension
+(`seaborn` on `matplotlib-base`). A fake `tabulate` 0.0.1
 (conda-forge has 0.9.x) tests that the self-hosted channel has priority (a CI
 build of a package must win over the published one).
+
+For pinned installs (by URL, no repodata needed; tests/npm/test_install.py):
+the arch package has a text file with a prefix placeholder (relocation), a
+version 2.0.0 of it is not in the repodata (replacing removes old files), and
+`pyjs-test-channel-conda` is a noarch package in the `.conda` format.
 """
 
 import hashlib
 import io
 import json
 import tarfile
+import zipfile
+from compression import zstd
 
 PREFIX = "/test-channel"
 VERSION = "1.0.0"
@@ -31,6 +39,9 @@ ARCHS = ["wasm32", "wasm64"]
 # of the self-hosted channel over the default ones
 SHADOW_NAME = "tabulate"
 SHADOW_VERSION = "0.0.1"
+# a text file with this placeholder: installed with it replaced by the prefix "/"
+PLACEHOLDER = "/opt/pyjs-test-placeholder-prefix"
+CONDA_NAME = "pyjs-test-channel-conda"
 
 PY_MODULE = '''\
 """installed from the self-hosted test channel"""
@@ -47,10 +58,10 @@ def arch_of_dependency():
 '''
 
 
-def _tar_bz2(files):
-    """a .tar.bz2 conda package from {path: bytes}"""
+def _tar(files, mode):
+    """a tar archive (mode "w:bz2" / "w") from {path: bytes}"""
     buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:bz2") as tar:
+    with tarfile.open(fileobj=buf, mode=mode) as tar:
         for path, data in sorted(files.items()):
             info = tarfile.TarInfo(path)
             info.size = len(data)
@@ -59,20 +70,42 @@ def _tar_bz2(files):
     return buf.getvalue()
 
 
-def _package(index, payload):
-    """conda package bytes: payload files + info/index.json + info/paths.json"""
+def _info(index, payload, placeholders):
+    """{info/...: bytes}: index.json, paths.json (with the placeholders), files"""
     paths = {
         "paths_version": 1,
         "paths": [
-            {"_path": p, "path_type": "hardlink", "sha256": hashlib.sha256(d).hexdigest(), "size_in_bytes": len(d)}
+            {
+                "_path": p,
+                "path_type": "hardlink",
+                "sha256": hashlib.sha256(d).hexdigest(),
+                "size_in_bytes": len(d),
+                **({"prefix_placeholder": PLACEHOLDER, "file_mode": "text"} if p in placeholders else {}),
+            }
             for p, d in sorted(payload.items())
         ],
     }
-    files = dict(payload)
-    files["info/index.json"] = json.dumps(index).encode()
-    files["info/paths.json"] = json.dumps(paths).encode()
-    files["info/files"] = "".join(f"{p}\n" for p in sorted(payload)).encode()
-    return _tar_bz2(files)
+    return {
+        "info/index.json": json.dumps(index).encode(),
+        "info/paths.json": json.dumps(paths).encode(),
+        "info/files": "".join(f"{p}\n" for p in sorted(payload)).encode(),
+    }
+
+
+def _package(index, payload, placeholders=()):
+    """a .tar.bz2 conda package: payload files + info/"""
+    return _tar({**payload, **_info(index, payload, placeholders)}, "w:bz2")
+
+
+def _conda_package(stem, index, payload):
+    """a .conda package: a zip with pkg-<stem>.tar.zst and info-<stem>.tar.zst"""
+    info = {k[len("info/"):]: v for k, v in _info(index, payload, ()).items()}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
+        z.writestr("metadata.json", json.dumps({"conda_pkg_format_version": 2}))
+        z.writestr(f"pkg-{stem}.tar.zst", zstd.compress(_tar(payload, "w")))
+        z.writestr(f"info-{stem}.tar.zst", zstd.compress(_tar(info, "w")))
+    return buf.getvalue()
 
 
 def _repodata(subdir, packages):
@@ -129,6 +162,13 @@ def build():
         "noarch", {noarch_file: (noarch_index, noarch_data), shadow_file: (shadow_index, shadow_data)}
     )
 
+    # pinned only (not in the repodata): a noarch package in the .conda format
+    conda_stem = f"{CONDA_NAME}-{VERSION}-py_0"
+    conda_index = {**noarch_index, "name": CONDA_NAME, "depends": ["python"]}
+    out[f"{PREFIX}/noarch/{conda_stem}.conda"] = _conda_package(
+        conda_stem, conda_index, {"site-packages/pyjs_test_conda.py": b"FORMAT = 'conda'\n"}
+    )
+
     for arch in ARCHS:
         subdir = f"emscripten-{arch}"
         index = {
@@ -142,7 +182,17 @@ def build():
             "timestamp": 0,
         }
         filename = f"{ARCH_NAME}-{VERSION}-0.tar.bz2"
-        data = _package(index, {"share/pyjs_test_channel/arch.txt": arch.encode()})
+        payload = {
+            "share/pyjs_test_channel/arch.txt": arch.encode(),
+            "share/pyjs_test_channel/prefix.txt": f"{PLACEHOLDER}/share/pyjs_test_channel\n".encode(),
+            "share/pyjs_test_channel/only_in_v1.txt": b"v1",
+        }
+        data = _package(index, payload, placeholders={"share/pyjs_test_channel/prefix.txt"})
         out[f"{PREFIX}/{subdir}/{filename}"] = data
         out[f"{PREFIX}/{subdir}/repodata.json"] = _repodata(subdir, {filename: (index, data)})
+
+        # pinned only: version 2.0.0, other files (replacing v1 removes its files)
+        v2_index = {**index, "version": "2.0.0"}
+        v2_payload = {"share/pyjs_test_channel/arch.txt": arch.encode(), "share/pyjs_test_channel/only_in_v2.txt": b"v2"}
+        out[f"{PREFIX}/{subdir}/{ARCH_NAME}-2.0.0-0.tar.bz2"] = _package(v2_index, v2_payload)
     return out

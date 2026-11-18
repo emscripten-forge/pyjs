@@ -1,76 +1,89 @@
 # Development
 
 Everything (environments, build, tests, benchmarks, docs) goes through
-`build_local.sh`, which is also what the CI runs. It only needs
-[micromamba](https://mamba.readthedocs.io) (or mamba).
+[pixi](https://pixi.sh) tasks (`pixi.toml`, pixi >= 0.84), which is also what
+the CI runs:
 
 ```bash
-./build_local.sh build|test|bench wasm32|wasm64 [--fresh]
-./build_local.sh npm [--test] [--fresh]
-./build_local.sh docs [--fresh]
+pixi run build wasm32          # wasm32 | wasm64 | "wasm32 wasm64"
+pixi run test wasm32           # npm package of this arch + the tests
+pixi run bench wasm32
+pixi run npm-package           # wasm32 + wasm64
+pixi run test-npm              # + its full test
+pixi run docs
+pixi task list                 # all tasks with a description
 ```
 
-All environments and build directories live in `build_root/`:
+The steps are tasks depending on each other: `envs` → `configure` → `build`
+→ `pack` → `npm-package` → `test-page` → the tests. The environments
+(`pixi.lock`, in `.pixi/envs/`):
 
-| directory | environment file | content |
-|---|---|---|
-| `dev_prefix` | `environment-dev.yml` | native tools, one env for wasm32 and wasm64: emscripten, cmake, empack, node, playwright, sphinx |
-| `host_prefix_<wasm>` | `environment-host.yml` | emscripten env pyjs is built against and installed into |
-| `test_env_<name>_<wasm>` | (`TEST_PACKAGES` in `build_local.sh`, `TEST_ENV`) | emscripten env of the vanilla test pages |
-| `build_<wasm>` | | cmake build directory |
-| `pages/` | | test pages (see below) |
+| environment | content |
+|---|---|
+| `default` | native tools, one env for wasm32 and wasm64: emscripten, cmake, empack, node, playwright, sphinx |
+| `host-<wasm>` | emscripten env pyjs is built against (incl. libarchive for the runtime's extractor) |
+| `npm-env-<wasm>` | python + stdlib shipped in the npm package |
 
-`--fresh` deletes and recreates them. To work by hand (node / npm,
-empack, playwright, ...) activate the dev env:
-`micromamba activate build_root/dev_prefix`.
+The emscripten environments cannot run on the build machine: the task `envs`
+installs them with `pixi install --platform emscripten-<wasm>`. Build output
+goes to `build_root/` (`build_<wasm>/` = cmake build dir, `npm/`, `pages/`,
+...); `pixi run clean` deletes it. To work by hand (node / npm, empack,
+playwright, ...): `pixi shell`.
+
+A local recipe build (e.g. a new python from emscripten-forge/recipes): put
+its output dir first in `channels` of `pixi.toml`, then `pixi run ...`
+(re-solves `pixi.lock`).
 
 ## Tests
 
 ```bash
-./build_local.sh test wasm32
-BROWSERS="chromium firefox webkit" ./build_local.sh test wasm64
+pixi run test wasm32
+pixi run test wasm64 "chromium firefox webkit"
+# test <arch> [browsers] [modes] [numpy|no-numpy] [jspi|no-jspi]
+pixi run test wasm32 chromium main no-numpy                 # without numpy
+pixi run test wasm32 chromium "main worker" numpy no-jspi   # JSPI switched off
 ```
 
-One test suite (`tests/`), run inside the browser by `tests/main.py`:
+`test` builds the npm package of that architecture and runs the suite on it;
+`test-npm` runs it on both architectures, tests the `lock` CLI and runs the
+suite on apps built with the bundlers. Browsers: `chromium`, `firefox`,
+`webkit` (the engine of Safari); modes: `main`, `worker`. One test suite
+(`tests/`), run inside the browser by `tests/main.py`:
 
 | | | |
 |---|---|---|
 | `tests/js/test_*.js` | JavaScript tests of the Module API | ES modules, every exported `test_*(pyjs)` |
 | `tests/async/test_*.py` | async Python tests | own runner (pytest cannot await in the browser) |
 | `tests/sync/test_*.py` | sync Python tests | pytest |
+| `tests/npm/test_*.py` | the npm package: installs, archives, cache, progress, channels | own runner |
 
 It runs on **pages**, each a different way of loading pyjs, all with the same
 harness. `pyjs_test_driver` (in this repository) creates and runs them:
 
 ```bash
-# kinds: vanilla, npm, vite, webpack, rollup, esbuild, parcel
+# kinds: npm, vite, webpack, rollup, esbuild, parcel
 python -m pyjs_test_driver build-page <kind> --out <dir> ...
 
-# browsers: chromium, firefox, webkit; modes: main, worker
-python -m pyjs_test_driver run <dir> --browser <browser> \
-    --mode <mode> [--disable-jspi]
+# every browser x mode, then a summary
+python -m pyjs_test_driver run <dir> --browser chromium firefox \
+    --mode main worker [--disable-jspi]
 ```
 
-- `vanilla`: the raw runtime + an empack-packed env (the classic Module API,
-  as projects using pyjs as a static library load it), `./build_local.sh test`
-- `npm` and the bundler pages: the npm package, the test packages are
-  installed at runtime via mambajs, `./build_local.sh npm --test`
+- `npm`: the npm package; the test packages are solved and installed at
+  runtime, a package of the driver's test channel is pinned
+- the bundler pages: an app around the npm package, built with that bundler
 
 A page dir only has to follow a small contract: `index.html` reads its options
 from the url, brings up pyjs, runs the suite with the shared
 `pyjs_test_driver/web/harness.js` and sets `window.__pyjs_result`. `run` serves
 the page dir together with `tests/` and drives the browser (playwright).
 
-Env vars: `BROWSERS` (`chromium`, `firefox`, `webkit`, the latter is the
-engine of Safari), `MODES` (`main`, `worker`), `DISABLE_JSPI=1` (test like in
-a browser without JSPI), `TEST_ENV=no-numpy`.
-
 ## Benchmarks
 
 ```bash
-./build_local.sh bench wasm32
-BENCH_FILTER=async BROWSERS="chromium firefox" \
-    ./build_local.sh bench wasm32
+pixi run bench wasm32
+# bench <arch> [browsers] [modes] [filter]
+pixi run bench wasm32 "chromium firefox" "main worker" async
 ```
 
 The benchmarks in `benchmarks/` measure the Python ↔ JavaScript FFI and the
@@ -88,8 +101,8 @@ async def bench_asyncio_sleep_0(benchmark):
 ```
 
 The results are stored in
-`build_root/benchmarks/<wasm>/<stamp>_<browser>_<mode>.{log,json}`. They run
-on the vanilla page (`pyjs_test_driver run ... --entry benchmarks`).
+`build_root/benchmarks/<wasm>/<time>_<browser>_<mode>.json`. They run
+on the npm page (`pyjs_test_driver run ... --entry benchmarks`).
 `python benchmarks/report.py <json>...` turns them into markdown tables; the
 CI (`.github/workflows/bench.yml`) runs the benchmarks for every architecture
 and browser and shows these tables on the summary page of each job.
@@ -97,8 +110,9 @@ and browser and shows these tables on the summary page of each job.
 ## Documentation
 
 ```bash
-./build_local.sh docs
+pixi run docs                  # docs [out dir], default build_root/docs_html
 ```
 
 builds the npm package (deployed next to the html, the <a href="playground/index.html">playground</a>
-loads it) and the docs with Sphinx. The html ends up in `build_root/docs_html`.
+loads it), pins the playground's packages (`pyjs-lock.json`, no solver in the
+browser) and builds the docs with Sphinx.

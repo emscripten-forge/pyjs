@@ -1,4 +1,4 @@
-"""Benchmark results (json, see `build_local.sh bench`) as a markdown report.
+"""Benchmark results (json, see `pixi run bench`) as a markdown report.
 
     python benchmarks/report.py <result.json>... [--out report.md]
 

@@ -1,6 +1,6 @@
 # Sphinx configuration of the pyjs documentation.
 #
-# Build with `./build_local.sh docs`: builds the npm package of this repository
+# Build with `pixi run docs`: builds the npm package of this repository
 # (deployed next to the html, used by the playground), then sphinx.
 
 import os
@@ -121,7 +121,7 @@ def _fill_in_npm_package(app, docname, source):
 
 # -- deployed next to the html ----------------------------------------------------
 # _extra/: the playground (<html root>/playground/); PYJS_DOCS_EXTRA_DIR (set by
-# `build_local.sh docs`): the npm package built from this repository
+# `pixi run docs`): the npm package built from this repository
 # (<html root>/pyjs/), which the playground loads
 html_extra_path = ["_extra"]
 if os.environ.get("PYJS_DOCS_EXTRA_DIR"):

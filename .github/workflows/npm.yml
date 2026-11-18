@@ -1,6 +1,6 @@
 name: npm
 
-# The npm package (npm/, build_local.sh npm): built + tested on every push /
+# The npm package (npm/, pixi run test-npm): built + tested on every push /
 # PR, published on release tags (e.g. `4.1.0`, must equal the version in
 # CMakeLists.txt) or manually (workflow_dispatch with publish=true).
 #
@@ -28,10 +28,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    shell: bash -l {0}
-
 env:
   NPM_PACKAGE_NAME: ${{ vars.NPM_PACKAGE_NAME || '@derthorsten/pyjs' }}
 
@@ -42,33 +38,25 @@ jobs:
     # a failed JSPI suspension can hang the browser instead of failing
     timeout-minutes: 120
 
-    env:
-      BROWSERS: chromium firefox webkit
-      PLAYWRIGHT_INSTALL_ARGS: --with-deps
-
     steps:
       - uses: actions/checkout@v4
 
-      # one dev env (cached) for both architectures
-      - name: Install micromamba and the dev env
-        uses: mamba-org/setup-micromamba@v2
+      - uses: prefix-dev/setup-pixi@v0.11.3
         with:
-          environment-file: environment-dev.yml
-          environment-name: pyjs-build
-          cache-environment: true
-          init-shell: bash
+          pixi-version: v0.84.2
+          cache: true
 
-      # wasm32 + wasm64, main thread + module worker, offline + network
+      - name: Install the browsers
+        run: pixi run playwright install --with-deps chromium firefox webkit
+
       - name: Build and test the npm package
-        run: |
-          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          ./build_local.sh npm --test
+        run: pixi run test-npm
 
       - name: Upload the package
         uses: actions/upload-artifact@v4
         with:
           name: npm-package
-          path: build_root/npm/*.tgz
+          path: build_root/npm/tgz/*.tgz
           if-no-files-found: error
 
   publish:

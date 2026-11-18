@@ -12,11 +12,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    shell: bash -l {0}
-
-
 jobs:
 
   test-browser:
@@ -32,45 +27,29 @@ jobs:
         wasm: [wasm32, wasm64]
         browser: [chromium, firefox, webkit]
 
-    env:
-      BROWSERS: ${{ matrix.browser }}
-      # install the system libraries the browser needs (via apt)
-      PLAYWRIGHT_INSTALL_ARGS: --with-deps
-
     steps:
       - uses: actions/checkout@v4
 
-      # creates (and caches) the dev env (incl. playwright), build_local.sh
-      # uses it via BUILD_ENV_PREFIX and creates the host / test envs itself
-      - name: Install micromamba and the dev env
-        uses: mamba-org/setup-micromamba@v2
+      # pixi + the default (dev) environment from pixi.lock, cached; the
+      # emscripten environments are installed by the tasks
+      - uses: prefix-dev/setup-pixi@v0.11.3
         with:
-          # one dev env for wasm32 and wasm64 (build_local.sh sets -m64)
-          environment-file: environment-dev.yml
-          environment-name: pyjs-build
-          cache-environment: true
-          init-shell: bash
+          pixi-version: v0.84.2
+          cache: true
+
+      # the browser + the system libraries it needs (apt)
+      - name: Install the browser
+        run: pixi run playwright install --with-deps ${{ matrix.browser }}
 
       # one build for all browsers: JSPI (pyjs.run_sync) is used when the browser
       # supports it (needs python with the wasm-gc call trampoline,
       # emscripten-forge python >= build 6)
       - name: Build and test (browser main thread + worker)
-        run: |
-          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          ./build_local.sh test ${{ matrix.wasm }}
+        run: pixi run test ${{ matrix.wasm }} ${{ matrix.browser }}
 
       # the same build, JSPI switched off at runtime (like a browser without JSPI)
       - name: Test without JSPI (browser main thread + worker)
-        env:
-          DISABLE_JSPI: "1"
-        run: |
-          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          ./build_local.sh test ${{ matrix.wasm }}
+        run: pixi run test ${{ matrix.wasm }} ${{ matrix.browser }} "main worker" numpy no-jspi
 
       - name: Test without numpy (browser main thread)
-        env:
-          TEST_ENV: no-numpy
-          MODES: main
-        run: |
-          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          ./build_local.sh test ${{ matrix.wasm }}
+        run: pixi run test ${{ matrix.wasm }} ${{ matrix.browser }} main no-numpy

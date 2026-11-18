@@ -2,7 +2,7 @@
 // initialized pyjs, it writes the test suite (tests/ or benchmarks/, served
 // by the driver) into the emscripten file system and awaits its
 // `main(options)` (tests/main.py, benchmarks/main.py). Pages only differ in
-// how they create pyjs (page.js: vanilla runtime, npm package, bundled app).
+// how they create pyjs (page.js: npm package, bundled app).
 
 /** the options of a run: the query string of the page (set by the driver) */
 export function optionsFromUrl(search = globalThis.location.search) {

@@ -16,9 +16,10 @@ CDN too.
   );
 
   // python + stdlib; conda packages (here numpy)
-  // are installed at runtime
+  // are solved and installed at runtime
   const pyjs = await initializePyjsRuntime({
-    extraPackages: ["numpy"],
+    packages: ["numpy"],
+    onProgress: ({ item, phase, done, total }) => console.log(item, phase, done, total),
   });
 
   pyjs.exec("import numpy as np; print(np.arange(10).sum())");
@@ -32,6 +33,9 @@ CDN too.
 - Import `dist/index.js` (wasm32) or `dist/wasm64.js` directly, not jsDelivr's
   `/+esm` variant: the runtime files are loaded relative to the module
   (`import.meta.url`), `/+esm` re-bundles it.
+- Faster: pin the packages at build time (`npx @PYJS_NPM_PACKAGE@ lock numpy`)
+  and pass them as `urls`: no solver and no repodata download in the browser.
+  Package files are cached (Cache Storage), a second visit takes them from there.
 - It also works in module workers
   (`new Worker(url, { type: "module" })`) and in the devtools console
   (`await import(...)`).

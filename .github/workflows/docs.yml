@@ -15,11 +15,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    shell: bash -l {0}
-
-
 jobs:
 
   build_pyjs_docs:
@@ -30,23 +25,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # creates (and caches) the dev env (incl. sphinx),
-      # build_local.sh uses it via BUILD_ENV_PREFIX
-      - name: Install micromamba and the dev env
-        uses: mamba-org/setup-micromamba@v2
+      - uses: prefix-dev/setup-pixi@v0.11.3
         with:
-          environment-file: environment-dev.yml
-          environment-name: pyjs-build
-          cache-environment: true
-          init-shell: bash
+          pixi-version: v0.84.2
+          cache: true
 
       # builds the npm package (wasm32 + wasm64, deployed next to the html for
       # the playground) and the sphinx docs
       - name: Build the docs
-        run: |
-          export BUILD_ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/pyjs-build"
-          export DOCS_OUT_DIR="$GITHUB_WORKSPACE/docs_build/html"
-          ./build_local.sh docs
+        run: pixi run docs docs_build/html
 
       ################################################################
       # upload to github pages

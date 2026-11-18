@@ -79,37 +79,52 @@ This will create a tarball for each package in the environment and a `empack_env
 
 #### The html/JavaScript code
 
-The last step is to create a html file that loads the pyjs runtime and the packed environment.
+The last step is to create a html file that loads the pyjs runtime and the
+packed environment. pyjs itself does not fill the file system: the page
+writes the environment into it (here with the runtime's extractor,
+`_extract_archive`, which unpacks tar / zip archives compressed with gzip,
+bzip2 or zstd), loads shared libraries if it runs in the main thread, and then
+starts Python with `startPython()`.
 
 ```html
 <!DOCTYPE html>
 <html>
   <head>
     <title>Pyjs Example</title>
-    <script src="pyjs_runtime_browser.js"></script> 
+    <script src="pyjs_runtime_browser.js"></script>
     <script>
       async function runPyjs() {
+        const pyjs = await createModule({
+          // location of the wasm file on the server
+          locateFile: (file) => `./${file}`,
+        });
 
-        let locateFile = function(filename){
-            if(filename.endsWith('pyjs_runtime_browser.wasm')){
-                // location of the wasm file on the server,
-                // relative to the pyjs_runtime_browser.js file
-                return `./pyjs_runtime_browser.wasm`;
-            }
-        };
-        let pyjs = await createModule({locateFile});
-        await pyjs.bootstrap_from_empack_packed_environment(
-            "./empack_env_meta.json", // location of the environment 
-                                      // meta file on the server
-            "."                       // location of the packed 
-                                      // environment on the server
-        );
+        // fill the file system: the pre-relocated tarballs of the packed env
+        const meta = await (await fetch("./empack_env_meta.json")).json();
+        const sharedLibs = [];
+        for (const pkg of [...meta.packages, ...(meta.mounts ?? [])]) {
+          const bytes = new Uint8Array(await (await fetch(`./${pkg.filename}`)).arrayBuffer());
+          sharedLibs.push(...pyjs._extract_archive(bytes, "/", {}).sharedLibs);
+        }
 
-        // now we can use pyjs
+        pyjs.startPython();
+
+        // main thread: load the shared libraries asynchronously now (a large
+        // library cannot be compiled synchronously at `import` time there);
+        // in a worker this is not needed. After startPython: loading an
+        // extension module runs its static initializers (python C API)
+        for (const path of sharedLibs) {
+          const stack = pyjs.stackSave();
+          const pid = pyjs._emscripten_dlopen_promise(pyjs.stringToUTF8OnStack(path), 2 /* RTLD_NOW */);
+          pyjs.stackRestore(stack);
+          const promise = pyjs.getPromise(pid);
+          pyjs.promiseMap.free(pid);
+          await promise;
+        }
+
         pyjs.eval("print('hello world')");
       }
       runPyjs();
-
     </script>
   </head>
   <body>
@@ -117,6 +132,12 @@ The last step is to create a html file that loads the pyjs runtime and the packe
   </body>
 </html>
 ```
+
+`startPython()` is synchronous and starts the interpreter once (later calls
+do nothing): it needs the
+standard library at `/lib/pythonX.Y` (an error otherwise) and sets up
+`exec`, `eval`, `exec_eval`, `async_exec_eval`, `to_js`, ...;
+`startPython({env: {NAME: "value"}})` sets extra environment variables.
 
 ## Embedding pyjs in a C++ program
 
@@ -167,4 +188,15 @@ target_link_options(my_target
     PUBLIC "SHELL: -lembind"
 )
 ```
-The environment is packed with [`empack`](https://github.com/emscripten-forge/empack) and loaded as described [above](#pack-the-environment).
+Such a program fills the file system itself (the archive extractor is part of
+pyjs' own runtime only, not of the static library), e.g. with
+[mambajs](https://github.com/emscripten-forge/mambajs) or `FS.writeFile`, and
+then calls `Module.startPython()`. Shared libraries are not preloaded by
+pyjs: in the main thread, load them after `startPython()` and before importing
+them (see above).
+
+```{note}
+pyjs 5 removed the classic initialization API
+(`bootstrap_from_empack_packed_environment`, `init_phase_1` / `init_phase_2`,
+`_untar`, `_install_conda_file`): fill the file system, then `startPython()`.
+```

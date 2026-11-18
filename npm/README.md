@@ -12,7 +12,7 @@ Works in the main thread and in (module) web workers.
 import { initializePyjsRuntime } from "@PACKAGE_NAME@";          // wasm32
 // import { initializePyjsRuntime } from "@PACKAGE_NAME@/wasm64"; // wasm64 (memory64)
 
-const pyjs = await initializePyjsRuntime({ extraPackages: ["numpy"] });
+const pyjs = await initializePyjsRuntime({ packages: ["numpy"] });
 
 pyjs.exec("import numpy as np");
 console.log(pyjs.eval("int(np.arange(10).sum())"));          // 45
@@ -21,8 +21,25 @@ console.log(await pyjs.async_exec_eval(
   "import asyncio\nawait asyncio.sleep(0)\n'done'"));        // done
 
 await pyjs.installPackages(["regex"]);                       // later installs
-await pyjs.installPackages(["scipy"], { verbose: true });    // + mambajs log (or { logger })
+await pyjs.installPackages(["scipy"], { verbose: true });    // + solver log (or { logger })
 ```
+
+Faster: pin the packages at build time, no solver in the browser:
+
+```bash
+npx @PACKAGE_NAME@ lock numpy pandas -o pyjs-lock.json
+```
+```js
+const pyjs = await initializePyjsRuntime({
+  urls: lock.wasm32,                              // [{url, sha256}] from pyjs-lock.json
+  onProgress: ({ item, phase, done, total }) => console.log(item, phase, done, total),
+});
+```
+
+Installed packages are cached in Cache Storage as their final layout, and
+python's bytecode with them: a second visit only untars them, and imports do
+not compile the sources again. Several workers: `compileRuntime()` once, pass
+it as `wasmModule`.
 
 Directly from a CDN, no bundler:
 
@@ -46,14 +63,22 @@ The returned object is the pyjs runtime (the emscripten `Module`): `exec`,
 
 | option | default | |
 |---|---|---|
-| `extraPackages` | `[]` | conda packages installed before python starts |
-| `channels` | emscripten-forge 6x, conda-forge | channels for extra packages |
+| `packages` | `[]` | conda package specs, solved + installed before python starts |
+| `urls` | `[]` | pinned conda packages (`{url, sha256?}` / URL strings), no solver |
+| `archives` | `[]` | archives (`{url, path}`: tar / zip, gzip / bzip2 / zstd) unpacked before python starts |
+| `files` | `[]` | files (`{path, data}` / `{path, url}`) written before python starts |
+| `channels` | emscripten-forge 6x, conda-forge | channels the specs are solved against |
+| `cache` | `true` | package cache in Cache Storage (`false`, or a cache name) |
+| `bytecodeCache` | `true` (with `cache`) | keep python's `.pyc` files of the packages for the next visit |
+| `verifySha256` | `false` | check sha256 values where given |
+| `onProgress` | | `{item, phase, done, total}`: solve / download / cached / extract / link / start |
+| `wasmModule` | | the runtime compiled already (`compileRuntime()`) |
 | `assetsUrl` | `assets/` next to the module | url of a self-hosted copy of `assets/` (`copy-assets`) |
 | `cdnUrl` | jsDelivr, this exact version | where `assets/` is loaded from when not next to the module |
 | `cdnFallback` | `true` | `false`: error instead of loading from `cdnUrl` |
 | `preloadSharedLibs` | main thread: `true`, worker: `false` | preload `.so` files of packages |
 | `print` / `printErr` | `console.log` / `console.warn` | stdout / stderr |
-| `logger`, `verbose` | silent | progress messages |
+| `logger`, `verbose` | silent | solver messages |
 
 ## With a bundler (Vite, webpack, Rollup, esbuild, Parcel)
 

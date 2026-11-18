@@ -4,9 +4,7 @@ Every page dir fulfills the page contract (see driver.py): an `index.html`
 that brings up pyjs and runs the suite with the shared `web/harness.js`.
 The kinds only differ in how pyjs is created:
 
-* vanilla: the raw emscripten output + an empack-packed env (the classic
-  Module API, how projects using pyjs as a static library load it)
-* npm: the npm package (test packages installed at runtime via mambajs)
+* npm: the npm package (test packages solved and installed at runtime)
 * vite / webpack / rollup / esbuild / parcel: an app built with that bundler
   around the npm package (main thread only)
 """
@@ -19,7 +17,7 @@ import tarfile
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent / "web"
-# files of the vanilla / npm pages (bundler pages bundle their own entry)
+# files of the npm pages (bundler pages bundle their own entry)
 CONTRACT_FILES = ["index.html", "harness.js", "worker.js"]
 
 BUNDLERS = {
@@ -81,13 +79,6 @@ def copy_contract_files(out, page_js):
     (out / "page.js").write_text(page_js)
 
 
-def build_vanilla(out, assets):
-    """page from `assets`: pyjs_runtime_browser.{js,wasm} + an empack-packed env"""
-    out = fresh_dir(out)
-    shutil.copytree(assets, out, dirs_exist_ok=True)
-    copy_contract_files(out, (WEB / "vanilla_page.js").read_text())
-
-
 def build_npm(out, package, arch, packages):
     """page from the npm package dir (copied to pyjs/), entry of `arch`"""
     out = fresh_dir(out)
@@ -100,8 +91,11 @@ def build_npm(out, package, arch, packages):
 
 
 def build_bundler(bundler, out, tgz, packages, work_dir):
-    """page = the output of `bundler` for an app around the npm package (`tgz`)"""
+    """page = the output of `bundler` for an app around the npm package (`tgz`:
+    the packed package, or the directory with it)"""
     tgz = Path(tgz).resolve()
+    if tgz.is_dir():
+        (tgz,) = tgz.glob("*.tgz")
     with tarfile.open(tgz) as tar:
         name = json.load(tar.extractfile("package/package.json"))["name"]
 

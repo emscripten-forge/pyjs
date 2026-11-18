@@ -1,7 +1,7 @@
 // Run buttons for the Python and JavaScript code snippets of the docs.
 //
 // pyjs itself runs them: the npm package built from this repository is
-// deployed next to the html (<html root>/pyjs/, see build_local.sh docs) and
+// deployed next to the html (<html root>/pyjs/, see `pixi run docs`) and
 // loaded on the first click. Python snippets share one scope per page (like a
 // notebook), JavaScript snippets get `pyjs` (the initialized runtime). The
 // boxes are editable. Snippets install the packages they need themselves

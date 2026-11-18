@@ -1,9 +1,15 @@
-"""Complete an empack_env_meta.json for the npm package (build_local.sh npm).
+"""Add `channels` and `specs` to the empack_env_meta.json of the npm package
+(pixi task `pack`).
 
-mambajs (`empackLockToMambajsLock`) needs the channels of the environment, and
-the specs are the base of every later solve (`installPackages`): python is
-pinned to the exact build shipped with the package, so the solver never
-replaces the running interpreter.
+`empack pack env` writes the file with the packages of the packed python
+environment only. The npm package also solves against it at runtime
+(`packages` / `installPackages`, mambajs: `empackLockToMambajsLock`), which
+needs two more keys, written into the same file:
+
+- `channels`: where the environment came from (mambajs needs them)
+- `specs`: the base requirements of every later solve; python is pinned to
+  the exact build shipped with the package, so the solver never replaces the
+  running interpreter
 
     python npm_env_meta.py <empack_env_meta.json> <channel> [<channel> ...]
 """

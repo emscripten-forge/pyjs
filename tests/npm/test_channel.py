@@ -16,7 +16,8 @@ async def test_install_from_self_hosted_channel():
     )
     args = make_args("pyjs-test-channel-py", channel)
     installed = pyjs.to_py(await pyjs_core._module.installPackages(args[0], args[1]))
-    assert sorted(installed) == ["pyjs-test-channel-arch", "pyjs-test-channel-py"], installed
+    # the arch package is already installed (pinned at init by the npm page)
+    assert installed == ["pyjs-test-channel-py"], installed
 
     importlib.invalidate_caches()
     import pyjs_test_channel

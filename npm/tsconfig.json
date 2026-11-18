@@ -11,5 +11,7 @@
     "rootDir": "src",
     "outDir": "build/types"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // the node-only CLI code (bundled by esbuild, no public types)
+  "exclude": ["src/lock.ts"]
 }

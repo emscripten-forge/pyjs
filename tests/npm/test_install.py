@@ -189,5 +189,58 @@ async def test_compile_runtime_once():
     wasm_module = await package.compileRuntime()
     assert pyjs.js.Function("m", "return m instanceof WebAssembly.Module")(wasm_module)
     options = pyjs.js.Function("m", "return {wasmModule: m}")(wasm_module)
+    # (the resource timings of the second init only: the wasm is not fetched again)
+    pyjs.js.performance.clearResourceTimings()
     second = await package.initializePyjsRuntime(options)
     assert second.eval("6 * 7") == 42
+    fetched = pyjs.to_py(pyjs.js.Function("return performance.getEntriesByType('resource').map((e) => e.name)")())
+    assert any("empack_env_meta.json" in u for u in fetched), fetched  # (timings are recorded)
+    assert not any(u.endswith("pyjs_runtime_browser.wasm") for u in fetched), fetched
+
+
+# a worker getting the compiled runtime by postMessage: initializes pyjs with it
+# and answers with a python result (or the error)
+_RUNTIME_WORKER = """
+self.onmessage = async ({ data }) => {
+  try {
+    const { initializePyjsRuntime } = await import(data.url);
+    const pyjs = await initializePyjsRuntime({ wasmModule: data.wasmModule });
+    self.postMessage({ result: pyjs.eval("6 * 7") });
+  } catch (e) {
+    self.postMessage({ error: String(e && e.stack || e) });
+  }
+};
+"""
+
+_RUN_IN_WORKER = pyjs.js.Function(
+    "code",
+    "url",
+    "wasmModule",
+    """
+    const blob = new Blob([code], { type: "text/javascript" });
+    const worker = new Worker(URL.createObjectURL(blob), { type: "module" });
+    return new Promise((resolve) => {
+      worker.onmessage = ({ data }) => { worker.terminate(); resolve(data); };
+      worker.onerror = (e) => { worker.terminate(); resolve({ error: e.message || "worker error" }); };
+      worker.postMessage({ url, wasmModule });
+    });
+    """,
+)
+
+
+async def test_compiled_runtime_posted_to_a_worker():
+    """compileRuntime() in this thread, the module posted to a worker which
+    starts pyjs with it (the way to share one compile between workers)"""
+    if not pyjs.js.Function("return typeof document !== 'undefined'")():
+        return  # (main thread pages only: no nested worker needed)
+    entry = "wasm64" if ARCH == "wasm64" else "index"
+    url = str(pyjs.js.URL.new(f"/pyjs/dist/{entry}.js", pyjs.js.location.href).href)
+    if not (await pyjs.js.fetch(url, js({"method": "HEAD"}))).ok:
+        return  # (bundler pages have no unbundled package)
+    package = await pyjs.js.Function("url", "return import(url)")(url)
+    wasm_module = await package.compileRuntime()
+    async def run():
+        return await _RUN_IN_WORKER(_RUNTIME_WORKER, url, wasm_module)
+
+    answer = await asyncio.wait_for(run(), 120)  # (a hang guard only)
+    assert pyjs.to_py(pyjs.js.JSON.parse(pyjs.js.JSON.stringify(answer))) == {"result": 42}

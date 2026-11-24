@@ -6,26 +6,14 @@
 # The full license is in the file LICENSE, distributed with this software. #
 ############################################################################
 
-# pyjs cmake module
-# This module sets the following variables in your project::
+# pyjs cmake module: `find_package(pyjs)` defines
 #
-#   pyjs_FOUND - true if pyjs found on the system
-#   pyjs_INCLUDE_DIRS - the directory containing pyjs headers
-#   pyjs_PRE_JS_PATH - the pre-js path
-#   pyjs_PRE_JS_PATH - the post-js path
+#   pyjs_FOUND - true if pyjs was found
+#   pyjs       - the target of the static library. Linking it is all an
+#                emscripten main module needs: the JavaScript part of pyjs is
+#                inside the library (no --pre-js / --post-js files).
 @PACKAGE_INIT@
 
-set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR};${CMAKE_MODULE_PATH}")
-
-@PYJS_CONFIG_CODE@
-
-include(CMakeFindDependencyMacro)
-find_dependency(pybind11 @pybind11_REQUIRED_VERSION@)
-
-
-if (NOT TARGET pyjs)
-    include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
-    get_target_property(@PROJECT_NAME@_INCLUDE_DIR pyjs INTERFACE_INCLUDE_DIRECTORIES)
-    SET(@PROJECT_NAME@_PRE_JS_PATH  ${@PROJECT_NAME@_INCLUDE_DIR}/pyjs/pyjs_pre.js)
-    SET(@PROJECT_NAME@_POST_JS_PATH ${@PROJECT_NAME@_INCLUDE_DIR}/pyjs/pyjs_post.js)
-endif ()
+if(NOT TARGET pyjs)
+    include("${CMAKE_CURRENT_LIST_DIR}/pyjsTargets.cmake")
+endif()

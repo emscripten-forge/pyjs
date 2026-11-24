@@ -17,10 +17,11 @@ export function optionsFromUrl(search = globalThis.location.search) {
   };
 }
 
-/** a readable message for errors thrown by JS or (as {has_err, ...}) by python */
+/** a readable message for errors thrown by JS or by python (a PythonError:
+ * its message is the python traceback) */
 function errorText(e) {
-  if (e && typeof e === "object" && "has_err" in e) {
-    return `python error: ${e.message ?? ""} ${e.error ?? ""}`.trim();
+  if (e && e.name === "PythonError") {
+    return `python error (${e.type}):\n${e.message}`;
   }
   return String((e && e.stack) || e);
 }
@@ -46,11 +47,8 @@ export async function runSuite(createPyjs, options) {
     globalThis.pyjs = pyjs;
     const suiteUrl = new URL(`/${options.entry}`, globalThis.location.href).href;
     await writeSuite(pyjs, suiteUrl, options.entry);
-    // npm_package: pyjs is the npm package (it has installPackages): enables
-    // the tests of its own features (tests/npm)
-    const npmPackage = typeof pyjs.installPackages === "function";
-    const suiteOptions = JSON.stringify({ ...options, tests_url: suiteUrl, npm_package: npmPackage });
-    const resultJson = await pyjs.async_exec_eval(
+    const suiteOptions = JSON.stringify({ ...options, tests_url: suiteUrl });
+    const resultJson = await pyjs.runPythonAsync(
       `import json, sys\n` +
         `sys.path.insert(0, "/${options.entry}")\n` +
         `import main as _suite_main\n` +

@@ -18,9 +18,10 @@ import time
 import traceback
 from typing import Callable
 import js
-import pyjs_core
-import pyjs_core._module
 from typing import Any, Dict, List, Tuple, Union
+
+from .core import jspi_enabled
+from .ffi import create_proxy
 
 
 class _MacrotaskQueue:
@@ -74,16 +75,16 @@ class _MacrotaskQueue:
         return bool(cls._js_is_supported())
 
     def __init__(self):
-        from .core import create_callable, jspi_enabled
-
         self._queue = collections.deque()
-        # never deleted: the queue lives as long as its loop, ie forever
-        self._js_on_message, self._js_on_message_handle = create_callable(self._run_next)
+        # What JavaScript calls for each message: `_run_next`. A lasting proxy
+        # (create_proxy) that is never destroyed: the queue lives as long as
+        # its loop, ie forever.
+        self._js_on_message = create_proxy(self._run_next)
         if jspi_enabled():
-            # task steps may suspend (pyjs.run_sync), see pre_js/jspi.js
-            self._js_on_message = self._js_on_message_handle["py_call_promising"].bind(
-                self._js_on_message_handle
-            )
+            # With JSPI the callback is entered through `callPromising`, so
+            # that the task step it runs may suspend (pyjs.run_sync). `bind`
+            # because `callPromising` is a method: it needs the proxy as `this`.
+            self._js_on_message = self._js_on_message.callPromising.bind(self._js_on_message)
         self._post = self._js_make_poster(self._js_on_message)
 
     def push(self, fn: Callable[[], None]) -> None:
@@ -92,6 +93,35 @@ class _MacrotaskQueue:
 
     def _run_next(self) -> None:
         self._queue.popleft()()
+
+
+# Makes the JavaScript function given to `setTimeout` for `call_later`.
+# `f` is the PyProxy of a Python callable without arguments. The function calls
+# it once and destroys the proxy afterwards (so the callable can be freed).
+# `promising`: enter Python with a call that may suspend (JSPI, pyjs.run_sync);
+# such a call returns a promise, so errors arrive as rejection.
+# Nothing is returned and nothing is thrown: a timer has nobody to report to.
+_js_once_callback = js.Function(
+    "f",
+    "promising",
+    """
+    return function () {
+        if (promising) {
+            f.callPromising()
+                .catch((err) => console.error("error in python callback", err))
+                .finally(() => f.destroy());
+        } else {
+            try {
+                f();
+            } catch (err) {
+                console.error("error in python callback", err);
+            } finally {
+                f.destroy();
+            }
+        }
+    };
+    """,
+)
 
 
 class WebLoop(asyncio.AbstractEventLoop):
@@ -121,15 +151,9 @@ class WebLoop(asyncio.AbstractEventLoop):
         self._exception_handler = None
         self._current_handle = None
         self._set_timeout = js.setTimeout
-        from .core import jspi_enabled
-
         # with JSPI the callbacks are entered via a promising call, so that
-        # task steps may suspend (pyjs.run_sync), see pre_js/jspi.js
-        self._create_once_callable_void_void = pyjs_core.internal.module_property(
-            "_create_once_callable_promising_void_void"
-            if jspi_enabled()
-            else "_create_once_callable_unsave_void_void"
-        )
+        # task steps may suspend (pyjs.run_sync)
+        self._promising = jspi_enabled()
         self._macrotask_queue = _MacrotaskQueue() if _MacrotaskQueue.is_supported() else None
 
     def get_debug(self):
@@ -255,12 +279,10 @@ class WebLoop(asyncio.AbstractEventLoop):
         h = asyncio.Handle(callback, args, self, context=context)
         run_handle = self._make_handle_runner(h)
 
-        # instead of using `pyjs.create_once_callable` we
-        # use an internal optimized function, that does not allow for
-        # any arguments, does not return anything, and does assume
-        # that the function does not throw
-        once_callable = self._create_once_callable_void_void(pyjs_core.JsValue(run_handle))
-        self._set_timeout(once_callable, delay * 1000)
+        # a JavaScript function for the timer that calls `run_handle` once and
+        # then releases it (see _js_once_callback)
+        once_callback = _js_once_callback(create_proxy(run_handle), self._promising)
+        self._set_timeout(once_callback, delay * 1000)
         return h
 
     def call_at(
@@ -452,9 +474,8 @@ class WebLoop(asyncio.AbstractEventLoop):
         For custom exception handling, use the
         `set_exception_handler()` method.
         """
-        pyjs_core.js.console.log("call_exception_handler")
-        # internal.console_log("context", context)
-        pyjs_core.js.console.log("message", context['message'])
+        js.console.log("call_exception_handler")
+        js.console.log("message", context['message'])
         if self._exception_handler is None:
             try:
                 self.default_exception_handler(context)

@@ -1,14 +1,22 @@
-name: npm
+name: CI
 
-# The npm package (npm/, pixi run test-npm): built + tested on every push /
-# PR, published on release tags (e.g. `4.1.0`, must equal the version in
-# CMakeLists.txt) or manually (workflow_dispatch with publish=true).
+# Build, test, publish.
 #
-# Publishing uses npm trusted publishing (OIDC, no token / secret): on
-# npmjs.com the package (Settings -> Trusted Publisher) trusts this repository
-# + this workflow file (npm.yml). The package name comes from the repository
-# variable NPM_PACKAGE_NAME (default @derthorsten/pyjs, later
-# @emscripten-forge/pyjs).
+#   build     compiles pyjs for wasm32 + wasm64 and builds the npm package,
+#             ONCE. Everything else downloads what this job uploads.
+#   test      the test suite on that package: every architecture x browser,
+#             with and without JSPI (nothing is compiled here)
+#   bundlers  apps built with vite / webpack / rollup / esbuild / parcel
+#             around the packed package: only on `main` and on release tags
+#             (it tests the packaging, not pyjs, and takes long)
+#   publish   on release tags (e.g. `6.0.0`, must equal the version in
+#             CMakeLists.txt) or manually (workflow_dispatch with publish=true)
+#
+# This file must keep its name: publishing uses npm trusted publishing (OIDC,
+# no token / secret), and on npmjs.com the package (Settings -> Trusted
+# Publisher) trusts this repository + this workflow FILE (npm.yml). The
+# package name comes from the repository variable NPM_PACKAGE_NAME (default
+# @derthorsten/pyjs, later @emscripten-forge/pyjs).
 
 on:
   push:
@@ -32,11 +40,56 @@ env:
   NPM_PACKAGE_NAME: ${{ vars.NPM_PACKAGE_NAME || '@derthorsten/pyjs' }}
 
 jobs:
-  build-test:
-    name: build + test
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # pixi + the default (dev) environment from pixi.lock, cached; the
+      # emscripten environments are installed by the tasks
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.84.2
+          cache: true
+
+      - name: Build pyjs and the npm package (wasm32 + wasm64)
+        run: pixi run npm-package
+
+      - name: Test the lock CLI of the package
+        run: pixi run test-lock
+
+      # what the test jobs run on: the package as directory
+      - name: Upload the package directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package-dir
+          path: build_root/npm/package/
+          if-no-files-found: error
+          retention-days: 3
+
+      # what gets published, and what the bundler apps install
+      - name: Upload the packed package
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: build_root/npm/tgz/*.tgz
+          if-no-files-found: error
+
+  test:
+    name: test ${{ matrix.wasm }} / ${{ matrix.browser }}
+    needs: build
     runs-on: ubuntu-latest
     # a failed JSPI suspension can hang the browser instead of failing
-    timeout-minutes: 120
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        wasm: [wasm32, wasm64]
+        browser: [chromium, firefox, webkit]
 
     steps:
       - uses: actions/checkout@v4
@@ -46,24 +99,65 @@ jobs:
           pixi-version: v0.84.2
           cache: true
 
-      - name: Install the browsers
-        run: pixi run playwright install --with-deps chromium firefox webkit
+      - name: Download the package
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package-dir
+          path: build_root/npm/package
 
-      - name: Build and test the npm package
-        run: pixi run test-npm
+      # the browser + the system libraries it needs (apt)
+      - name: Install the browser
+        run: pixi run playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Upload the package
-        uses: actions/upload-artifact@v4
+      # one build for all browsers: JSPI (pyjs.run_sync) is used when the
+      # browser supports it
+      - name: Test (browser main thread + worker)
+        run: pixi run run-tests ${{ matrix.wasm }} ${{ matrix.browser }}
+
+      # the same build, JSPI switched off at runtime (like a browser without JSPI)
+      - name: Test without JSPI (browser main thread + worker)
+        run: pixi run run-tests ${{ matrix.wasm }} ${{ matrix.browser }} "main worker" no-jspi
+
+  bundlers:
+    name: bundlers
+    needs: build
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.84.2
+          cache: true
+
+      - name: Download the packed package
+        uses: actions/download-artifact@v4
         with:
           name: npm-package
-          path: build_root/npm/tgz/*.tgz
-          if-no-files-found: error
+          path: build_root/npm/tgz
+
+      - name: Install the browser
+        run: pixi run playwright install --with-deps chromium
+
+      - name: Test the apps built with the bundlers
+        run: pixi run test-bundlers
 
   publish:
-    needs: build-test
+    needs: [build, test, bundlers]
+    # Only after build and test passed. The bundlers job does not run on
+    # every ref (see its `if`): when it ran it must not have failed, when it
+    # was skipped that is fine. (`!cancelled()` is needed because a skipped
+    # dependency would otherwise skip this job too.)
     if: >-
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.publish)
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.test.result == 'success' &&
+      needs.bundlers.result != 'failure' &&
+      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish))
     runs-on: ubuntu-latest
     permissions:
       contents: read

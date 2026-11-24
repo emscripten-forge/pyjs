@@ -1,7 +1,6 @@
 """Python -> JavaScript: attribute access and calling JS functions from python."""
 
-import pyjs
-from pyjs import js
+from compat import js, new
 
 _f_noargs = js.Function("return 1")
 _f_identity = js.Function("a", "return a")
@@ -11,7 +10,7 @@ _f_ret_obj = js.Function("return {}")
 
 
 def bench_js_module_getattr(benchmark):
-    # pyjs.js.<name> goes through the module __getattr__
+    # js.<name> goes through the module __getattr__
     benchmark(lambda: js.Math)
 
 
@@ -21,7 +20,7 @@ def bench_jsvalue_getattr(benchmark):
 
 
 def bench_jsvalue_setattr(benchmark):
-    obj = pyjs.new(js.Object)
+    obj = new(js.Object)
     benchmark(lambda: setattr(obj, "x", 1))
 
 
@@ -70,7 +69,7 @@ def bench_call_method(benchmark):
 
 def bench_new_object(benchmark):
     cls = js.Object
-    benchmark(pyjs.new, cls)
+    benchmark(new, cls)
 
 
 def bench_function_creation(benchmark):

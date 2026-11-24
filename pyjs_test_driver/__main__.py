@@ -13,13 +13,15 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
 
     build = sub.add_parser("build-page", help="create a page dir")
-    build.add_argument("kind", choices=["npm", *pages.BUNDLERS])
+    build.add_argument("kind", choices=["npm", "pyodide", *pages.BUNDLERS])
     build.add_argument("--out", required=True, help="page dir to create")
     build.add_argument("--package", help="npm: the npm package dir")
     build.add_argument("--tgz", help="bundlers: the packed npm package (or its directory)")
     build.add_argument("--arch", default="wasm32", choices=["wasm32", "wasm64"], help="npm")
     build.add_argument("--packages", nargs="*", default=[], help="npm / bundlers: test packages")
     build.add_argument("--work-dir", help="bundlers: dir of the app projects")
+    build.add_argument("--pyodide-version", help="pyodide: the release")
+    build.add_argument("--cache-dir", help="pyodide: where releases are downloaded to (once)")
 
     run = sub.add_parser("run", help="run a suite on a page dir (every browser x mode)")
     run.add_argument("page_dir")
@@ -44,6 +46,8 @@ def main(argv=None):
     if args.command == "build-page":
         if args.kind == "npm":
             pages.build_npm(args.out, args.package, args.arch, args.packages)
+        elif args.kind == "pyodide":
+            pages.build_pyodide(args.out, args.pyodide_version, args.packages, args.cache_dir)
         else:
             pages.build_bundler(args.kind, args.out, args.tgz, args.packages, args.work_dir)
         print(f"page ({args.kind}): {args.out}")

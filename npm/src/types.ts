@@ -1,22 +1,62 @@
 /**
- * Types of the pyjs runtime (the emscripten `Module` with the functions added
- * by `include/pyjs/pre_js/*.js` / `post_js/*.js`) and of its initialization.
+ * Types of the pyjs runtime (the emscripten `Module` with the functions pyjs
+ * adds to it) and of its initialization.
  *
  * Only the public, stable part is typed; everything else on the Module is
  * still there (`[key: string]: any`).
  */
 
-/** A python object living in the wasm heap (embind class `pyobject`). */
-export interface PyObject {
-  /** call the python object, positional arguments only */
-  py_call(...args: unknown[]): any;
-  /** call the python object with positional and keyword arguments */
-  py_apply(args?: unknown[], kwargs?: Record<string, unknown>): any;
-  /** `obj[key]` / `obj[k1, k2]` */
+/**
+ * A Python object, seen from JavaScript.
+ *
+ * JavaScript gets one of these for every Python object that is not converted
+ * to a JavaScript value (numbers, strings, booleans and None are converted).
+ * The Python attributes of the object are its properties (`proxy.name`), and
+ * a callable Python object can be called like a function (`proxy(1, 2)`).
+ *
+ * A proxy keeps its Python object alive. Call `destroy()` when done with it
+ * (otherwise the object is only released when the proxy is garbage
+ * collected, which may be much later).
+ */
+export interface PyProxy {
+  /** call the python object: `proxy(1, 2)` (only if it is callable) */
+  (...args: unknown[]): any;
+  /**
+   * call with keyword arguments: they are one object, as LAST argument;
+   * `f.callKwargs(1, { sep: "-" })` is python's `f(1, sep="-")`
+   */
+  callKwargs(...args: unknown[]): any;
+  /** `obj[key]`; several keys: `obj[k1, k2]` */
   get(...keys: unknown[]): any;
-  /** free the python reference held by this JS object */
-  delete(): void;
+  /** `obj[key] = value` */
+  set(key: unknown, value: unknown): void;
+  /** `key in obj` */
+  has(key: unknown): boolean;
+  /** `del obj[key]` */
+  delete(key: unknown): void;
+  /** `len(obj)` */
+  readonly length: number;
+  /** the name of the python type, e.g. `"list"` */
+  readonly type: string;
+  /** `str(obj)` */
+  toString(): string;
+  /** a deep copy as JS value: list -> Array, dict -> Object, ... (python's `pyjs.to_js`) */
+  toJs(options?: Record<string, unknown>): any;
+  /** another proxy of the same python object, with its own lifetime */
+  copy(): PyProxy;
+  /** release the python object: the proxy is unusable afterwards */
+  destroy(): void;
+  /** iterate over the python object (`for (const item of proxy)`) */
+  [Symbol.iterator](): Iterator<any>;
   [key: string]: any;
+}
+
+/** The error thrown in JavaScript when python code raised an exception. */
+export interface PythonError extends Error {
+  /** the name of the python exception type, e.g. `"KeyError"` */
+  type: string;
+  /** the formatted python traceback */
+  message: string;
 }
 
 export interface ILogger {
@@ -94,22 +134,22 @@ export interface IInstallOptions {
 
 /** The initialized pyjs runtime. */
 export interface PyjsModule {
-  /** execute python code (statements), throws on python errors */
-  exec(code: string, globals?: PyObject, locals?: PyObject): void;
-  /** evaluate a python expression and return its value (converted to JS) */
-  eval(code: string, globals?: PyObject, locals?: PyObject): any;
-  /** execute a script and return the value of its last expression */
-  exec_eval(script: string, globals?: PyObject, locals?: PyObject): any;
-  /** like `exec_eval`, the script may use top level `await` */
-  async_exec_eval(script: string, globals?: PyObject, locals?: PyObject): Promise<any>;
-  /** execute a python file from the emscripten file system */
-  eval_file(path: string, globals?: PyObject, locals?: PyObject): void;
-  /** convert a python object to a JS value (`pyjs.to_js`) */
-  to_js(obj: PyObject): any;
-  /** the `__main__` scope used as default globals */
-  default_scope: PyObject;
-  /** the python module `pyjs` */
-  py_pyjs: PyObject;
+  /**
+   * Run python code and return the value of its last line if that is an
+   * expression (like a notebook cell): `runPython("x = 20\nx + 1")` is 21.
+   * Throws a `PythonError` if the code raises.
+   * `options.globals` / `options.locals`: the namespaces to run in (proxies
+   * of python dicts); default: `globals`.
+   */
+  runPython(code: string, options?: { globals?: PyProxy; locals?: PyProxy }): any;
+  /** like `runPython`, for code that uses `await` at the top level */
+  runPythonAsync(code: string, options?: { globals?: PyProxy; locals?: PyProxy }): Promise<any>;
+  /** `import name`: the python module, e.g. `pyimport("math").sqrt(2)` */
+  pyimport(name: string): PyProxy;
+  /** the namespace code runs in by default: the globals of the module `__main__` */
+  globals: PyProxy;
+  /** the class of the errors thrown for python exceptions (for `instanceof`) */
+  PythonError: new (...args: any[]) => PythonError;
   /** the emscripten file system */
   FS: any;
 

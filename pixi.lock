@@ -30,6 +30,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/c-ares-1.34.9-hebe6cf0_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/charset-normalizer-3.5.2-h1114479_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/cmake-4.5.0-hff7ac6b_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/esbuild-0.28.1-hfc2019e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/gh-2.104.0-hfc2019e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/greenlet-3.5.6-py314hf3b331d_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/icu-79.1-py314hb486520_0.conda
@@ -177,6 +178,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/bzip2-1.0.8-h4e30115_10.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/c-ares-1.34.9-h74c22ad_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/cmake-4.5.0-h07a7c03_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/esbuild-0.28.1-hf76c51c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/gh-2.104.0-h2ef8fd1_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/greenlet-3.5.6-py314hd38aa5a_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/icu-79.1-py311h7f96da7_0.conda
@@ -220,8 +222,7 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     packages:
       emscripten-wasm32:
-      - conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-3.1.0-pyh293190f_0.conda
-      - conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-global-3.1.0-pyh648e204_0.conda
+      - conda: https://repo.prefix.dev/conda-forge/noarch/nanobind-3.1.0-pyh5ded981_0.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/python_abi-3.14-9_cp314.conda
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/libarchive-static-3.8.11-h1b925dc_0.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/libbzip2-static-1.0.8-ha5b1db9_0.tar.bz2
@@ -246,8 +247,7 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     packages:
       emscripten-wasm64:
-      - conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-3.1.0-pyh293190f_0.conda
-      - conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-global-3.1.0-pyh648e204_0.conda
+      - conda: https://repo.prefix.dev/conda-forge/noarch/nanobind-3.1.0-pyh5ded981_0.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/python_abi-3.14-9_cp314.conda
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/libarchive-static-3.8.11-h36da5e1_0.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/libbzip2-static-1.0.8-h9079301_0.tar.bz2
@@ -377,6 +377,14 @@ packages:
   run_exports: {}
   size: 27320556
   timestamp: 1794549486278
+- conda: https://conda.anaconda.org/conda-forge/linux-64/esbuild-0.28.1-hfc2019e_0.conda
+  sha256: 2ff0603150014c840474d0ddc8813569d91f9ab20e83cb49b1019eb4155c0a63
+  md5: 65b5461adebff76dc54e02c5c19a20a8
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 4486486
+  timestamp: 1781248826728
 - conda: https://conda.anaconda.org/conda-forge/linux-64/gh-2.104.0-hfc2019e_0.conda
   sha256: b6f29a66e5f050af9d3021a02a3366a56bd06b525a542612a9b2ff3979d98845
   md5: 5b31c881c248717a85aedcac5b195463
@@ -1646,6 +1654,14 @@ packages:
   run_exports: {}
   size: 21062243
   timestamp: 1794549508193
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/esbuild-0.28.1-hf76c51c_0.conda
+  sha256: 340c65b3acdbe58b815b363304f93a25dd5cfd96bc0479b24f3d656b71522853
+  md5: 7023b247571c6428ac7752c87193d68d
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 4033332
+  timestamp: 1781248962480
 - conda: https://conda.anaconda.org/conda-forge/osx-arm64/gh-2.104.0-h2ef8fd1_0.conda
   sha256: d02e404bd3b62066c1f94bdce62b9c1706a3093b01e33adc08d90f5310605d4d
   md5: 5f06d3f503c613789064981b2243f123
@@ -2146,6 +2162,19 @@ packages:
   run_exports: {}
   size: 130057
   timestamp: 1792772446739
+- conda: https://repo.prefix.dev/conda-forge/noarch/nanobind-3.1.0-pyh5ded981_0.conda
+  sha256: e241962d0dbee1d3f12461830d754344b51bfc4b7ee3715d392d7e262856ae5b
+  md5: 0a5b25e7072092edf6bd6f10c6a0cd7e
+  depends:
+  - python >=3.11
+  - python
+  constrains:
+  - nanobind-abi ==22
+  license: BSD-3-Clause
+  license_family: BSD
+  run_exports: {}
+  size: 248130
+  timestamp: 1790169021068
 - conda: https://repo.prefix.dev/conda-forge/noarch/pip-26.2.2-pyh145f28c_2.conda
   sha256: 05d34ae3b49973c05c0f2f0f742e202acc6145f733460a0798944b231efd5c1a
   md5: 48dd7d949a3d2106ed942dcd8f9ceb80
@@ -2157,34 +2186,6 @@ packages:
   run_exports: {}
   size: 1078295
   timestamp: 1793659415423
-- conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-3.1.0-pyh293190f_0.conda
-  sha256: 54ea7a186ccf7ef2c98d3cc29c1c68ddffff0d74bc3321ebb22a56e91e1c3aa9
-  md5: 5aa0ad32112cbfc1cf0f2b3c600be4a5
-  depends:
-  - python >=3.9
-  - pybind11-global ==3.1.0 *_0
-  - python
-  constrains:
-  - pybind11-abi ==12
-  license: BSD-3-Clause
-  license_family: BSD
-  run_exports: {}
-  size: 254992
-  timestamp: 1786200320545
-- conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-global-3.1.0-pyh648e204_0.conda
-  sha256: 684d30c86f505916b44f205b8f5a153b1779df462233ce380b39f777d82126aa
-  md5: 534548c7e6102ae9a408957380937b52
-  depends:
-  - python >=3.9
-  - __unix
-  - python
-  constrains:
-  - pybind11-abi ==12
-  license: BSD-3-Clause
-  license_family: BSD
-  run_exports: {}
-  size: 247376
-  timestamp: 1786200320545
 - conda: https://repo.prefix.dev/conda-forge/noarch/python_abi-3.14-9_cp314.conda
   build_number: 9
   sha256: e7f8e965bbfb98e08feb2365cacdad8bb218fa5b5a0a2752f747287f425f213c

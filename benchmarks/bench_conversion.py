@@ -1,7 +1,6 @@
 """Deep conversion: pyjs.to_js (python -> js) and pyjs.to_py (js -> python)."""
 
-import pyjs
-from pyjs import js
+from compat import buffer_to_js_typed_array, js, to_js, to_py
 
 try:
     import numpy
@@ -28,42 +27,42 @@ _js_f64_1mb = js.Function("return new Float64Array(131072)")()
 
 
 def bench_to_js_list_100_int(benchmark):
-    benchmark(pyjs.to_js, _list_100)
+    benchmark(to_js, _list_100)
 
 
 def bench_to_js_dict_100(benchmark):
-    benchmark(pyjs.to_js, _dict_100)
+    benchmark(to_js, _dict_100)
 
 
 def bench_to_js_nested(benchmark):
-    benchmark(pyjs.to_js, _nested)
+    benchmark(to_js, _nested)
 
 
 def bench_to_py_array_100_int(benchmark):
-    benchmark(pyjs.to_py, _js_array_100)
+    benchmark(to_py, _js_array_100)
 
 
 def bench_to_py_object_100(benchmark):
-    benchmark(pyjs.to_py, _js_object_100)
+    benchmark(to_py, _js_object_100)
 
 
 def bench_to_py_map_100(benchmark):
-    benchmark(pyjs.to_py, _js_map_100)
+    benchmark(to_py, _js_map_100)
 
 
 def bench_to_py_nested(benchmark):
-    benchmark(pyjs.to_py, _js_nested)
+    benchmark(to_py, _js_nested)
 
 
 def bench_to_py_float64array_1mb(benchmark):
-    benchmark(pyjs.to_py, _js_f64_1mb)
+    benchmark(to_py, _js_f64_1mb)
 
 
-if has_numpy:
+if has_numpy and buffer_to_js_typed_array is not None:
     _np_f64_1mb = numpy.zeros(131072, dtype="float64")
 
     def bench_numpy_1mb_to_typed_array_copy(benchmark):
-        benchmark(pyjs.buffer_to_js_typed_array, _np_f64_1mb)
+        benchmark(buffer_to_js_typed_array, _np_f64_1mb)
 
     def bench_numpy_1mb_to_typed_array_view(benchmark):
-        benchmark(lambda: pyjs.buffer_to_js_typed_array(_np_f64_1mb, view=True))
+        benchmark(lambda: buffer_to_js_typed_array(_np_f64_1mb, view=True))

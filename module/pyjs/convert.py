@@ -1,276 +1,346 @@
-import asyncio
-import functools
-import json
-from pyjs_core import internal, js,JsValue
-from .core import new
-from .error_handling import JsError, JsGenericError, JsInternalError, JsRangeError, JsReferenceError, JsSyntaxError, JsTypeError, JsURIError
-class _JsToPyConverterCache(object):
-    def __init__(self):
-        self._js_obj_to_int = js.WeakMap.new()
-        self._int_to_py_obj = dict()
-        self._counter = 0
+"""Deep conversion between Python and JavaScript values.
 
-    def __setitem__(self, js_val, py_val):
-        c = self._counter
-        self._js_obj_to_int.set(js_val, c)
-        self._int_to_py_obj[c] = py_val
-        self._counter = c + 1
+Crossing the language border, only simple values are converted automatically
+(``None``, ``bool``, numbers, ``str``). Containers are *not*: a JavaScript
+array arrives in Python as a `JSProxy` (it stays a JavaScript array, Python
+operates on it remotely), a Python ``list`` arrives in JavaScript as a
+PyProxy. That is cheap and keeps changes visible on both sides, but sometimes
+a real copy is wanted:
 
-    def __getitem__(self, js_val):
-        if (key := self._js_obj_to_int.get(js_val)) is not None:
-            return self._int_to_py_obj[key]
-        else:
-            return None
+* `to_py` copies a JavaScript value into Python objects:
+  Array -> list, Map -> dict, Set -> set, plain Object -> dict,
+  typed arrays / ArrayBuffer -> memoryview
+* `to_js` copies a Python value into JavaScript objects:
+  list / tuple -> Array, dict -> Object, set -> Set, buffers -> typed array
 
-    def get(self, js_val, default_py):
-        if (key := self._js_obj_to_int.get(js_val)) is not None:
-            return self._int_to_py_obj[key], True
-        else:
-            self[js_val] = default_py
-            return default_py, False
+Both follow PEP 818. They are not exact inverses of each other (e.g. a Map
+becomes a dict, a dict becomes an Object).
+"""
 
-def _array_converter(js_val, depth, cache, converter_options):
-    py_list, found_in_cache = cache.get(js_val, [])
-    if found_in_cache:
-        return py_list
+from collections.abc import Sequence
 
-    size = internal.length(js_val)
-    for i in range(size):
-        # js_item = internal.__getitem__(js_val, i)
-        js_item = js_val[i]
-        py_item = to_py(
-            js_item, depth=depth + 1, cache=cache, converter_options=converter_options
-        )
-        py_list.append(py_item)
-    return py_list
+import pyjs_core
+from pyjs_core import JSProxy, global_this
 
-def _object_converter(js_val, depth, cache, converter_options):
+__all__ = ["to_py", "to_js", "buffer_to_js_typed_array", "ConversionError"]
 
-    ret_dict, found_in_cache = cache.get(js_val, {})
-    if found_in_cache:
-        return ret_dict
-
-    keys = internal.object_keys(js_val)
-    values = internal.object_values(js_val)
-    size = internal.length(keys)
-
-    for i in range(size):
-
-        # # todo, keys are always strings, this allows for optimization
-        py_key = keys[i]
-        js_val = values[i]
-
-        py_val = to_py(
-            js_val, depth=depth + 1, cache=cache, converter_options=converter_options
-        )
-
-        ret_dict[py_key] = py_val
-
-    return ret_dict
-
-def _map_converter(js_val, depth, cache, converter_options):
-
-    ret_dict, found_in_cache = cache.get(js_val, {})
-    if found_in_cache:
-        return ret_dict
-
-    keys = js.Array["from"](js_val.keys())
-    values = js.Array["from"](js_val.values())
-    size = internal.length(keys)
-
-    for i in range(size):
-
-        js_key = keys[i]
-        js_val = values[i]
-
-        py_val = to_py(
-            js_val, depth=depth + 1, cache=cache, converter_options=converter_options
-        )
-
-        py_key = to_py(
-            js_key, depth=depth + 1, cache=cache, converter_options=converter_options
-        )
-
-        ret_dict[py_key] = py_val
-
-    return ret_dict
+_js = global_this()
 
 
-def _set_converter(js_val, depth, cache, converter_options):
-    pyset, found_in_cache = cache.get(js_val, set())
-    if found_in_cache:
-        return pyset
-
-    for v in js_val:
-        pyset.add(
-            to_py(v, depth=depth + 1, cache=cache, converter_options=converter_options)
-        )
-    return pyset
+class ConversionError(Exception):
+    """A value cannot be converted (`to_js` with ``create_pyproxies=False``)."""
 
 
-def _error_converter(js_val, depth, cache, converter_options, error_cls):
-    return error_cls(err=js_val)
-
-_error_to_py_converters = dict(
-    Error=functools.partial(_error_converter, error_cls=JsError),
-    InternalError=functools.partial(_error_converter, error_cls=JsInternalError),
-    RangeError=functools.partial(_error_converter, error_cls=JsRangeError),
-    ReferenceError=functools.partial(_error_converter, error_cls=JsReferenceError),
-    SyntaxError=functools.partial(_error_converter, error_cls=JsSyntaxError),
-    TypeError=functools.partial(_error_converter, error_cls=JsTypeError),
-    URIError=functools.partial(_error_converter, error_cls=JsURIError),
+# ---------------------------------------------------------------------------
+# JavaScript -> Python
+# ---------------------------------------------------------------------------
+# What kind of container a JavaScript object is, as number (one call instead
+# of several `instanceof` questions from Python):
+#   1 Array, 2 Map, 3 Set, 4 typed array / ArrayBuffer / DataView,
+#   5 plain object ({...}: its constructor is Object or it has none),
+#   0 anything else (stays a proxy: a DOM node, a class instance, a function)
+_kind = _js.Function(
+    "obj",
+    """
+    if (Array.isArray(obj)) { return 1; }
+    if (obj instanceof Map) { return 2; }
+    if (obj instanceof Set) { return 3; }
+    if (ArrayBuffer.isView(obj) || obj instanceof ArrayBuffer) { return 4; }
+    if (typeof obj !== "object") { return 0; }
+    const constructor = obj.constructor;
+    return (constructor === undefined || constructor === Object) ? 5 : 0;
+    """,
 )
-# register converters
-_basic_to_py_converters = {
-    "0": lambda x: None,
-    "1": lambda x, d, c, opts: None,
-    "3": lambda x, d, c, opts: internal.as_string(x),
-    "6": lambda x, d, c, opts: internal.as_boolean(x),
-    "4": lambda x, d, c, opts: internal.as_int(x),
-    "5": lambda x, d, c, opts: internal.as_float(x),
-    "pyobject": lambda x, d, c, opts: internal.as_py_object(x),
-    "2": _object_converter,
-    "Object": _object_converter,
-    "Array": _array_converter,
-    "Set": _set_converter,
-    "Map": _map_converter,
-    "LiteralMap": _map_converter,
-    "7": lambda x, d, c, opts: x,
-    "Promise": lambda x, d, c, opts: x._to_future(),
-    "ArrayBuffer": lambda x, d, c, opts: to_py(new(js.Uint8Array, x), d, c, opts),
-    "Uint8Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "Int8Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "Uint16Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "Int16Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "Uint32Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "Int32Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "Float32Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "Float64Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "BigInt64Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "BigUint64Array": lambda x, d, c, opts: internal.as_buffer(x),
-    "Uint8ClampedArray": lambda x, d, c, opts: internal.as_buffer(x),
-}
-_basic_to_py_converters = {**_basic_to_py_converters, **_error_to_py_converters}
+_ARRAY, _MAP, _SET, _BUFFER, _OBJECT = 1, 2, 3, 4, 5
 
-def register_converter(cls_name : str, converter : callable):
-    '''
-    Register a custom JavaScript to Python converter.
+# the entries of a Map / a plain object as one flat array [key0, value0, key1,
+# value1, ...]: iterating one array is far fewer calls into JavaScript than
+# asking for every pair
+_flat_map = _js.Function("map", "const out = []; for (const [k, v] of map) { out.push(k, v); } return out;")
+_flat_object = _js.Function(
+    "obj", "const out = []; for (const k of Object.keys(obj)) { out.push(k, obj[k]); } return out;"
+)
+
+
+def _buffer_to_memoryview(js_buffer):
+    """a memoryview of a copy of the bytes of a typed array / ArrayBuffer,
+    with the item type of the typed array (Float64Array -> format 'd')"""
+    data, fmt = pyjs_core.js_to_bytes(js_buffer)
+    view = memoryview(data)
+    return view if fmt == "B" else view.cast(fmt)
+
+
+def _to_py(obj, depth, cache, default_converter):
+    """`to_py` for one value; `cache`: js_id -> the Python object already made
+    for that JavaScript object (objects referenced twice or in a cycle are
+    converted once)"""
+    if depth == 0 or not isinstance(obj, JSProxy):
+        return obj
+    kind = _kind(obj)
+    if kind == _BUFFER:
+        return _buffer_to_memoryview(obj)
+
+    key = obj.js_id
+    if key in cache:
+        return cache[key]
+
+    def convert(value):
+        """convert a value one level further down"""
+        return _to_py(value, depth - 1, cache, default_converter)
+
+    if kind == _ARRAY:
+        result = cache[key] = []
+        for item in obj:
+            result.append(convert(item))
+    elif kind == _SET:
+        result = cache[key] = set()
+        for item in obj:
+            result.add(convert(item))
+    elif kind == _MAP or kind == _OBJECT:
+        result = cache[key] = {}
+        flat = iter(_flat_map(obj) if kind == _MAP else _flat_object(obj))
+        for k in flat:
+            result[convert(k)] = convert(next(flat))
+    elif default_converter is not None:
+        # something else: let the caller decide
+
+        def cache_conversion(js_obj, py_obj):
+            """remember `py_obj` as the conversion of `js_obj`"""
+            cache[js_obj.js_id] = py_obj
+
+        result = default_converter(obj, convert, cache_conversion)
+    else:
+        result = obj
+    return result
+
+
+def to_py(obj, *, depth=-1, default_converter=None):
+    """Convert a JavaScript value into Python objects (a deep copy).
 
     Args:
-        cls_name: The name of the JavaScript class to convert.
-        converter: A function that takes a JavaScript object and returns a Python object.
-    
+        obj: a `JSProxy`. Any other value is returned as is, so this can be
+            called on whatever JavaScript returned.
+        depth: how many levels of containers to convert, -1 for all. With
+            ``depth=1`` an array of arrays becomes a list of proxies.
+        default_converter: called as ``default_converter(js_obj, convert,
+            cache_conversion)`` for objects that are none of the containers
+            above; returns their conversion. ``convert(value)`` converts a
+            nested value, ``cache_conversion(js_obj, py_obj)`` registers the
+            result early (needed for self referencing objects).
+
     Example:
-        For this example we define the JavaScript class Rectangle on the fly
-        and create an instance of it. We then register a custom converter for the
-        Rectangle class and convert the instance to a Python object.
-
     ```python
-
-
-        # Define JavaScript Rectangle class
-        # and create an instance of it
-        rectangle = pyjs.js.Function("""
-            class Rectangle {
-            constructor(height, width) {
-                this.height = height;
-                this.width = width;
-            }
-            }
-            return new Rectangle(10,20)
-        """)()
-
-        # A Python Rectangle class
-        class Rectangle(object):
-            def __init__(self, height, width):
-                self.height = height
-                self.width = width
-        
-        # the custom converter
-        def rectangle_converter(js_val, depth, cache, converter_options):
-            return Rectangle(js_val.height, js_val.width)
-
-        # Register the custom converter
-        pyjs.register_converter("Rectangle", rectangle_converter)
-
-        # Convert the JavaScript Rectangle to a Python Rectangle
-        r = pyjs.to_py(rectangle)
-        assert isinstance(r, Rectangle)
-        assert r.height == 10
-        assert r.width == 20
-
+    js_array = js.Function("return [1, 2, {a: 3}]")()
+    assert to_py(js_array) == [1, 2, {"a": 3}]
     ```
-
-    '''
-
-
-    _basic_to_py_converters[cls_name] = converter
-
-
-def to_py_json(js_val : JsValue):
-    """ Convert a JavaScript object to a Python object using JSON serialization."""
-    return json.loads(JSON.stringify(js_val))
-
-class JsToPyConverterOptions(object):
-    def __init__(self, json=False, converters=None, default_converter=None):
-        self.json = json
-
-        if converters is None:
-            converters = _basic_to_py_converters
-        if default_converter is None:
-            default_converter = _basic_to_py_converters["Object"]
-
-        self.converters = converters
-        self.default_converter = default_converter
+    """
+    if default_converter is None:
+        # The normal case is done by the core in one call into JavaScript for
+        # the whole structure (src/deep.cpp). The Python code in this file
+        # does the same thing step by step; it is only needed when a
+        # converter function has to be asked about individual objects.
+        return pyjs_core.to_py(obj, depth)
+    return _to_py(obj, depth, {}, default_converter)
 
 
-def to_py(js_val, depth=0, cache=None, converter_options=None):
-    if not isinstance(js_val, JsValue):
-        return js_val
-    if converter_options is None:
-        converter_options = JsToPyConverterOptions()
-    if cache is None:
-        cache = _JsToPyConverterCache()
-    converters = converter_options.converters
-    default_converter = converter_options.default_converter
-    ts = internal.get_type_string(js_val)
-    return converters.get(ts, default_converter)(
-        js_val, depth, cache, converter_options
+def _to_py_with_converter(obj, depth, default_converter):
+    """`to_py` with a converter function, step by step. Called by the core
+    for the method form, ``js_obj.to_py(default_converter=...)`` (without a
+    converter that method does everything in the core itself)."""
+    return _to_py(obj, depth, {}, default_converter)
+
+
+# ---------------------------------------------------------------------------
+# Python -> JavaScript
+# ---------------------------------------------------------------------------
+_new_array = _js.Function("return [];")
+_new_object = _js.Function("return {};")
+_new_set = _js.Function("return new Set();")
+# Sets a property whose name is only known at runtime. In python the
+# properties of a JavaScript object are attributes (`obj.name = v`), and
+# `obj[key] = v` is reserved for containers like arrays and Maps, so this
+# takes a small JavaScript function. (setattr(obj, key, v) would also work
+# for strings, but dict keys can be numbers too.)
+_set_property = _js.Function("obj", "key", "value", "obj[key] = value;")
+
+# what needs no conversion: it is converted (or unwrapped) automatically when
+# it is passed to JavaScript
+_PASSED_AS_IS = (type(None), bool, int, float, str, JSProxy)
+
+
+def _is_buffer(obj):
+    """bytes, bytearray, memoryview, numpy arrays, ...: anything with the
+    buffer protocol"""
+    try:
+        memoryview(obj)
+    except TypeError:
+        return False
+    return True
+
+
+def _to_js(obj, depth, cache, options):
+    """`to_js` for one value; `cache`: id(python object) -> the JavaScript
+    object already made for it"""
+    if isinstance(obj, _PASSED_AS_IS):
+        return obj
+    key = id(obj)
+    if key in cache:
+        return cache[key]
+    if depth == 0:
+        # The depth limit is reached: `obj` is not converted. It still must
+        # not be returned as it is: it ends up stored inside a JavaScript
+        # container, and a Python object handed to JavaScript the normal way
+        # only lives for one call. So it gets a lasting proxy.
+        return _lasting_proxy(obj, key, cache, options)
+
+    def convert(value):
+        """convert a value one level further down"""
+        return _to_js(value, depth - 1, cache, options)
+
+    eager_converter = options["eager_converter"]
+    if eager_converter is not None:
+        # the caller's converter goes first: it may handle anything
+
+        def cache_conversion(py_obj, js_obj):
+            """remember `js_obj` as the conversion of `py_obj`"""
+            cache[id(py_obj)] = js_obj
+
+        return eager_converter(obj, convert, cache_conversion)
+
+    if isinstance(obj, dict):
+        dict_converter = options["dict_converter"]
+        if dict_converter is not None:
+            # the caller builds the object from [key, value] pairs (e.g.
+            # js.Map.new, js.Object.fromEntries). The result only exists
+            # after all entries are converted: self referencing dicts cannot
+            # be handled here.
+            entries = _new_array()
+            for k, v in obj.items():
+                pair = _new_array()
+                pair.push(convert(k))
+                pair.push(convert(v))
+                entries.push(pair)
+            result = cache[key] = dict_converter(entries)
+        else:
+            result = cache[key] = _new_object()
+            for k, v in obj.items():
+                # (a property with a computed name: `result[k] = v` in JS)
+                _set_property(result, convert(k), convert(v))
+    elif isinstance(obj, (set, frozenset)):
+        result = cache[key] = _new_set()
+        for item in obj:
+            result.add(convert(item))
+    elif _is_buffer(obj):
+        # bytes, numpy arrays, ...: a typed array with a copy of the items
+        result = cache[key] = pyjs_core.buffer_to_js(obj, False)
+    elif isinstance(obj, Sequence):
+        result = cache[key] = _new_array()
+        for item in obj:
+            result.push(convert(item))
+    else:
+        default_converter = options["default_converter"]
+        if default_converter is not None:
+
+            def cache_conversion(py_obj, js_obj):
+                """remember `js_obj` as the conversion of `py_obj`"""
+                cache[id(py_obj)] = js_obj
+
+            return default_converter(obj, convert, cache_conversion)
+        result = _lasting_proxy(obj, key, cache, options)
+    return result
+
+
+def _lasting_proxy(obj, key, cache, options):
+    """A Python object that is not converted stays a Python object:
+    JavaScript gets a proxy of it. It has to be a lasting one (create_proxy):
+    the converted structure holds on to it after `to_js` returned. Whoever
+    called `to_js` destroys it later (option `pyproxies` collects them)."""
+    if not options["create_pyproxies"]:
+        raise ConversionError(f"cannot convert an object of type {type(obj).__name__} to JavaScript")
+    proxy = cache[key] = pyjs_core.create_proxy(obj)
+    pyproxies = options["pyproxies"]
+    if pyproxies is not None:
+        pyproxies.append(proxy)
+    return proxy
+
+
+def to_js(
+    obj,
+    *,
+    depth=-1,
+    pyproxies=None,
+    create_pyproxies=True,
+    dict_converter=None,
+    default_converter=None,
+    eager_converter=None,
+):
+    """Convert a Python value into JavaScript objects (a deep copy).
+
+    list / tuple (any sequence) -> Array, dict -> Object, set -> Set, buffers
+    (bytes, numpy arrays, ...) -> typed array. ``None``, ``bool``, numbers,
+    ``str`` and `JSProxy` objects are returned as they are: they are converted
+    automatically when passed to JavaScript. Other objects become proxies.
+
+    Args:
+        obj: the value to convert.
+        depth: how many levels of containers to convert, -1 for all.
+        pyproxies: a list. The proxies created for objects that cannot be
+            converted are appended, so that the caller can destroy them later
+            (`destroy_proxies`).
+        create_pyproxies: if False, raise `ConversionError` instead of
+            creating a proxy.
+        dict_converter: what a dict becomes: called with a JavaScript array of
+            ``[key, value]`` pairs, e.g. ``js.Map.new`` for a Map. Default: a
+            plain Object.
+        default_converter: called as ``default_converter(obj, convert,
+            cache_conversion)`` for objects that are none of the containers
+            above, instead of creating a proxy.
+        eager_converter: like `default_converter`, but called for every
+            container first.
+
+    Example:
+    ```python
+    js_obj = to_js({"a": [1, 2]})
+    assert js.JSON.stringify(js_obj) == '{"a":[1,2]}'
+    js_map = to_js({"a": 1}, dict_converter=js.Map.new)
+    assert js_map.get("a") == 1
+    ```
+    """
+    if isinstance(obj, _PASSED_AS_IS):
+        return obj
+    if (
+        pyproxies is None
+        and create_pyproxies
+        and dict_converter is None
+        and default_converter is None
+        and eager_converter is None
+    ):
+        # The normal case is done by the core in one call into JavaScript for
+        # the whole structure (src/deep.cpp). The Python code below does the
+        # same thing step by step; it is only needed when one of the options
+        # wants a say about individual objects.
+        return pyjs_core.to_js(obj, depth)
+    options = dict(
+        pyproxies=pyproxies,
+        create_pyproxies=create_pyproxies,
+        dict_converter=dict_converter,
+        default_converter=default_converter,
+        eager_converter=eager_converter,
     )
-
- 
-def error_to_py(err):
-    default_converter = functools.partial(_error_converter, error_cls=JsGenericError)
-    converter_options = JsToPyConverterOptions(
-        converters=_error_to_py_converters, default_converter=default_converter
-    )
-    return to_py(err, converter_options=converter_options)
-
-
-def error_to_py_and_raise(err):
-    raise error_to_py(err)
+    return _to_js(obj, depth, {}, options)
 
 
 def buffer_to_js_typed_array(buffer, view=False):
-    return internal.py_1d_buffer_to_typed_array(buffer, bool(view))
+    """A JavaScript typed array for a contiguous 1d buffer of numbers (bytes,
+    ``array.array``, a numpy array, ...); the item type decides which one
+    (float64 -> Float64Array).
 
-
-def _extend_typed_array_buffer():
-    # `to_py()` of a typed array returns a TypedArrayBuffer (a copy of the data,
-    # buffer protocol). pyodide returns a memoryview, so code written for
-    # pyodide (e.g. urllib3's emscripten backend) indexes / slices it.
-    from pyjs_core import TypedArrayBuffer
-
-    def __getitem__(self, key):
-        # the memoryview references (and keeps alive) this buffer
-        return memoryview(self)[key]
-
-    def tolist(self):
-        return memoryview(self).tolist()
-
-    TypedArrayBuffer.__getitem__ = __getitem__
-    TypedArrayBuffer.tolist = tolist
-
-
-_extend_typed_array_buffer()
-del _extend_typed_array_buffer
+    Args:
+        buffer: the buffer.
+        view: False: the typed array holds a copy of the items. True: it is a
+            view of the memory of `buffer`, without copying. Fast, but only
+            valid while `buffer` is alive and unchanged in size, and until
+            the WebAssembly memory grows (any allocation can do that): use it
+            right away and do not keep it.
+    """
+    return pyjs_core.buffer_to_js(buffer, bool(view))

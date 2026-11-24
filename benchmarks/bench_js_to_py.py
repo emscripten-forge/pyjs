@@ -4,8 +4,7 @@ The calls are issued from a JS loop (N calls per measured iteration), so the
 reported per-op time is the cost of a single JS -> python call.
 """
 
-import pyjs
-from pyjs import js
+from compat import create_once_callable, create_proxy, js
 
 N = 1000
 
@@ -15,47 +14,40 @@ _loop_str = js.Function("f", "n", "for (let i = 0; i < n; i++) { f('hello'); }")
 _loop_obj = js.Function("f", "n", "const o = {a: 1}; for (let i = 0; i < n; i++) { f(o); }")
 
 
-def bench_js_calls_py_noargs(benchmark):
-    cb, handle = pyjs.create_callable(lambda: None)
+def _bench_loop(benchmark, js_loop, py_function):
+    """measure `js_loop` calling `py_function` N times"""
+    callback = create_proxy(py_function)
     try:
-        benchmark(_loop_noargs, cb, N, ops=N)
+        benchmark(js_loop, callback, N, ops=N)
     finally:
-        handle.delete()
+        callback.destroy()
+
+
+def bench_js_calls_py_noargs(benchmark):
+    _bench_loop(benchmark, _loop_noargs, lambda: None)
 
 
 def bench_js_calls_py_int_roundtrip(benchmark):
-    cb, handle = pyjs.create_callable(lambda i: i)
-    try:
-        benchmark(_loop_int, cb, N, ops=N)
-    finally:
-        handle.delete()
+    _bench_loop(benchmark, _loop_int, lambda i: i)
 
 
 def bench_js_calls_py_str_arg(benchmark):
-    cb, handle = pyjs.create_callable(lambda s: None)
-    try:
-        benchmark(_loop_str, cb, N, ops=N)
-    finally:
-        handle.delete()
+    _bench_loop(benchmark, _loop_str, lambda s: None)
 
 
 def bench_js_calls_py_object_arg(benchmark):
-    cb, handle = pyjs.create_callable(lambda o: None)
-    try:
-        benchmark(_loop_obj, cb, N, ops=N)
-    finally:
-        handle.delete()
+    _bench_loop(benchmark, _loop_obj, lambda o: None)
 
 
+# (the names are kept so that results stay comparable with older runs)
 def bench_create_and_delete_callable(benchmark):
     def f():
         pass
 
-    def create_delete():
-        _, handle = pyjs.create_callable(f)
-        handle.delete()
+    def create_destroy():
+        create_proxy(f).destroy()
 
-    benchmark(create_delete)
+    benchmark(create_destroy)
 
 
 def bench_create_once_callable_and_call(benchmark):
@@ -63,6 +55,6 @@ def bench_create_once_callable_and_call(benchmark):
         pass
 
     def create_call():
-        pyjs.create_once_callable(f)()
+        create_once_callable(f)()
 
     benchmark(create_call)

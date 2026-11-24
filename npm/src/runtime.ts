@@ -548,7 +548,7 @@ function enqueue<T>(state: IState, task: () => Promise<T>): Promise<T> {
 /** Module.installPackages / unpackArchive / addFiles (after python started) */
 function attachInstallers(state: IState): void {
   const Module = state.Module;
-  const invalidateCaches = () => Module.exec("import importlib\nimportlib.invalidate_caches()");
+  const invalidateCaches = () => Module.runPython("import importlib\nimportlib.invalidate_caches()");
 
   Module.installPackages = (packages: (string | IPinnedPackage)[], options: IInstallOptions = {}) =>
     enqueue(state, async () => {

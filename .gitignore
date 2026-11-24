@@ -21,3 +21,6 @@ docs/_generated/
 .jupyterlite.doit.db
 # personal Claude Code settings
 .claude/settings.local.json
+# a local copy of PEP 818 (the API pyjs follows), saved from the browser
+pep818.htm
+pep818_files/

@@ -7,6 +7,8 @@ The kinds only differ in how pyjs is created:
 * npm: the npm package (test packages solved and installed at runtime)
 * vite / webpack / rollup / esbuild / parcel: an app built with that bundler
   around the npm package (main thread only)
+* pyodide: pyodide instead of pyjs, from a local copy of a release (only for
+  the benchmarks: the reference pyjs is compared with)
 """
 
 import json
@@ -14,6 +16,7 @@ import os
 import shutil
 import subprocess
 import tarfile
+import urllib.request
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -87,6 +90,66 @@ def build_npm(out, package, arch, packages):
     entry = "index" if arch == "wasm32" else arch
     page_js = (WEB / "npm_page.js").read_text()
     page_js = page_js.replace("@ENTRY@", entry).replace("@PACKAGES@", json.dumps(packages))
+    copy_contract_files(out, page_js)
+
+
+# where pyodide's release files are downloaded from (once, see fetch_pyodide)
+PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v{version}/full/{name}"
+# what pyodide needs to start: the loader, the runtime (js + wasm), the python
+# standard library, and the list of its packages
+PYODIDE_CORE_FILES = ["pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json"]
+
+
+def fetch_pyodide(version, packages, cache_dir):
+    """A local copy of pyodide `version` + `packages` (with what they depend
+    on) in `<cache_dir>/<version>`; returns that directory.
+
+    Downloaded once and kept: the benchmarks then do not depend on the CDN
+    being reachable at the moment they run (it is not always), and every run
+    measures the same files."""
+    directory = Path(cache_dir) / version
+    directory.mkdir(parents=True, exist_ok=True)
+
+    def get(name):
+        """download one file of the release, unless it is there already"""
+        target = directory / name
+        if target.exists():
+            return
+        print(f"downloading pyodide {version}: {name}", flush=True)
+        request = urllib.request.Request(
+            PYODIDE_URL.format(version=version, name=name), headers={"User-Agent": "pyjs-test-driver"}
+        )
+        # (to a temporary name first: an interrupted download must not look
+        # like a complete file on the next run)
+        partial = target.with_name(target.name + ".part")
+        with urllib.request.urlopen(request) as response, open(partial, "wb") as f:
+            shutil.copyfileobj(response, f)
+        partial.rename(target)
+
+    for name in PYODIDE_CORE_FILES:
+        get(name)
+    # pyodide-lock.json says for each package which file it is and which
+    # other packages it needs
+    lock = json.loads((directory / "pyodide-lock.json").read_text())["packages"]
+    todo, done = list(packages), set()
+    while todo:
+        name = todo.pop()
+        if name in done:
+            continue
+        done.add(name)
+        get(lock[name]["file_name"])
+        todo.extend(lock[name]["depends"])
+    return directory
+
+
+def build_pyodide(out, version, packages, cache_dir):
+    """page with pyodide `version` instead of pyjs: the reference the
+    benchmarks compare pyjs with. pyodide is served by the page itself, from
+    a local copy (`fetch_pyodide`)."""
+    pyodide = fetch_pyodide(version, packages, cache_dir)
+    out = fresh_dir(out)
+    shutil.copytree(pyodide, out / "pyodide")
+    page_js = (WEB / "pyodide_page.js").read_text().replace("@PACKAGES@", json.dumps(packages))
     copy_contract_files(out, page_js)
 
 

@@ -18,7 +18,7 @@ THE WAY AROUND IT. Split it in two phases:
    the other and their outcome is printed and counted.
 
 So async tests are ordinary pytest tests: collected by name, selectable with
-markers, usable with `@pytest.mark.parametrize` and `skipif`.
+markers, usable with `@pytest.mark.parametrize`, `skipif` and `xfail`.
 
 THE LIMITATION. Whatever pytest does *around* a test call happens in phase 1,
 before the coroutine ran: a fixture is set up and torn down again before the
@@ -59,7 +59,10 @@ class AsyncTests:
         # the arguments the test function asks for (parameters of
         # `parametrize`, values of fixtures), as pytest prepared them
         arguments = {name: pyfuncitem.funcargs[name] for name in pyfuncitem._fixtureinfo.argnames}
-        self._deferred.append((pyfuncitem.nodeid, function(**arguments)))
+        # (is the test marked as "expected to fail"? needed in phase 2)
+        # (not with --runxfail: then xfail tests are run like normal ones)
+        xfail = pyfuncitem.get_closest_marker("xfail") is not None and not pyfuncitem.config.option.runxfail
+        self._deferred.append((pyfuncitem.nodeid, function(**arguments), xfail))
         self._deferred_ids.add(pyfuncitem.nodeid)
         return True
 
@@ -87,17 +90,23 @@ class AsyncTests:
             return
         print(f"\n{'=' * 30} async tests ({len(self._deferred)}) {'=' * 30}", flush=True)
         failures = []
-        for nodeid, coroutine in self._deferred:
+        for nodeid, coroutine, xfail in self._deferred:
             start = time.time()
             try:
                 await coroutine
-                outcome = "passed"
+                # (`@pytest.mark.xfail`: passing although a failure was
+                # expected is reported, but is no error, as in pytest)
+                outcome = "xpassed" if xfail else "passed"
             except pytest.skip.Exception as skipped:
                 # `pytest.skip(...)` called inside the test
                 outcome = f"skipped ({skipped})"
             except BaseException:
-                outcome = "failed"
-                failures.append((nodeid, traceback.format_exc()))
+                if xfail:
+                    # `@pytest.mark.xfail`: the expected failure
+                    outcome = "xfailed"
+                else:
+                    outcome = "failed"
+                    failures.append((nodeid, traceback.format_exc()))
             self.counts[outcome.split()[0]] += 1
             print(f"{nodeid} {outcome.upper()} [{time.time() - start:.2f}s]", flush=True)
         for nodeid, text in failures:

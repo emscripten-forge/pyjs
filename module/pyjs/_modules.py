@@ -20,7 +20,7 @@ import types
 import pyjs_core
 from pyjs_core import JSProxy
 
-from . import code, convert, core, error_handling, ffi
+from . import _proxy_types, code, convert, core, error_handling, ffi
 
 # JavaScript's globalThis. A JSProxy, not a module: the import system accepts
 # any object in sys.modules, and `js.document` then is a direct attribute
@@ -51,6 +51,8 @@ def install():
         create_once_callable=ffi.create_once_callable,
         destroy_proxies=ffi.destroy_proxies,
         to_js=convert.to_js,
+        # the kinds of proxies (JSArray, JSMap, ...)
+        **{name: getattr(_proxy_types, name) for name in _proxy_types.__all__},
     )
     jstypes = _module("jstypes")
     jstypes.ffi = _module("jstypes.ffi", **ffi_names)
@@ -67,17 +69,12 @@ def install():
         ConversionError=convert.ConversionError,
         can_run_sync=core.can_run_sync,
         run_sync=core.run_sync,
-        # (pyodide has one type per kind of JavaScript object)
-        JsArray=JSProxy,
-        JsCallable=JSProxy,
-        JsMap=JSProxy,
-        JsBuffer=JSProxy,
+        # JsArray, JsMap, ... (pyodide's spelling of JSArray, JSMap, ...)
+        **{"Js" + name[2:]: getattr(_proxy_types, name) for name in _proxy_types.__all__},
     )
     pyodide = _module("pyodide")
     pyodide.ffi = _module("pyodide.ffi", **pyodide_names)
-    pyodide.code = _module(
-        "pyodide.code",
-        run_js=code.run_js,
-        eval_code=code.eval_code,
-        eval_code_async=code.eval_code_async,
-    )
+    # The module pyjs.code itself, not a copy of its functions: code that
+    # replaces pyodide.code.eval_code changes what runPython runs, as in
+    # pyodide.
+    pyodide.code = sys.modules["pyodide.code"] = code

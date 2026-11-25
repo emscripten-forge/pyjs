@@ -20,6 +20,9 @@ export async function createPyjs(options) {
     // tests/npm/test_archives.py: an archive unpacked before python starts
     archives: [{ url: "/test-data/archive_init.tar.gz", path: "/unpacked_at_init" }],
     files: [{ path: "/files_at_init/hello.txt", data: "hello from files" }],
+    // the optional stdlib parts the test suite uses (pooch needs lzma,
+    // _testbuffer, ...); tests/test_stdlib.py checks one left out (cjkcodecs)
+    stdlib: ["ssl", "sqlite3", "lzma", "test-modules"],
     onProgress: (p) => globalThis.__pyjs_progress.push(p),
   });
 }

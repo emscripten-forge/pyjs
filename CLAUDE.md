@@ -320,8 +320,24 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   initializers use the C API, e.g. matplotlib's ft2font crashes otherwise).
   `Module.initTimings`: phase times (ms) of the init, `Module.installTimings`
   of the last `installPackages` (`state.timings` points to the running one). Options: `packages` (specs), `urls` (pinned
-  `{url, sha256?}`), `archives`, `files`, `cache`, `verifySha256`,
+  `{url, sha256?}`), `archives`, `files`, `stdlib`, `cache`, `verifySha256`,
   `onProgress`, `wasmModule`, `env`. `python` / `pyjs` are never replaced.
+- Optional stdlib (split python recipe: python-ssl / -sqlite3 / -lzma /
+  -cjkcodecs / -test-modules = side modules in lib-dynload):
+  `build_utils/npm_env_meta.py` marks them `optional` in the env meta; shipped
+  but only extracted on request (option `stdlib: [...] | "all"`,
+  `installPackages(["sqlite3"])`: shipped tarball, no solve). The solver's lock
+  lists them as installed (never downloaded from a channel). With a python
+  that has them built in there are none (`stdlib` is a no-op).
+  `tests/test_stdlib.py`.
+- Licenses: `build_utils/third_party_licenses.py` (task `pack`) writes
+  `assets/<arch>/THIRD_PARTY_LICENSES.md`: the `info/licenses` of the host
+  env's `*-static` packages + nanobind (linked into the runtime) and of every
+  shipped package (via `extracted_package_dir` in conda-meta), plus
+  emscripten's libc / libc++ / compiler-rt / ports.
+- The runtime links libsqlite3 / libssl / libcrypto / liblzma only if
+  libpython has the module built in (`pyjs_link_if_builtin` in
+  CMakeLists.txt): a split python has them as side modules with their own copy.
 - Returns the Module + `installPackages(specs | pinned)`, `unpackArchive`,
   `addFiles` (serialized in a queue). Entries also export `compileRuntime()`.
   CLI: `npx <pkg> lock <specs>` (`src/lock.ts`, bundled for node into

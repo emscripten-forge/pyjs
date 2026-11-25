@@ -34,39 +34,100 @@ _module = pyjs_core.module()
 # ---------------------------------------------------------------------------
 def _format_exception(exc):
     """the traceback of an exception as text: the message of the error
-    JavaScript gets when Python code it called raised"""
-    return "".join(traceback.format_exception(exc))
+    JavaScript gets when Python code it called raised. The frames of pyjs'
+    own code running it (runPython -> pyjs/code.py) are left out at the
+    start: the traceback begins with the user's code."""
+    tb = exc.__traceback__
+    while tb is not None and tb.tb_next is not None and tb.tb_frame.f_code.co_filename.endswith("pyjs/code.py"):
+        tb = tb.tb_next
+    return "".join(traceback.format_exception(type(exc), exc, tb))
 
 
-def _then(awaitable, resolve, reject):
+def _then(awaitable, settle):
     """Settle a JavaScript promise with the outcome of a Python awaitable.
 
     JavaScript calls this when it awaits a Python coroutine / future / task
-    (the `then` of its PyProxy, src/js/pyproxy.ts): `resolve` and `reject`
-    are the two functions of a new JavaScript promise.
+    (the `then` of its PyProxy, src/js/pyproxy.ts). When the awaitable is
+    done, `settle` (a JavaScript function) is called with the `result`
+    method of the finished future. JavaScript calls that method: it returns
+    the result or raises the exception, which JavaScript turns into a
+    resolved or rejected promise.
     """
     future = asyncio.ensure_future(awaitable)
+    future.add_done_callback(lambda finished: settle(finished.result))
 
-    def done(finished):
-        try:
-            result = finished.result()
-        except BaseException as err:
-            reject(_format_exception(err))
-            return
-        # A Python object as result must outlive this call: without
-        # create_proxy JavaScript would get a proxy that is destroyed when
-        # `resolve` returns. (Values that are converted, like numbers and
-        # strings, pass through unchanged.)
-        resolve(pyjs_core.create_proxy(result, False))
 
-    future.add_done_callback(done)
+def _schedule_coroutine(coroutine):
+    """Start a coroutine as asyncio task. The core calls this when a Python
+    function called from JavaScript returned a coroutine (an `async def`
+    function was called): JavaScript expects the function to run, and gets
+    the task to await."""
+    return asyncio.ensure_future(_run_to_the_end(coroutine))
+
+
+async def _run_to_the_end(coroutine):
+    """the result of `coroutine`; if that is a coroutine again (an `async
+    def` function that returns `other()` without awaiting it), it runs too,
+    as JavaScript's async functions resolve returned promises (pyodide does
+    the same)"""
+    result = await coroutine
+    while asyncio.iscoroutine(result):
+        result = await result
+    return result
+
+
+# a step of a JavaScript iterator
+_step_object = _js.Function("done", "value", "return {done: done, value: value};")
+
+
+def _generator_step(generator, method, argument):
+    """The JavaScript generator methods of the proxy of a Python generator
+    (src/js/pyproxy.ts): `next(value)` is python's send, `throw(error)` its
+    throw, `return(value)` its close. The result is the step object
+    ``{done, value}`` JavaScript expects; the value of a finished generator
+    is its return value."""
+    try:
+        if method == "next":
+            value = generator.send(argument)
+        elif method == "throw":
+            # (a JavaScript Error arrives as JSException; anything else
+            # thrown is wrapped in one)
+            if not isinstance(argument, BaseException):
+                argument = JSException(argument)
+            value = generator.throw(argument)
+        else:
+            generator.close()
+            return _step_object(True, _lasting(argument))
+    except StopIteration as stop:
+        return _step_object(True, _lasting(stop.value))
+    return _step_object(False, _lasting(value))
+
+
+def _lasting(value):
+    """a value that is stored in a JavaScript object: a Python object needs a
+    lasting proxy (see create_proxy); converted values are returned as they
+    are"""
+    return pyjs_core.create_proxy(value, False)
 
 
 def _rejection_to_exception(err):
     """The exception for a rejected JS promise: a JSException, like for
     errors thrown by synchronous JS calls, also when the promise was rejected
     with something that is no Error."""
-    if isinstance(err, JSProxy):
+    if isinstance(err, (JSProxy, JSException)):
+        if _module._is_python_error(err):
+            # A Python exception that travelled through JavaScript (python
+            # awaits a promise that python code rejected, e.g. the promise
+            # of runPythonAsync): the original exception, not a JSException
+            # wrapping its JavaScript stand-in. Throwing the stand-in from
+            # JavaScript raises the exception inside it.
+            try:
+                _module._throw(err)
+            except BaseException as original:
+                return original
+        if isinstance(err, JSException):
+            # (a rejection with an Error object: it arrived as JSException)
+            return err
         return error_to_py(err)
     # e.g. reject("text"), reject(undefined): arrive as python values
     return JSException(err, message=f"promise rejected with {err!r}")
@@ -94,6 +155,10 @@ def _to_future(js_promise):
 def _await_js(js_promise):
     """`await js_promise`: what the core calls for the `__await__` of a
     JSProxy of a promise (or any object with a `then` method)"""
+    # (the proxy type is chosen when the object first reaches python: its
+    # `then` may have been removed since)
+    if not callable(getattr(js_promise, "then", None)):
+        raise TypeError(f"object {js_promise!r} can't be used in 'await' expression")
     return _to_future(js_promise).__await__()
 
 

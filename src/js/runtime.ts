@@ -10,8 +10,9 @@
 //      its own way)
 //   3. Module.startPython()   <- this file
 //   4. Module.exec("...") / Module.runPython("...") / Module.pyimport("...")
+import { PYPROXY } from "./codec";
 import { canRunSync, jspi, jspiEnabled } from "./jspi";
-import { PythonError, pyimport, setPythonHelpers } from "./pyproxy";
+import { PythonError, pyimport, pythonErrorFor, setPythonHelpers } from "./pyproxy";
 
 // from the emscripten runtime this code is embedded in
 declare const FS: any;
@@ -47,6 +48,13 @@ function setenv(name: string, value: any): void {
 }
 
 let started = false;
+
+/** the options of runPython / runPythonAsync */
+interface RunOptions {
+  globals?: any;
+  locals?: any;
+  filename?: string;
+}
 
 /**
  * Start the interpreter (synchronous). The file system must already hold the
@@ -102,44 +110,92 @@ function bindPython(): void {
   const main = pyimport("__main__");
   const scope = main.__dict__;
   main.destroy();
-  Module.globals = scope;
 
-  // the python functions doing the actual work (module/pyjs/code.py)
-  const evalCode = pyjs.eval_code;
-  const evalCodeAsync = pyjs.eval_code_async;
-  setPythonHelpers(pyjs._then, pyjs.to_js);
+  // Module.globals: that dict, with one addition. Python finds names that
+  // are not in the globals in the module `builtins` (`open`, `len`, ...).
+  // `Module.globals.get("open")` shall find them too (as in pyodide), so
+  // get() and has() look there second. Everything else goes to the dict.
+  const builtinsModule = pyimport("builtins");
+  const builtins = builtinsModule.__dict__;
+  builtinsModule.destroy();
+  Module.globals = new Proxy(scope, {
+    get(target, property) {
+      if (property === "get") {
+        return (key: any) => {
+          const value = target.get(key);
+          return value === undefined ? builtins.get(key) : value;
+        };
+      }
+      if (property === "has") {
+        return (key: any) => target.has(key) || builtins.has(key);
+      }
+      return Reflect.get(target, property);
+    },
+  });
+
+  // The python module with the functions doing the actual work
+  // (module/pyjs/code.py). They are looked up in it on every call, not
+  // fetched once: python code may replace them (`pyjs.code.eval_code = ...`)
+  // to change what runPython does.
+  const code = pyjs.code;
+  const toPy = pyjs.to_py;
+  setPythonHelpers(pyjs._then, pyjs.to_js, pyjs.core._generator_step);
   pyjs.destroy();
+
+  /**
+   * A JS value as Python object (python's `pyjs.to_py`): an Array becomes a
+   * list, a Map / plain Object a dict, ... The result is a PyProxy (values
+   * that need no proxy, like numbers, come back as they are).
+   * options: {depth, defaultConverter} as for `to_py` in python.
+   */
+  Module.toPy = function (value: any, options: { depth?: number; defaultConverter?: any } = {}): any {
+    const kwargs: Record<string, any> = { depth: options.depth ?? -1 };
+    if (options.defaultConverter !== undefined) {
+      kwargs.default_converter = options.defaultConverter;
+    }
+    return toPy.callKwargs(value, kwargs);
+  };
 
   /**
    * Run python code and return the value of its last line, if that is an
    * expression (like a notebook cell): `runPython("x = 20\nx + 1")` is 21.
    * options: {globals, locals} the namespaces to run in (PyProxies of
-   * dicts); default: Module.globals.
+   * dicts); default: Module.globals. {filename}: the file name in
+   * tracebacks (default "<exec>").
    */
-  Module.runPython = function (code: string, options: { globals?: any; locals?: any } = {}): any {
+  Module.runPython = function (source: string, options: RunOptions = {}): any {
     const globals = options.globals ?? scope;
-    return evalCode(code, globals, options.locals ?? globals);
+    const locals = options.locals ?? globals;
+    // (the filename only when given: a replacement of eval_code, see above,
+    // may not take it)
+    return options.filename === undefined
+      ? code.eval_code(source, globals, locals)
+      : code.eval_code.callKwargs(source, globals, locals, { filename: options.filename });
   };
 
   /** like runPython, for code that uses `await` at the top level; returns a promise */
-  Module.runPythonAsync = async function (
-    code: string,
-    options: { globals?: any; locals?: any } = {}
-  ): Promise<any> {
+  Module.runPythonAsync = async function (source: string, options: RunOptions = {}): Promise<any> {
     const globals = options.globals ?? scope;
-    // Calling an `async def` function does not run it yet: it gives a
-    // coroutine, here as PyProxy. Awaiting that proxy runs the code (as
-    // asyncio task) and waits for its result.
-    const coroutine = evalCodeAsync(code, globals, options.locals ?? globals);
+    // `eval_code_async` is an `async def` function: calling it starts the
+    // code as asyncio task (see `call` in src/py_entry.cpp) and gives that
+    // task as PyProxy. Awaiting the proxy waits for its result.
+    const locals = options.locals ?? globals;
+    const task =
+      options.filename === undefined
+        ? code.eval_code_async(source, globals, locals)
+        : code.eval_code_async.callKwargs(source, globals, locals, { filename: options.filename });
     try {
-      return await coroutine;
+      return await task;
     } finally {
-      coroutine.destroy();
+      task.destroy();
     }
   };
 
-  /** `import name`: the python module as PyProxy */
-  Module.pyimport = pyimport;
+  /**
+   * `import name`: the python module as PyProxy. A dotted name whose last
+   * part is no module gives that attribute (`pyimport("os.path.join")`).
+   */
+  Module.pyimport = (name: string) => code._pyimport(name);
 }
 
 /** what exists on Module before python is started */
@@ -157,6 +213,23 @@ export function installModuleApi(): void {
   // `None` stands for both undefined and a missing value)
   Module._is_undefined = (value: any) => value === undefined;
   Module._is_null = (value: any) => value === null;
+  // JSDoubleProxy.unwrap(): a copy of the PyProxy `p` that comes back to
+  // python as the Python object itself (not as proxy, see encode in
+  // codec.ts). The copy is released by the garbage collector.
+  Module._unwrap_double_proxy = (p: any) => {
+    const copy = p.copy();
+    copy[PYPROXY].roundtrip = false;
+    return copy;
+  };
+  // the JS error standing for a Python exception (see pythonErrorFor)
+  Module._python_error = pythonErrorFor;
+  // is `value` such an error (a Python exception travelling through JS)?
+  Module._is_python_error = (value: any) => value instanceof PythonError && value.__pyjs_exception !== 0;
+  // throws its argument. Called from python with a PythonError, this raises
+  // the Python exception inside it (see `fail` in jsops.ts).
+  Module._throw = (value: any) => {
+    throw value;
+  };
 
   // JSPI, see jspi.ts
   Module._jspi_enabled = jspiEnabled;

@@ -61,6 +61,16 @@ namespace pyjs
         int write_error(Slot* out)
         {
             PyObject* exc = PyErr_GetRaisedException();
+            // Like the interactive interpreter does for an uncaught
+            // exception: remember it in `sys.last_exc` (and the older
+            // names), so that it can be inspected afterwards, e.g. with
+            // `pdb.pm()` or `traceback.print_last()`.
+            PySys_SetObject("last_exc", exc);
+            PySys_SetObject("last_value", exc);
+            PySys_SetObject("last_type", reinterpret_cast<PyObject*>(Py_TYPE(exc)));
+            PyObject* traceback = PyException_GetTraceback(exc);
+            PySys_SetObject("last_traceback", traceback != nullptr ? traceback : Py_None);
+            Py_XDECREF(traceback);
             out[0].tag = T_ERROR;
             out[0].aux = 0;
             out[0].num = ptr_to_num(exc);
@@ -122,6 +132,24 @@ namespace pyjs
             return RC_OK;
         }
 
+        // Is a coroutine returned by `fn` meant to run (see `call`)? Yes for
+        // an `async def` function: calling it means "run it". No for a plain
+        // Python function that returns a coroutine: it hands the coroutine
+        // over as a value, and whoever gets it decides (e.g. the code of
+        // runPython("f(1)") evaluates to a coroutine; pyodide does not start
+        // that one either). Other callables (C functions, like the `result`
+        // method of a finished future): yes.
+        bool starts_coroutines(PyObject* fn)
+        {
+            PyObject* function = PyMethod_Check(fn) ? PyMethod_GET_FUNCTION(fn) : fn;
+            if (!PyFunction_Check(function))
+            {
+                return true;
+            }
+            const PyCodeObject* code = reinterpret_cast<PyCodeObject*>(PyFunction_GET_CODE(function));
+            return (code->co_flags & CO_COROUTINE) != 0;
+        }
+
         // fn(*args, **kwargs): npos + nkw value slots, then nkw name slots
         int call(PyObject* fn, Slot* slots, int npos, int nkw, Slot* out)
         {
@@ -178,6 +206,19 @@ namespace pyjs
             {
                 PyMem_Free(argv - 1);
             }
+            // An `async def` function was called: the result is a coroutine,
+            // which has not run a single line yet. JavaScript code calling
+            // such a function (as event handler, with setTimeout, ...)
+            // expects it to run, like a JavaScript async function does. So
+            // the coroutine is started as asyncio task, and JavaScript gets
+            // the task (which it can await like the coroutine).
+            if (ret != nullptr && PyCoro_CheckExact(ret) && hooks().schedule_coroutine != nullptr
+                && starts_coroutines(fn))
+            {
+                PyObject* task = PyObject_CallOneArg(hooks().schedule_coroutine, ret);
+                Py_DECREF(ret);
+                ret = task;
+            }
             return write_result(ret, out);
         }
 
@@ -226,8 +267,23 @@ namespace pyjs
                     rc = write_status(PyObject_DelAttr(obj, a), out);
                     break;
                 case P_GETITEM:
-                    rc = write_result(PyObject_GetItem(obj, a), out);
+                {
+                    PyObject* value = PyObject_GetItem(obj, a);
+                    if (value == nullptr && PyErr_ExceptionMatches(PyExc_LookupError))
+                    {
+                        // no such key / index: `undefined`, like a missing
+                        // property or `map.get(key)` in JavaScript (and
+                        // like pyodide), not an error
+                        PyErr_Clear();
+                        out->tag = T_UNDEF;
+                        rc = RC_OK;
+                    }
+                    else
+                    {
+                        rc = write_result(value, out);
+                    }
                     break;
+                }
                 case P_SETITEM:
                     rc = write_status(PyObject_SetItem(obj, a, b), out);
                     break;
@@ -299,13 +355,34 @@ extern "C"
     // the same, as separate export: wrapped in WebAssembly.promising by the JS
     // side when the browser supports JSPI, the called Python code may then
     // suspend (pyjs.run_sync)
+    //
+    // Such a call can be suspended in the middle (run_sync) while other
+    // Python code runs. So it runs like an asyncio task: in a COPY of the
+    // current contextvars context. It sees the values set by the code that
+    // was current when it started, but what it sets itself stays its own
+    // and does not leak into code that runs while it is suspended or after
+    // it (pyodide does the same).
     EMSCRIPTEN_KEEPALIVE int pyjs_call_promising(double fn, double args, int npos, int nkw, double out)
     {
-        return pyjs::call(pyjs::num_to_ptr<PyObject>(fn),
-                          pyjs::num_to_ptr<pyjs::Slot>(args),
-                          npos,
-                          nkw,
-                          pyjs::num_to_ptr<pyjs::Slot>(out));
+        PyObject* context = PyContext_CopyCurrent();
+        if (context == nullptr || PyContext_Enter(context) != 0)
+        {
+            Py_XDECREF(context);
+            return pyjs::write_error(pyjs::num_to_ptr<pyjs::Slot>(out));
+        }
+        const int rc = pyjs::call(pyjs::num_to_ptr<PyObject>(fn),
+                                  pyjs::num_to_ptr<pyjs::Slot>(args),
+                                  npos,
+                                  nkw,
+                                  pyjs::num_to_ptr<pyjs::Slot>(out));
+        // (cannot fail: this call entered the context and nobody else exits
+        // it; an error here would leave an exception set: cleared)
+        if (PyContext_Exit(context) != 0)
+        {
+            PyErr_Clear();
+        }
+        Py_DECREF(context);
+        return rc;
     }
 
     // attribute access, items, len, ... of a Python object (PyOp)

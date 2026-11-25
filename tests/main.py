@@ -14,7 +14,11 @@ Everything is one pytest run over `test_*.py`:
 
 options (from the driver): `disable_jspi` (test like in a browser without
 JSPI, with the same build), `tests_url` (url of this directory, for the JS
-modules).
+modules), `filter` (a pytest `-k` expression: run only matching tests, e.g.
+`pyjs_test_driver run <page> --option filter=test_proxy_types`), `file` (run
+only this file or directory, relative to this one: `--option
+file=pyodide/test_pyodide_jsproxy.py`), `runxfail` (run tests marked xfail
+like normal ones, to see their errors: `--option runxfail=1`).
 """
 
 import os
@@ -47,10 +51,17 @@ async def main(options):
     # -s: show print output right away (the console of the page is the log)
     # -p no:...: plugins that need what a browser does not have (signals, a
     # writable cache directory)
-    exit_code = pytest.main(
-        ["-s", "-vv", "-p", "no:faulthandler", "-p", "no:cacheprovider", str(HERE)],
-        plugins=[plugin],
-    )
+    # what to run: everything, or only one file / directory (option `file`,
+    # relative to this directory)
+    target = HERE / options["file"] if options.get("file") else HERE
+    args = ["-s", "-vv", "-p", "no:faulthandler", "-p", "no:cacheprovider", str(target)]
+    if options.get("filter"):
+        # only the tests matching this pytest `-k` expression
+        args += ["-k", options["filter"]]
+    if options.get("runxfail"):
+        # run tests marked xfail like normal ones (to see why they fail)
+        args += ["--runxfail"]
+    exit_code = pytest.main(args, plugins=[plugin])
     await plugin.run_deferred()
 
     summary = dict(plugin.counts)

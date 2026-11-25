@@ -61,7 +61,18 @@ namespace pyjs
         JS_AWAITABLE = 1 << 5, // then()
         JS_GETITEM = 1 << 6,   // obj[key]: an Array / typed array, or it has get()
         JS_SETITEM = 1 << 7,   // obj[key] = value: an Array / typed array, or it has set()
-        JS_FLAG_END = 1 << 8,
+        // The following do not add operations in C: they select Python
+        // classes with extra methods (append(), keys(), send(), ...) that
+        // the proxy type derives from, see Hooks::proxy_mixins.
+        JS_ARRAY = 1 << 8,            // an Array
+        JS_BUFFER = 1 << 9,           // a typed array, DataView or ArrayBuffer
+        JS_MAP = 1 << 10,             // like a Map: get(), has(), size, iterable
+        JS_GENERATOR = 1 << 11,       // an iterator with return() and throw()
+        JS_ASYNC_ITERABLE = 1 << 12,  // has [Symbol.asyncIterator]
+        JS_ASYNC_ITERATOR = 1 << 13,  // next() returns promises
+        JS_ERROR = 1 << 14,           // an Error: python gets a JSException
+        JS_DOUBLE_PROXY = 1 << 15,    // a PyProxy made by create_proxy (JSDoubleProxy)
+        JS_FLAG_END = 1 << 16,
     };
 
     // what a Python object can do (computed in C when it is passed to JS)
@@ -71,6 +82,8 @@ namespace pyjs
         PY_AWAITABLE = 1 << 1,
         PY_ITERABLE = 1 << 2,
         PY_ITERATOR = 1 << 3,
+        PY_SIZED = 1 << 4,  // has len()
+        PY_GENERATOR = 1 << 5,  // a generator (send / throw / close)
     };
 
     struct Slot
@@ -120,14 +133,22 @@ namespace pyjs
     // create the JSProxy types; false with a Python exception set
     bool js_proxy_init(PyObject* module);
 
+    // Forget the proxy types created so far, so that they are created again
+    // (with the mixin classes of Hooks::proxy_mixins) when next needed.
+    // Called when the hooks are set: the Python code providing the mixins
+    // itself uses a few proxies before it can register them, and the types
+    // made for those have no mixins. Proxies that exist keep their type.
+    void js_proxy_forget_types();
+
     // JSProxy of globalThis (0) / the emscripten Module (1)
     PyObject* js_global(int which);
 
-    // a JSProxy of a PyProxy of `obj` (not unwrapped when it comes back to
-    // Python, to be destroyed by its user). Objects that convert to JS values
-    // (str, int, JSProxy, ...) have no proxy: TypeError if `always`, else
-    // `obj` itself is returned.
-    PyObject* create_proxy(PyObject* obj, bool always);
+    // A JSProxy of a lasting PyProxy of `obj` (destroyed by its user).
+    // `roundtrip`: when the PyProxy comes back to python from JavaScript,
+    // python gets this JSProxy again (a "double proxy") instead of `obj`.
+    // Objects that convert to JS values (str, int, JSProxy, ...) have no
+    // proxy: TypeError if `always`, else `obj` itself is returned.
+    PyObject* create_proxy(PyObject* obj, bool always, bool roundtrip);
 
     // block until the promise (a JSProxy) settles: its value, or raises (JSPI)
     PyObject* run_sync(PyObject* promise);
@@ -151,10 +172,22 @@ namespace pyjs
         PyObject* await_js = nullptr;  // (JSProxy) -> iterator (for __await__)
         PyObject* jsnull = nullptr;  // the object JS null converts to
         PyObject* bigint_type = nullptr;  // int subclass JS BigInt converts to
-        PyObject* sequence_abc = nullptr;  // collections.abc.Sequence (to_js: what becomes an Array)
         // (JSProxy, depth, default_converter) -> the converted value: to_py
         // with a converter function, which Python code does step by step
         PyObject* to_py_with_converter = nullptr;
+        // (flags: int) -> tuple of Python classes: the extra base classes of
+        // the proxy type for JS objects with these JsFlags. They hold the
+        // methods that are easier to write in Python than in C, e.g.
+        // append() / pop() for arrays (pyjs/_proxy_types.py).
+        PyObject* proxy_mixins = nullptr;
+        // (coroutine) -> task: start a coroutine that a Python function
+        // called from JavaScript returned (asyncio.ensure_future), see
+        // `call` in py_entry.cpp
+        PyObject* schedule_coroutine = nullptr;
+        // the class JSException: a JavaScript Error reaching python is an
+        // instance of it (created as `JSException(proxy_of_the_error)`), and
+        // such an instance passed back to JavaScript is the Error again
+        PyObject* jsexception_type = nullptr;
     };
     Hooks& hooks();
 }

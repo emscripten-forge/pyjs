@@ -96,11 +96,14 @@ async def test_promise_rejection_custom_error_subclass():
 
 async def test_promise_rejection_keeps_the_js_error_object():
     err = js.Function("const e = new TypeError('the one'); globalThis.__pyjs_test_err = e; return e;")()
+    # (a JavaScript Error reaching python is a JSException, PEP 818)
+    assert isinstance(err, pyjs.JSException)
     try:
         e = await _await_exception(js.Promise.reject(err))
         is_same = js.Function("a", "return a === globalThis.__pyjs_test_err;")
         assert is_same(e.js_error)
-        assert e.js_error == err
+        assert is_same(e)
+        assert e.js_error == err.js_error
         assert e.js_error.message == "the one"
     finally:
         js.Function("delete globalThis.__pyjs_test_err;")()

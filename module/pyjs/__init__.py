@@ -5,6 +5,8 @@ The API follows PEP 818 and pyodide. The pieces:
 * `pyjs_core` (C++, builtin module): the `JSProxy` type and the conversion of
   values. Everything else is built on it in Python.
 * `ffi`: proxies (`create_proxy`, `create_once_callable`, `jsnull`, ...).
+* `_proxy_types`: the methods of proxies of arrays, maps, generators, ...
+  (`JSArray`, `JSMap`, ...; public through `ffi`).
 * `convert`: deep copies between the languages (`to_py`, `to_js`).
 * `error_handling`: JavaScript errors as Python exceptions (`JSException`).
 * `code`: `run_js`, `eval_code`.
@@ -17,19 +19,17 @@ Everything public is available directly: ``pyjs.create_proxy``,
 ``pyjs.to_js``, ``pyjs.run_sync``, ...
 """
 
-from collections.abc import Sequence as _Sequence
-
 import pyjs_core
 from pyjs_core import JSProxy
 
-from . import code, ffi
+from . import _proxy_types, code, ffi
 from .ffi import *
 from .error_handling import *
 from .convert import *
 from .convert import _to_py_with_converter
 from .code import *
 from .core import *
-from .core import _await_js, _disable_jspi, _format_exception, _then
+from .core import _await_js, _disable_jspi, _format_exception, _schedule_coroutine, _then
 from .error_handling import error_to_py_and_raise
 
 # Tell the core which Python objects to use (it cannot import this package:
@@ -45,10 +45,15 @@ pyjs_core.set_hooks(
     jsnull,
     # what a JavaScript BigInt is in Python
     JSBigInt,
-    # to_js: what besides list and tuple becomes a JavaScript Array
-    _Sequence,
     # proxy.to_py(default_converter=...): the step by step conversion
     _to_py_with_converter,
+    # the classes with the extra methods of array / map / generator / ...
+    # proxies
+    _proxy_types.mixins,
+    # starts the coroutine of an `async def` function JavaScript called
+    _schedule_coroutine,
+    # what a JavaScript Error object is in Python
+    JSException,
 )
 
 #: JavaScript's global scope (``pyjs.js.document``); the same as ``import js``

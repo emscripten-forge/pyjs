@@ -21,7 +21,11 @@ and ``str`` / strings.
 import pyjs_core
 from pyjs_core import JSProxy
 
+from . import _proxy_types
+from ._proxy_types import *  # noqa: F401,F403  (JSArray, JSMap, ...)
+
 __all__ = [
+    *_proxy_types.__all__,
     "JSProxy",
     "JSNull",
     "jsnull",
@@ -66,11 +70,51 @@ class JSBigInt(int):
     A plain ``int`` becomes a JavaScript number when that can hold it exactly
     and a ``BigInt`` only when it is too large. Use this type where JavaScript
     requires a ``BigInt`` also for small values. A ``BigInt`` coming from
-    JavaScript arrives as this type.
+    JavaScript arrives as this type. Arithmetic on it gives a `JSBigInt`
+    again (``JSBigInt(2) + 1`` is ``JSBigInt(3)``), as in JavaScript.
     """
 
 
-def create_proxy(obj):
+# json.dumps(jsnull) is "null", like None: jsnull stands for JavaScript's null,
+# which is what JSON's null is. (json has no way to register a type: its
+# encoder's fallback for unknown objects is extended.)
+import json as _json  # noqa: E402
+
+_json_default = _json.JSONEncoder.default
+
+
+def _json_default_with_jsnull(encoder, o):
+    if o is jsnull:
+        return None
+    return _json_default(encoder, o)
+
+
+_json.JSONEncoder.default = _json_default_with_jsnull
+
+
+def _keeps_bigint(name):
+    """the `int` operation `name`, with an int result turned into a JSBigInt
+    (`int` itself returns a plain int, also for subclasses)"""
+    int_operation = getattr(int, name)
+
+    def operation(self, *args):
+        result = int_operation(self, *args)
+        # (not for bool, float or NotImplemented results)
+        return JSBigInt(result) if type(result) is int else result
+
+    operation.__name__ = name
+    return operation
+
+
+for _name in (
+    "add sub mul floordiv mod pow lshift rshift and or xor "
+    "radd rsub rmul rfloordiv rmod rpow rlshift rrshift rand ror rxor "
+    "neg pos abs invert"
+).split():
+    setattr(JSBigInt, f"__{_name}__", _keeps_bigint(f"__{_name}__"))
+
+
+def create_proxy(obj, *, roundtrip=True):
     """Give JavaScript a lasting reference to the Python object `obj`.
 
     A Python object passed to a JavaScript function is normally only usable by
@@ -82,6 +126,13 @@ def create_proxy(obj):
     The result must be released with its ``destroy()`` method once JavaScript
     does not need it any more; `obj` cannot be freed before that.
 
+    The result is a `JSDoubleProxy`: a JSProxy of the JavaScript proxy of
+    `obj`. With ``roundtrip=True`` (the default, as in pyodide) that is also
+    what python gets when the proxy comes back from JavaScript (e.g. read
+    from an Array it was stored in), so that it can be destroyed; its
+    ``unwrap()`` gives `obj`. With ``roundtrip=False`` python gets `obj`
+    itself back.
+
     Example:
     ```python
     handler = create_proxy(on_click)
@@ -91,11 +142,22 @@ def create_proxy(obj):
     handler.destroy()
     ```
     """
-    return pyjs_core.create_proxy(obj)
+    return pyjs_core.create_proxy(obj, True, roundtrip)
+
+
+# destroys the PyProxies in a JavaScript Array, without handing them to python
+# (read in python, a PyProxy that is no round-trip proxy would be its
+# Python object, which has no destroy())
+_destroy_all = pyjs_core.global_this().Function("proxies", "for (const p of proxies) { p.destroy(); }")
 
 
 def destroy_proxies(proxies):
-    """Destroy every proxy of `proxies` (an iterable of `create_proxy` results)."""
+    """Destroy every proxy of `proxies`: an iterable of `create_proxy`
+    results, or the JavaScript Array that `to_js(..., pyproxies=...)`
+    filled."""
+    if isinstance(proxies, JSProxy):
+        _destroy_all(proxies)
+        return
     for proxy in proxies:
         proxy.destroy()
 

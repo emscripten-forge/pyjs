@@ -17,7 +17,7 @@ Both follow PEP 818. They are not exact inverses of each other (e.g. a Map
 becomes a dict, a dict becomes an Object).
 """
 
-from collections.abc import Sequence
+import struct
 
 import pyjs_core
 from pyjs_core import JSProxy, global_this
@@ -28,7 +28,46 @@ _js = global_this()
 
 
 class ConversionError(Exception):
-    """A value cannot be converted (`to_js` with ``create_pyproxies=False``)."""
+    """A value cannot be converted: `to_js` with ``create_pyproxies=False``,
+    a dict key that has no JavaScript equivalent, ..."""
+
+
+def _check_key(key, target):
+    """A Python value that would become a NEW JavaScript container (list,
+    tuple, dict, set) cannot be a key of a JavaScript object / Map or an item
+    of a Set: the key would be a different object than the Python one."""
+    if isinstance(key, (list, tuple, dict, set, frozenset)):
+        raise ConversionError(f"Cannot use {key!r} as a key for a Javascript {target}")
+
+
+def _js_property_name(key):
+    """the name of the JavaScript property a dict key becomes (JavaScript
+    property names are strings), or None for keys that are no simple value"""
+    if isinstance(key, bool):
+        return "true" if key else "false"
+    if key is None:
+        return "undefined"
+    if isinstance(key, float) and key.is_integer():
+        return str(int(key))
+    if isinstance(key, (int, float, str)):
+        return str(key)
+    return None
+
+
+def _check_dict_keys(d):
+    """The keys of a dict that becomes a plain JavaScript object: no
+    containers, and no two keys that are the same property in JavaScript
+    (``{1: ..., "1": ...}``: both are the property "1", one value would be
+    lost silently). Called by the core for dicts with keys other than str."""
+    seen = set()
+    for key in d:
+        _check_key(key, "object")
+        name = _js_property_name(key)
+        if name is None:
+            continue
+        if name in seen:
+            raise ConversionError(f"Key collision when converting Python dictionary to JavaScript. Key: {name!r}")
+        seen.add(name)
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +82,8 @@ _kind = _js.Function(
     "obj",
     """
     if (Array.isArray(obj)) { return 1; }
+    const tag = Object.prototype.toString.call(obj);
+    if (tag === "[object NodeList]" || tag === "[object HTMLCollection]") { return 1; }
     if (obj instanceof Map) { return 2; }
     if (obj instanceof Set) { return 3; }
     if (ArrayBuffer.isView(obj) || obj instanceof ArrayBuffer) { return 4; }
@@ -154,6 +195,7 @@ def _to_py_with_converter(obj, depth, default_converter):
 # Python -> JavaScript
 # ---------------------------------------------------------------------------
 _new_array = _js.Function("return [];")
+_is_js_array = _js.Array.isArray
 _new_object = _js.Function("return {};")
 _new_set = _js.Function("return new Set();")
 # Sets a property whose name is only known at runtime. In python the
@@ -178,6 +220,13 @@ def _is_buffer(obj):
     return True
 
 
+# Stands in the cache for a dict whose JavaScript object does not exist yet
+# (`dict_converter` makes it only after all entries are converted). A
+# reference to such a dict from inside its own entries (a self-referencing
+# structure) is filled in once the object exists, see `_fill_in`.
+_PENDING = object()
+
+
 def _to_js(obj, depth, cache, options):
     """`to_js` for one value; `cache`: id(python object) -> the JavaScript
     object already made for it"""
@@ -193,61 +242,134 @@ def _to_js(obj, depth, cache, options):
         # only lives for one call. So it gets a lasting proxy.
         return _lasting_proxy(obj, key, cache, options)
 
+    eager_converter = options["eager_converter"]
+    if eager_converter is not None:
+        # The caller's converter goes first: it may handle anything. Its
+        # `convert(value)` is the normal conversion of `value` (for `obj`
+        # itself: of its contents, which go through the eager converter
+        # again).
+
+        def convert(value):
+            return _convert_normally(value, depth, cache, options)
+
+        return _kept(eager_converter(obj, convert, _cache_conversion(cache)), options)
+    return _convert_normally(obj, depth, cache, options)
+
+
+def _cache_conversion(cache):
+    """the `cache_conversion(py_obj, js_obj)` function the converters get:
+    register a result early (needed for self referencing structures)"""
+
+    def cache_conversion(py_obj, js_obj):
+        cache[id(py_obj)] = js_obj
+
+    return cache_conversion
+
+
+def _kept(result, options):
+    """What a converter function returned, ready to be stored in a
+    JavaScript container: a Python object (not converted by the converter)
+    needs a lasting proxy, see `_lasting_proxy`."""
+    if isinstance(result, _PASSED_AS_IS):
+        return result
+    return _lasting_proxy(result, id(result), {}, options)
+
+
+def _store(container, slot, value, obj_key_of, options):
+    """`container[slot] = value` for a value that may still be _PENDING:
+    then it is filled in later (see `_fill_in`)"""
+    if value is _PENDING:
+        options["fill_in"].setdefault(obj_key_of, []).append((container, slot))
+        value = None
+    _set_property(container, slot, value)
+
+
+def _convert_normally(obj, depth, cache, options):
+    """the conversion of `obj` without the eager converter for `obj` itself"""
+    if isinstance(obj, _PASSED_AS_IS):
+        return obj
+    key = id(obj)
+    if key in cache:
+        return cache[key]
+
     def convert(value):
         """convert a value one level further down"""
         return _to_js(value, depth - 1, cache, options)
 
-    eager_converter = options["eager_converter"]
-    if eager_converter is not None:
-        # the caller's converter goes first: it may handle anything
-
-        def cache_conversion(py_obj, js_obj):
-            """remember `js_obj` as the conversion of `py_obj`"""
-            cache[id(py_obj)] = js_obj
-
-        return eager_converter(obj, convert, cache_conversion)
+    def pending_key(value):
+        """the cache key of `value` if its conversion is still pending"""
+        return id(value)
 
     if isinstance(obj, dict):
         dict_converter = options["dict_converter"]
         if dict_converter is not None:
             # the caller builds the object from [key, value] pairs (e.g.
-            # js.Map.new, js.Object.fromEntries). The result only exists
-            # after all entries are converted: self referencing dicts cannot
-            # be handled here.
+            # js.Map.new, js.Object.fromEntries)
+            cache[key] = _PENDING
             entries = _new_array()
             for k, v in obj.items():
+                _check_key(k, "Map")
                 pair = _new_array()
                 pair.push(convert(k))
-                pair.push(convert(v))
+                _store(pair, 1, convert(v), pending_key(v), options)
                 entries.push(pair)
             result = cache[key] = dict_converter(entries)
+            _fill_in(key, result, options)
         else:
+            _check_dict_keys(obj)
             result = cache[key] = _new_object()
             for k, v in obj.items():
                 # (a property with a computed name: `result[k] = v` in JS)
-                _set_property(result, convert(k), convert(v))
+                _store(result, convert(k), convert(v), pending_key(v), options)
     elif isinstance(obj, (set, frozenset)):
         result = cache[key] = _new_set()
         for item in obj:
+            _check_key(item, "Set")
             result.add(convert(item))
     elif _is_buffer(obj):
         # bytes, numpy arrays, ...: a typed array with a copy of the items
-        result = cache[key] = pyjs_core.buffer_to_js(obj, False)
-    elif isinstance(obj, Sequence):
+        try:
+            result = cache[key] = pyjs_core.buffer_to_js(obj, False)
+        except (TypeError, BufferError):
+            # no flat block of numbers (several dimensions, PIL style
+            # suboffsets): nested Arrays of typed arrays
+            result = cache[key] = _convert_normally(_buffer_rows(obj), depth, cache, options)
+    # (only lists and tuples, as in pyodide: other sequences, like range,
+    # stay Python objects and become proxies, below)
+    elif isinstance(obj, (list, tuple)):
         result = cache[key] = _new_array()
-        for item in obj:
-            result.push(convert(item))
+        for index, item in enumerate(obj):
+            _store(result, index, convert(item), pending_key(item), options)
     else:
         default_converter = options["default_converter"]
         if default_converter is not None:
-
-            def cache_conversion(py_obj, js_obj):
-                """remember `js_obj` as the conversion of `py_obj`"""
-                cache[id(py_obj)] = js_obj
-
-            return default_converter(obj, convert, cache_conversion)
+            return _kept(default_converter(obj, convert, _cache_conversion(cache)), options)
         result = _lasting_proxy(obj, key, cache, options)
     return result
+
+
+def _buffer_rows(obj):
+    """A buffer that is no flat block of items (several dimensions, or
+    scattered in memory like PIL images with "suboffsets") as nested lists
+    whose innermost level are flat buffers of one row each. to_js makes
+    nested Arrays of typed arrays from that (as pyodide)."""
+    view = memoryview(obj)
+    item = view.format.lstrip("@=<")
+
+    def build(items, level):
+        if level == view.ndim - 1:
+            # one row: a flat copy with the item type
+            return memoryview(bytearray(struct.pack(f"{len(items)}{item}", *items))).cast(item)
+        return [build(row, level + 1) for row in items]
+
+    return build(view.tolist(), 0)
+
+
+def _fill_in(key, result, options):
+    """put `result`, the JavaScript object of the Python object with cache
+    key `key`, where it was referenced before it existed (see _PENDING)"""
+    for container, slot in options["fill_in"].pop(key, []):
+        _set_property(container, slot, result)
 
 
 def _lasting_proxy(obj, key, cache, options):
@@ -257,6 +379,9 @@ def _lasting_proxy(obj, key, cache, options):
     called `to_js` destroys it later (option `pyproxies` collects them)."""
     if not options["create_pyproxies"]:
         raise ConversionError(f"cannot convert an object of type {type(obj).__name__} to JavaScript")
+    # (read back from the result in python, it is the object again; the
+    # proxies collected in `pyproxies` are destroyed in JavaScript by
+    # destroy_proxies, as in pyodide)
     proxy = cache[key] = pyjs_core.create_proxy(obj)
     pyproxies = options["pyproxies"]
     if pyproxies is not None:
@@ -276,17 +401,19 @@ def to_js(
 ):
     """Convert a Python value into JavaScript objects (a deep copy).
 
-    list / tuple (any sequence) -> Array, dict -> Object, set -> Set, buffers
-    (bytes, numpy arrays, ...) -> typed array. ``None``, ``bool``, numbers,
-    ``str`` and `JSProxy` objects are returned as they are: they are converted
-    automatically when passed to JavaScript. Other objects become proxies.
+    list / tuple -> Array, dict -> Object, set -> Set, buffers (bytes, numpy
+    arrays, ...) -> typed array. ``None``, ``bool``, numbers, ``str`` and
+    `JSProxy` objects are returned as they are: they are converted
+    automatically when passed to JavaScript. Other objects become proxies,
+    including other sequences (``range``, ``deque``, ...), as in pyodide:
+    ``to_js(list(r))`` copies one.
 
     Args:
         obj: the value to convert.
         depth: how many levels of containers to convert, -1 for all.
-        pyproxies: a list. The proxies created for objects that cannot be
-            converted are appended, so that the caller can destroy them later
-            (`destroy_proxies`).
+        pyproxies: a JavaScript Array (``js.Array.new()``). The proxies
+            created for objects that cannot be converted are appended, so
+            that the caller can destroy them later (`destroy_proxies`).
         create_pyproxies: if False, raise `ConversionError` instead of
             creating a proxy.
         dict_converter: what a dict becomes: called with a JavaScript array of
@@ -306,6 +433,8 @@ def to_js(
     assert js_map.get("a") == 1
     ```
     """
+    if pyproxies is not None and not _is_js_array(pyproxies):
+        raise TypeError("to_js: pyproxies must be a JavaScript Array (e.g. js.Array.new())")
     if isinstance(obj, _PASSED_AS_IS):
         return obj
     if (
@@ -326,6 +455,8 @@ def to_js(
         dict_converter=dict_converter,
         default_converter=default_converter,
         eager_converter=eager_converter,
+        # see _PENDING
+        fill_in={},
     )
     return _to_js(obj, depth, {}, options)
 

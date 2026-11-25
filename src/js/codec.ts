@@ -79,6 +79,34 @@ export const enum JsFlag {
   AWAITABLE = 32,
   GETITEM = 64, // obj[key] in python: a sequence, or it has get()
   SETITEM = 128, // obj[key] = value in python: a sequence, or it has set()
+  // The following select Python classes with extra methods that the proxy
+  // type derives from (pyjs/_proxy_types.py), e.g. append() for an Array.
+  ARRAY = 256, // an Array
+  BUFFER = 512, // a typed array, DataView or ArrayBuffer
+  MAP = 1024, // like a Map: get(), has(), size, iterable
+  GENERATOR = 2048, // an iterator with return() and throw()
+  ASYNC_ITERABLE = 4096, // has [Symbol.asyncIterator]
+  ASYNC_ITERATOR = 8192, // next() returns promises
+  ERROR = 16384, // an Error: python gets a JSException for it
+  DOUBLE_PROXY = 32768, // a PyProxy made by create_proxy (python: JSDoubleProxy)
+}
+
+/**
+ * The JsFlags of a PyProxy (a JS object standing for a Python object), from
+ * what the Python object can do: the C side determined that already, so the
+ * proxy need not be probed (every probe would be a call into Python).
+ */
+export function pyProxyJsFlags(state: { flags: number }): number {
+  const pyFlags = state.flags;
+  return (
+    (pyFlags & PyFlag.CALLABLE ? JsFlag.CALLABLE : 0) |
+    (pyFlags & PyFlag.AWAITABLE ? JsFlag.AWAITABLE : 0) |
+    (pyFlags & PyFlag.ITERABLE ? JsFlag.ITERABLE : 0) |
+    (pyFlags & PyFlag.ITERATOR ? JsFlag.ITERATOR : 0) |
+    (pyFlags & PyFlag.SIZED ? JsFlag.LENGTH : 0) |
+    // (a JSProxy of a PyProxy is always a JSDoubleProxy in python)
+    JsFlag.DOUBLE_PROXY
+  );
 }
 
 /** what a Python object can do (computed by the C side) */
@@ -87,6 +115,8 @@ export const enum PyFlag {
   AWAITABLE = 2,
   ITERABLE = 4,
   ITERATOR = 8,
+  SIZED = 16, // has len()
+  GENERATOR = 32, // a generator: send / throw / close
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +217,10 @@ export function scratchSlots(n: number): number {
 // ---------------------------------------------------------------------------
 // strings
 // ---------------------------------------------------------------------------
-const utf8Decoder = new TextDecoder("utf-8");
+// (ignoreBOM: a TextDecoder normally swallows a "byte order mark", the
+// character U+FEFF, at the start of the text. A python string that starts
+// with that character must arrive unchanged.)
+const utf8Decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 /** the string of `len` utf8 bytes at `ptr` */
 export function utf8(ptr: number, len: number): string {
@@ -388,36 +421,75 @@ export function jsFlags(value: any): number {
   try {
     if (Array.isArray(value)) {
       // the common case, without probing: everything a list can do
-      return JsFlag.LENGTH | JsFlag.CONTAINS | JsFlag.ITERABLE | JsFlag.GETITEM | JsFlag.SETITEM;
+      return (
+        JsFlag.LENGTH | JsFlag.CONTAINS | JsFlag.ITERABLE | JsFlag.GETITEM | JsFlag.SETITEM | JsFlag.ARRAY
+      );
     }
     if (typeof value.then === "function") {
       flags |= JsFlag.AWAITABLE;
     }
-    if (typeof value[Symbol.iterator] === "function") {
+    const iterable = typeof value[Symbol.iterator] === "function";
+    const asyncIterable = typeof value[Symbol.asyncIterator] === "function";
+    if (iterable) {
       flags |= JsFlag.ITERABLE;
     }
+    if (asyncIterable) {
+      flags |= JsFlag.ASYNC_ITERABLE;
+    }
     if (typeof value.next === "function") {
-      flags |= JsFlag.ITERATOR;
+      // An iterator. Whether its next() returns values or promises of values
+      // (an async iterator) cannot be seen without calling it. The hint
+      // (the same rule as pyodide): iterators say what they are by also
+      // being iterable ([Symbol.iterator]) or async iterable. One that says
+      // neither is offered to python as both.
+      if (iterable || !asyncIterable) {
+        flags |= JsFlag.ITERATOR;
+      }
+      if (asyncIterable || !iterable) {
+        flags |= JsFlag.ASYNC_ITERATOR;
+      }
+      if (typeof value.return === "function" && typeof value.throw === "function") {
+        flags |= JsFlag.GENERATOR;
+      }
     }
     if (flags & JsFlag.CALLABLE) {
       // (the length of a function is its number of parameters)
       return flags;
     }
-    if (typeof value.length === "number" || typeof value.size === "number") {
+    const sized = typeof value.length === "number" || typeof value.size === "number";
+    if (sized) {
       flags |= JsFlag.LENGTH;
     }
-    if (typeof value.has === "function" || typeof value.includes === "function") {
+    const hasHas = typeof value.has === "function";
+    if (hasHas || typeof value.includes === "function") {
       flags |= JsFlag.CONTAINS;
     }
     // obj[key]: by position for typed arrays, otherwise through the get() /
     // set() methods containers like Map have. A plain object has neither:
     // its properties are attributes in python (obj.name), not items.
     const sequence = isSequence(value);
-    if (sequence || typeof value.get === "function") {
+    const hasGet = typeof value.get === "function";
+    // "Array-likes": objects of the browser that are no Arrays but are used
+    // like one, e.g. a NodeList (document.querySelectorAll) or an
+    // HTMLCollection (element.children). They have a length and can be
+    // iterated; python may read their items by index.
+    const arrayLike = typeof value.length === "number" && iterable && !(flags & JsFlag.ITERATOR);
+    if (sequence || hasGet || arrayLike) {
       flags |= JsFlag.GETITEM;
     }
     if (sequence || typeof value.set === "function") {
       flags |= JsFlag.SETITEM;
+    }
+    // everything python needs to treat it like a dict (keys(), items(), ...)
+    if (hasGet && hasHas && sized && iterable) {
+      flags |= JsFlag.MAP;
+    }
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+      flags |= JsFlag.BUFFER;
+    }
+    // (DOMException is an Error too, in every current browser)
+    if (value instanceof Error) {
+      flags |= JsFlag.ERROR;
     }
   } catch {
     // exotic objects (throwing getters): what was found so far
@@ -474,11 +546,23 @@ export function encode(value: any, p: number, advance: boolean): void {
       // Is it a PyProxy, i.e. a JS stand-in for a Python object? Only those
       // answer this property (everything else gives undefined). Then Python
       // must get its own object back, not a proxy of a proxy.
-      const state = value[PYPROXY];
+      let state;
+      try {
+        state = value[PYPROXY];
+      } catch {
+        // Exotic objects throw on any property access (a revoked Proxy).
+        // They are no PyProxy; python gets an ordinary JSProxy of them.
+      }
       if (state !== undefined) {
         if (state.ptr === 0) {
           // destroy() was called on it: the Python object is gone
           throw new Error(state.destroyed);
+        }
+        if (state.roundtrip) {
+          // made by create_proxy(obj): python gets the proxy back (a
+          // JSDoubleProxy, with destroy() / unwrap()), not `obj` itself
+          writeJsObject(p, value, pyProxyJsFlags(state));
+          return;
         }
         HEAP32[i] = T.PY;
         HEAPF64[i / 2 + 1] = state.ptr; // the address of the Python object

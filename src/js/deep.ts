@@ -40,7 +40,18 @@
 // of slots directly (it is the hot loop of the conversion). The layout of a
 // slot and the index arithmetic (`i = p / 4`, HEAP32[i + 1], HEAPF64[i / 2 +
 // 1]) are explained at the top of codec.ts.
-import { T, PYPROXY, decode, encode, hGet, hNew, jsFlags, writeAuxAndNum, writeJsObject } from "./codec";
+import {
+  T,
+  PYPROXY,
+  decode,
+  encode,
+  hGet,
+  hNew,
+  jsFlags,
+  pyProxyJsFlags,
+  writeAuxAndNum,
+  writeJsObject,
+} from "./codec";
 
 // ---------------------------------------------------------------------------
 // JS -> Python: writing a stream
@@ -194,6 +205,38 @@ function writtenBefore(value: object): boolean {
  * way down). What is not converted is written as an ordinary slot: Python
  * gets a proxy for it.
  */
+/** a list of the DOM (NodeList, HTMLCollection): converted like an Array */
+function isDomList(value: any): boolean {
+  const tag = Object.prototype.toString.call(value);
+  return tag === "[object NodeList]" || tag === "[object HTMLCollection]";
+}
+
+/**
+ * The keys of a Map / the items of a Set that becomes a Python dict / set.
+ * Throws (python gets a JSException) when that cannot work:
+ *   - a key that is copied into a Python container (an Array becomes a
+ *     list): lists, dicts and sets cannot be keys in python
+ *   - 0 and false (or 1 and true) both as keys: different keys in
+ *     JavaScript, the same key in python (False == 0), one would be lost
+ */
+function checkKeys(container: Map<any, any> | Set<any>, target: string): void {
+  for (const key of container.keys()) {
+    if (Array.isArray(key) || key instanceof Map || key instanceof Set) {
+      throw new TypeError(`Cannot use key of type ${key.constructor.name} as a key to a Python ${target}`);
+    }
+  }
+  for (const [number, bool] of [
+    [0, false],
+    [1, true],
+  ]) {
+    if (container.has(number) && container.has(bool)) {
+      throw new TypeError(
+        `Cannot convert to a Python ${target}: it contains both ${number} and ${bool}, which are the same key in python`
+      );
+    }
+  }
+}
+
 function write(value: any, depth: number): void {
   switch (typeof value) {
     case "number": {
@@ -221,7 +264,9 @@ function write(value: any, depth: number): void {
       }
       if (depth !== 0) {
         // the containers that are copied (the same choice as PEP 818)
-        if (Array.isArray(value)) {
+        // (the lists of the DOM, e.g. document.querySelectorAll(...), are
+        // copied like Arrays)
+        if (Array.isArray(value) || isDomList(value)) {
           if (!writtenBefore(value)) {
             const n = value.length;
             writeHeader(T.LIST, n);
@@ -233,6 +278,7 @@ function write(value: any, depth: number): void {
         }
         if (value instanceof Map) {
           if (!writtenBefore(value)) {
+            checkKeys(value, "dict");
             writeHeader(T.DICT, value.size);
             for (const [key, item] of value) {
               write(key, depth - 1);
@@ -243,6 +289,7 @@ function write(value: any, depth: number): void {
         }
         if (value instanceof Set) {
           if (!writtenBefore(value)) {
+            checkKeys(value, "set");
             writeHeader(T.SET, value.size);
             for (const item of value) {
               write(item, depth - 1);
@@ -375,8 +422,12 @@ export function fromStream(stream: number, out: number): void {
   try {
     const value = read();
     // (not encode(): a top level PyProxy must reach Python as proxy, like
-    // every other JS object here, not be unwrapped into its Python object)
-    writeJsObject(out, value, jsFlags(value));
+    // every other JS object here, not be unwrapped into its Python object.
+    // Its flags come from the Python object: a JSDoubleProxy, with unwrap())
+    // (a PyProxy of a callable is a function)
+    const state =
+      value !== null && (typeof value === "object" || typeof value === "function") ? value[PYPROXY] : undefined;
+    writeJsObject(out, value, state !== undefined ? pyProxyJsFlags(state) : jsFlags(value));
   } finally {
     created = []; // (do not keep the objects alive)
   }

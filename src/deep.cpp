@@ -91,15 +91,18 @@ namespace pyjs
             const int handle = slot->aux;
             const char format[2] = { static_cast<char>(slot->tag >> 16), 0 };
             // The bytes are copied once, straight from JavaScript into the
-            // new bytes object (that is why they are not part of the stream).
-            PyObject* bytes = PyBytes_FromStringAndSize(nullptr, static_cast<Py_ssize_t>(slot->num));
+            // new object (that is why they are not part of the stream). A
+            // bytearray, not bytes: the result is a copy that belongs to the
+            // caller, who may write to it (a memoryview of bytes is
+            // read-only).
+            PyObject* bytes = PyByteArray_FromStringAndSize(nullptr, static_cast<Py_ssize_t>(slot->num));
             if (bytes == nullptr)
             {
                 // (no memory: the handle still has to be released)
                 pyjs_js_free(handle, 0);
                 return nullptr;
             }
-            pyjs_js_buffer_take(handle, ptr_to_num(PyBytes_AS_STRING(bytes)));
+            pyjs_js_buffer_take(handle, ptr_to_num(PyByteArray_AS_STRING(bytes)));
             PyObject* view = PyMemoryView_FromObject(bytes);
             Py_DECREF(bytes);
             if (view == nullptr || format[0] == 'B')
@@ -245,11 +248,9 @@ namespace pyjs
             // stream.
             std::vector<Py_buffer> buffers;
             // Objects that must stay alive until JavaScript has read the
-            // stream, for the same reason (the item lists of generic
-            // sequences).
+            // stream, for the same reason (the rows of a buffer that is no
+            // flat block, see write_buffer).
             std::vector<PyObject*> keep;
-            // collections.abc.Sequence, or nullptr
-            PyObject* sequence_abc;
         };
 
         // append a slot with a tag and the integer field `aux`
@@ -279,6 +280,76 @@ namespace pyjs
 
         bool write_value(StreamWriter& writer, PyObject* o, int depth);
 
+        // The function `name` of the python module pyjs.convert (a borrowed
+        // reference, looked up once), or nullptr with an exception set. Used
+        // for the rare checks that are much simpler to write in python.
+        PyObject* convert_function(const char* name, PyObject*& cache)
+        {
+            if (cache == nullptr)
+            {
+                PyObject* module = PyImport_ImportModule("pyjs.convert");
+                if (module == nullptr)
+                {
+                    return nullptr;
+                }
+                cache = PyObject_GetAttrString(module, name);
+                Py_DECREF(module);
+            }
+            return cache;
+        }
+
+        // Would `o` become a NEW JavaScript container (list, tuple, dict,
+        // set)? Such a value cannot be a key of a JavaScript object or an
+        // item of a Set: the key would be a different object than the
+        // Python one, and two equal Python keys two different JS objects.
+        inline bool is_container(PyObject* o)
+        {
+            return PyList_Check(o) || PyTuple_Check(o) || PyDict_Check(o) || PyAnySet_Check(o);
+        }
+
+        // The keys of a dict that becomes a JavaScript object: no
+        // containers, and no two keys with the same JavaScript property name
+        // (1 and "1" are both the property "1"). Only dicts with keys other
+        // than str need checking; that check is done by
+        // pyjs.convert._check_dict_keys. False with ConversionError set.
+        bool check_dict_keys(PyObject* dict)
+        {
+            PyObject* key;
+            PyObject* value;
+            Py_ssize_t position = 0;
+            while (PyDict_Next(dict, &position, &key, &value))
+            {
+                if (!PyUnicode_CheckExact(key))
+                {
+                    static PyObject* check = nullptr;
+                    PyObject* function = convert_function("_check_dict_keys", check);
+                    PyObject* ret = function != nullptr ? PyObject_CallOneArg(function, dict) : nullptr;
+                    Py_XDECREF(ret);
+                    return ret != nullptr;
+                }
+            }
+            return true;
+        }
+
+        // An item of a set that becomes a JavaScript Set: no containers (see
+        // is_container). False with ConversionError set.
+        bool check_set_item(PyObject* item)
+        {
+            if (!is_container(item))
+            {
+                return true;
+            }
+            static PyObject* check = nullptr;
+            PyObject* function = convert_function("_check_key", check);
+            PyObject* target = PyUnicode_FromString("Set");
+            PyObject* ret = function != nullptr && target != nullptr
+                                ? PyObject_CallFunctionObjArgs(function, item, target, nullptr)
+                                : nullptr;
+            Py_XDECREF(target);
+            Py_XDECREF(ret);
+            return ret != nullptr;
+        }
+
         // a T_LIST header followed by the `n` objects at `items`
         bool write_items(StreamWriter& writer, PyObject** items, Py_ssize_t n, int depth)
         {
@@ -297,12 +368,34 @@ namespace pyjs
         // typed array with a copy of its items. The slot: num = the address
         // of the memory, aux = the number of items, upper half of the tag =
         // the item type as struct format character.
-        bool write_buffer(StreamWriter& writer, PyObject* o)
+        bool write_buffer(StreamWriter& writer, PyObject* o, int depth)
         {
             Py_buffer view;
-            if (PyObject_GetBuffer(o, &view, PyBUF_FORMAT | PyBUF_C_CONTIGUOUS) != 0)
+            const bool flat = PyObject_GetBuffer(o, &view, PyBUF_FORMAT | PyBUF_C_CONTIGUOUS) == 0;
+            const bool multi_dimensional = flat && view.ndim > 1;
+            if (multi_dimensional)
             {
-                return false;
+                PyBuffer_Release(&view);
+            }
+            if (!flat || multi_dimensional)
+            {
+                // A buffer that is no flat block of items: several
+                // dimensions, or scattered in memory (strides, "suboffsets"
+                // of PIL style images). Nested lists with one flat buffer
+                // per row (pyjs.convert._buffer_rows), which become nested
+                // Arrays of typed arrays.
+                PyErr_Clear();
+                static PyObject* rows = nullptr;
+                PyObject* function = convert_function("_buffer_rows", rows);
+                PyObject* items = function != nullptr ? PyObject_CallOneArg(function, o) : nullptr;
+                if (items == nullptr)
+                {
+                    return false;
+                }
+                // (the lists must outlive the stream: their items are
+                // referenced by slots)
+                writer.keep.push_back(items);
+                return write_value(writer, items, depth);
             }
             // (no format: unsigned bytes; a byte order / size prefix is skipped)
             const char* format = view.format != nullptr ? view.format : "B";
@@ -311,7 +404,7 @@ namespace pyjs
                 ++format;
             }
             // only flat arrays of one number type have a typed array
-            if (view.ndim > 1 || format[0] == 0 || format[1] != 0 || std::strchr("bBc?hHiIlLqQfd", format[0]) == nullptr)
+            if (format[0] == 0 || format[1] != 0 || std::strchr("bBc?hHiIlLqQfd", format[0]) == nullptr)
             {
                 PyErr_Format(PyExc_TypeError,
                              "to_js: a contiguous 1d buffer of numbers is required (ndim %d, format '%s')",
@@ -333,7 +426,7 @@ namespace pyjs
         // Append `o` to the stream, containers `depth` levels deep (-1: all).
         // False with a Python exception set.
         //
-        //   list, tuple, other sequences   -> Array
+        //   list, tuple                    -> Array (other sequences: proxy)
         //   dict                           -> Object
         //   set, frozenset                 -> Set
         //   buffers                        -> typed array
@@ -362,6 +455,10 @@ namespace pyjs
                     if (written_before(writer, o))
                     {
                         return true;
+                    }
+                    if (!check_dict_keys(o))
+                    {
+                        return false;
                     }
                     write_header(writer, T_DICT, static_cast<int32_t>(PyDict_GET_SIZE(o)));
                     PyObject* key;
@@ -392,7 +489,7 @@ namespace pyjs
                     PyObject* item;
                     while (ok && (item = PyIter_Next(iterator)) != nullptr)
                     {
-                        ok = write_value(writer, item, depth - 1);
+                        ok = check_set_item(item) && write_value(writer, item, depth - 1);
                         // (the set keeps the item alive)
                         Py_DECREF(item);
                     }
@@ -403,37 +500,15 @@ namespace pyjs
                 if (!PyUnicode_Check(o) && !PyLong_Check(o) && !PyFloat_Check(o) && js_proxy_handle(o) == 0)
                 {
                     // bytes, bytearray, memoryview, numpy arrays, ...
-                    // (before the sequence check: bytes is a sequence too)
                     if (PyObject_CheckBuffer(o))
                     {
-                        return write_buffer(writer, o);
-                    }
-                    // any other sequence (range, deque, user classes
-                    // registered as Sequence, ...): its items as a list
-                    if (writer.sequence_abc != nullptr)
-                    {
-                        const int is_sequence = PyObject_IsInstance(o, writer.sequence_abc);
-                        if (is_sequence < 0)
-                        {
-                            return false;
-                        }
-                        if (is_sequence == 1)
-                        {
-                            if (written_before(writer, o))
-                            {
-                                return true;
-                            }
-                            PyObject* items = PySequence_Fast(o, "to_js: cannot read the items of a sequence");
-                            if (items == nullptr)
-                            {
-                                return false;
-                            }
-                            // slots of the stream will point into the items
-                            writer.keep.push_back(items);
-                            return write_items(writer, PySequence_Fast_ITEMS(items), PySequence_Fast_GET_SIZE(items), depth);
-                        }
+                        return write_buffer(writer, o, depth);
                     }
                 }
+                // Other sequences (range, deque, user classes registered as
+                // Sequence, ...) are NOT copied: like any other Python
+                // object they become a proxy (below). Only lists and tuples
+                // become Arrays, as in pyodide.
             }
             // A simple value, a JSProxy, an object that is not converted, or
             // a container below the depth limit: the ordinary conversion. For
@@ -493,7 +568,6 @@ namespace pyjs
     PyObject* deep_to_js(PyObject* obj, int depth)
     {
         StreamWriter writer;
-        writer.sequence_abc = hooks().sequence_abc;
         const bool written = write_value(writer, obj, depth);
 
         PyObject* result = nullptr;

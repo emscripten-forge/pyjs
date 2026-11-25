@@ -171,12 +171,17 @@ NB_MODULE(pyjs_core, m)
     m.def("module", []() { return checked(pyjs::js_global(1)); }, "JSProxy of the emscripten Module");
     m.def(
         "create_proxy",
-        [](nb::handle obj, bool always) { return checked(pyjs::create_proxy(obj.ptr(), always)); },
-        nb::arg("obj"),
+        [](nb::handle obj, bool always, bool roundtrip)
+        { return checked(pyjs::create_proxy(obj.ptr(), always, roundtrip)); },
+        // (.none(): None is a legitimate argument, with always=False it is
+        // simply returned)
+        nb::arg("obj").none(),
         nb::arg("always") = true,
+        nb::arg("roundtrip") = false,
         "A JSProxy of a PyProxy of obj, which lives until its destroy() is called. Objects that are "
         "converted to JavaScript values (None, bool, int, float, str, JSProxy) have no proxy: with "
-        "always=True that is a TypeError, with always=False obj itself is returned.");
+        "always=True that is a TypeError, with always=False obj itself is returned. roundtrip: the "
+        "PyProxy comes back to python as this JSProxy, not as obj.");
     m.def(
         "run_sync",
         [](nb::handle promise) { return checked(pyjs::run_sync(promise.ptr())); },
@@ -196,7 +201,7 @@ NB_MODULE(pyjs_core, m)
         [](nb::handle obj, int depth) { return checked(pyjs::deep_to_js(obj.ptr(), depth)); },
         nb::arg("obj").none(),
         nb::arg("depth") = -1,
-        "A deep copy of a Python value as JavaScript value: list / tuple / sequence -> Array, dict -> "
+        "A deep copy of a Python value as JavaScript value: list / tuple -> Array, dict -> "
         "Object, set -> Set, buffer -> typed array; other objects become proxies. depth: levels of "
         "containers to convert, -1 for all.");
     m.def("buffer_to_js", &buffer_to_js, "a typed array for a 1d buffer (view: of the wasm memory, no copy)");
@@ -206,15 +211,19 @@ NB_MODULE(pyjs_core, m)
     m.def(
         "set_hooks",
         [](nb::handle raise_js_error, nb::handle format_exception, nb::handle await_js, nb::handle jsnull,
-           nb::handle bigint_type, nb::handle sequence_abc, nb::handle to_py_with_converter)
+           nb::handle bigint_type, nb::handle to_py_with_converter,
+           nb::handle proxy_mixins, nb::handle schedule_coroutine, nb::handle jsexception_type)
         {
+            set_hook(pyjs::hooks().jsexception_type, jsexception_type);
+            set_hook(pyjs::hooks().schedule_coroutine, schedule_coroutine);
+            set_hook(pyjs::hooks().proxy_mixins, proxy_mixins);
+            pyjs::js_proxy_forget_types();
             pyjs::Hooks& hooks = pyjs::hooks();
             set_hook(hooks.raise_js_error, raise_js_error);
             set_hook(hooks.format_exception, format_exception);
             set_hook(hooks.await_js, await_js);
             set_hook(hooks.jsnull, jsnull);
             set_hook(hooks.bigint_type, bigint_type);
-            set_hook(hooks.sequence_abc, sequence_abc);
             set_hook(hooks.to_py_with_converter, to_py_with_converter);
         });
 

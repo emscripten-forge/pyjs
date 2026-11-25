@@ -3,9 +3,8 @@
 // arrive as slots, the result is written into a slot (codec.ts); nothing
 // throws: errors are a return code + the thrown value in the result slot.
 import {
-  JsFlag,
-  PyFlag,
   PYPROXY,
+  pyProxyJsFlags,
   bindThis,
   decode,
   encode,
@@ -34,6 +33,7 @@ const enum Rc {
   NO_KEY = 4,
   STOP = 5,
   GENERIC = 6,
+  UNSUPPORTED = 7, // the object cannot do this: a TypeError in python
 }
 
 /** operations of `op` (JsOp in src/js_proxy.cpp) */
@@ -80,13 +80,34 @@ function isThenable(value: any): boolean {
   return value !== null && typeof value === "object" && typeof value.then === "function";
 }
 
+/** a (sync or async) generator object, as a generator function returns it */
+function isGenerator(value: any): boolean {
+  const tag = Object.prototype.toString.call(value);
+  return tag === "[object Generator]" || tag === "[object AsyncGenerator]";
+}
+
+// destroys the argument proxies of a generator once it is garbage collected
+const generatorArguments = new FinalizationRegistry((proxies: any[]) => destroyBorrowed(proxies));
+
 /**
  * the proxies created for the arguments of a call are destroyed after it; if
- * it returned a promise: when that settles
+ * it returned a promise: when that settles; a generator: with the generator
  */
 function releaseBorrowed(proxies: any[], result: any): void {
+  if (isGenerator(result)) {
+    // A generator function was called: its body runs later, step by step,
+    // and uses the arguments then. They live as long as the generator
+    // (destroyed when the garbage collector frees it).
+    generatorArguments.register(result, proxies);
+    return;
+  }
   if (isThenable(result)) {
-    const release = () => destroyBorrowed(proxies);
+    // Not right when the promise settles but one step later
+    // (queueMicrotask). The promise may settle WITH one of the proxies
+    // (`async (x) => x`): whoever awaits it (python) is notified in the
+    // same round as this callback and must still find the proxy alive to
+    // get the Python object out of it.
+    const release = () => queueMicrotask(() => destroyBorrowed(proxies));
     result.then(release, release);
   } else {
     destroyBorrowed(proxies);
@@ -120,15 +141,17 @@ export function call(
       if (self === 0) {
         result = npos === 0 ? f() : npos === 1 ? f(a) : npos === 2 ? f(a, b) : f(a, b, c);
       } else {
+        // (Reflect.apply and not f.call(...): something callable need not
+        // have a `call` method, e.g. a function whose prototype was replaced)
         const thisArg = hGet(self);
         result =
           npos === 0
-            ? f.call(thisArg)
+            ? Reflect.apply(f, thisArg, [])
             : npos === 1
-              ? f.call(thisArg, a)
+              ? Reflect.apply(f, thisArg, [a])
               : npos === 2
-                ? f.call(thisArg, a, b)
-                : f.call(thisArg, a, b, c);
+                ? Reflect.apply(f, thisArg, [a, b])
+                : Reflect.apply(f, thisArg, [a, b, c]);
       }
     } else {
       const values = new Array(npos);
@@ -148,11 +171,15 @@ export function call(
           ? Reflect.construct(f, values)
           : Reflect.apply(f, self === 0 ? undefined : hGet(self), values);
     }
-    if (borrowed !== null) {
-      releaseBorrowed(borrowed, result);
-      borrowed = null;
-    }
+    // The result is written BEFORE the borrowed proxies are destroyed: a
+    // function may return one of its arguments (`(x) => x`), and a destroyed
+    // proxy can no longer say which Python object it stood for.
     encode(result, out, false);
+    if (borrowed !== null) {
+      const proxies = borrowed;
+      borrowed = null;
+      releaseBorrowed(proxies, result);
+    }
     return Rc.OK;
   } catch (error) {
     borrowed ??= takeBorrowed();
@@ -211,7 +238,10 @@ const PYTHON_KEYWORDS = new Set(
 /** handle of the JS property name for a Python attribute name (utf8) */
 export function name(ptr: number, len: number): number {
   let str = utf8(ptr, len);
-  if (str.endsWith("_") && PYTHON_KEYWORDS.has(str.slice(0, -1))) {
+  // `from_` is the property `from`. More underscores lose exactly one
+  // (`from__` is the property `from_`), so that every property name can be
+  // written in python.
+  if (str.endsWith("_") && PYTHON_KEYWORDS.has(str.replace(/_+$/, ""))) {
     str = str.slice(0, -1);
   }
   return hNew(str);
@@ -225,6 +255,16 @@ export function free(h: number, h2: number): void {
 // js_id: a number per object
 const ids = new WeakMap<object, number>();
 let nextId = 1;
+
+/**
+ * Is `obj` one of the list types of the DOM (the result of
+ * document.querySelectorAll, element.children)? Like an Array, such a list
+ * is false in python when it is empty.
+ */
+function isDomList(obj: any): boolean {
+  const tag = Object.prototype.toString.call(obj);
+  return tag === "[object NodeList]" || tag === "[object HTMLCollection]";
+}
 
 /** index of a sequence: negative from the end; -1 if out of range */
 function index(obj: any, key: number): number {
@@ -244,7 +284,12 @@ export function getindex(h: number, key: number, out: number): number {
     if (i < 0) {
       return Rc.NO_INDEX;
     }
-    encode(obj[i], out, false);
+    const value = obj[i];
+    if (value === undefined && !(i in obj)) {
+      // a hole of a sparse Array (`[1, , 3][1]`): there is no item
+      return Rc.NO_INDEX;
+    }
+    encode(value, out, false);
     return Rc.OK;
   } catch (error) {
     return fail(error, out);
@@ -257,16 +302,30 @@ export function op(op: Op, h: number, arg: number, arg2: number, out: number): n
   try {
     const obj = hGet(h);
     let result;
+    // What to report when the operation did not throw. The cases set it to
+    // e.g. Rc.NO_KEY instead of returning right away, so that all of them
+    // pass the cleanup of the borrowed proxies behind the switch.
+    let rc = Rc.OK;
     switch (op) {
       case Op.GETITEM: {
         const key = decode(arg, false);
         borrowed = takeBorrowed();
-        if (typeof key === "number" && isSequence(obj)) {
+        // By position: Arrays, typed arrays, and "array-likes" such as a
+        // NodeList (which have a length but no get() method).
+        if (
+          typeof key === "number" &&
+          (isSequence(obj) || (typeof obj.get !== "function" && typeof obj.length === "number"))
+        ) {
           const i = index(obj, key);
           if (i < 0) {
-            return Rc.NO_INDEX;
+            rc = Rc.NO_INDEX;
+            break;
           }
           result = obj[i];
+          if (result === undefined && !(i in obj)) {
+            // a hole of a sparse Array (`[1, , 3][1]`): there is no item
+            rc = Rc.NO_INDEX;
+          }
         } else {
           // A container with a get() method, like a Map. (Python only
           // offers obj[key] for objects that are a sequence or have get():
@@ -276,7 +335,7 @@ export function op(op: Op, h: number, arg: number, arg2: number, out: number): n
           // also be a stored value: ask has() to tell the two apart, so
           // that python gets a KeyError only for a key that is not there.
           if (result === undefined && typeof obj.has === "function" && !obj.has(key)) {
-            return Rc.NO_KEY;
+            rc = Rc.NO_KEY;
           }
         }
         break;
@@ -288,7 +347,8 @@ export function op(op: Op, h: number, arg: number, arg2: number, out: number): n
         if (typeof key === "number" && isSequence(obj)) {
           const i = index(obj, key);
           if (i < 0) {
-            return Rc.NO_INDEX;
+            rc = Rc.NO_INDEX;
+            break;
           }
           obj[i] = value;
         } else {
@@ -306,17 +366,26 @@ export function op(op: Op, h: number, arg: number, arg2: number, out: number): n
           // behind it move up
           const i = index(obj, key);
           if (i < 0) {
-            return Rc.NO_INDEX;
+            rc = Rc.NO_INDEX;
+            break;
           }
           obj.splice(i, 1);
-        } else {
-          // Map, Set, ...: their delete() method
-          obj.delete(key);
+        } else if (typeof obj.delete !== "function") {
+          // e.g. a typed array: its length is fixed
+          rc = Rc.UNSUPPORTED;
+        } else if (obj.delete(key) === false) {
+          // Map, Set, ...: their delete() method. It answers false when
+          // there was no such key: a KeyError in python, as for a dict.
+          rc = Rc.NO_KEY;
         }
         break;
       }
       case Op.LEN:
-        result = obj.length ?? obj.size;
+        // (`size` first, as pyodide: what a Map / Set has)
+        result = obj.size ?? obj.length;
+        if (typeof result !== "number") {
+          rc = Rc.UNSUPPORTED;
+        }
         break;
       case Op.CONTAINS: {
         const value = decode(arg, false);
@@ -325,12 +394,37 @@ export function op(op: Op, h: number, arg: number, arg2: number, out: number): n
         break;
       }
       case Op.BOOL:
-        // like python containers: empty is false
-        result = obj.length !== 0 && obj.size !== 0;
+        // Like python containers, an empty container is false. Everything
+        // else is true (the same rules as pyodide):
+        //   - size 0: a Map / Set ... (but not an HTML element: `size` is
+        //     an attribute of <select> and <input>)
+        //   - length 0: only for Arrays and typed arrays. Other things have
+        //     a `length` that says nothing about being "empty": the length
+        //     of a function is its number of parameters, an HTML <select>
+        //     has one, ...
+        //   - byteLength 0: an ArrayBuffer
+        result = !(
+          (obj.size === 0 && !/HTML[A-Za-z]*Element/.test(Object.prototype.toString.call(obj))) ||
+          (obj.length === 0 && (isSequence(obj) || isDomList(obj))) ||
+          obj.byteLength === 0
+        );
         break;
-      case Op.REPR:
-        result = String(obj);
+      case Op.REPR: {
+        // obj.toString(). Objects that have no toString method at all
+        // (`Object.create(null)`, module namespace objects, a getter that
+        // throws) get what Object's toString says about them, e.g.
+        // "[object Module]". An error thrown BY a toString method is
+        // reported.
+        let toString;
+        try {
+          toString = obj.toString;
+        } catch {
+          // (no usable toString)
+        }
+        result =
+          typeof toString === "function" ? String(toString.call(obj)) : Object.prototype.toString.call(obj);
         break;
+      }
       case Op.TYPEOF:
         result = typeof obj;
         break;
@@ -361,17 +455,12 @@ export function op(op: Op, h: number, arg: number, arg2: number, out: number): n
         // recognize the PyProxy and hand Python its own object back
         // (unwrapped), which is exactly what create_proxy must not do.
         //
-        // The Python type of the JSProxy depends on what the JS object can
-        // do. For a PyProxy that is what the Python object can do, which the
-        // C side already determined: translate its flags instead of probing
-        // the proxy (every probe would be a call into Python).
-        const pyFlags = proxy[PYPROXY].flags;
-        const flags =
-          (pyFlags & PyFlag.CALLABLE ? JsFlag.CALLABLE : 0) |
-          (pyFlags & PyFlag.AWAITABLE ? JsFlag.AWAITABLE : 0) |
-          (pyFlags & PyFlag.ITERABLE ? JsFlag.ITERABLE : 0) |
-          (pyFlags & PyFlag.ITERATOR ? JsFlag.ITERATOR : 0);
-        writeJsObject(out, proxy, flags);
+        // `h` says whether it is a "roundtrip" proxy (see encode in
+        // codec.ts). The Python type of the JSProxy depends on what the JS
+        // object can do, see pyProxyJsFlags.
+        const state = proxy[PYPROXY];
+        state.roundtrip = h !== 0;
+        writeJsObject(out, proxy, pyProxyJsFlags(state));
         return Rc.OK;
       }
       case Op.ID: {
@@ -388,6 +477,9 @@ export function op(op: Op, h: number, arg: number, arg2: number, out: number): n
     if (borrowed !== null) {
       destroyBorrowed(borrowed);
       borrowed = null;
+    }
+    if (rc !== Rc.OK) {
+      return rc;
     }
     encode(result, out, false);
     return Rc.OK;

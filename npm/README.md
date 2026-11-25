@@ -108,3 +108,9 @@ JavaScript modules, so bundlers do not copy them; two ways to deploy them:
 
   Re-run `copy-assets` after updating the package (the JS and the wasm must
   match).
+
+## License
+
+pyjs: see `LICENSE`. The runtime and the python environment contain
+third-party software (CPython, openssl, sqlite, zlib, emscripten's libc /
+libc++, ...): their licenses are in `assets/<arch>/THIRD_PARTY_LICENSES.md`.

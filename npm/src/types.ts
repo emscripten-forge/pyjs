@@ -142,6 +142,11 @@ export interface PyjsModule {
    * of python dicts); default: `globals`.
    */
   runPython(code: string, options?: { globals?: PyProxy; locals?: PyProxy }): any;
+  /**
+   * A JS value as Python object (python's `pyjs.to_py`): Array -> list, Map /
+   * plain Object -> dict, Set -> set, ...; the result as PyProxy.
+   */
+  toPy(value: any, options?: { depth?: number; defaultConverter?: any }): any;
   /** like `runPython`, for code that uses `await` at the top level */
   runPythonAsync(code: string, options?: { globals?: PyProxy; locals?: PyProxy }): Promise<any>;
   /** `import name`: the python module, e.g. `pyimport("math").sqrt(2)` */
@@ -245,6 +250,15 @@ export interface IInitializeOptions extends IAssetsOptions {
    * packages: they can override files), see `PyjsModule.unpackArchive`
    */
   archives?: IArchive[];
+  /**
+   * optional parts of python's stdlib to install, from the package itself (no
+   * download from a channel): their extension modules are not installed by
+   * default, e.g. `["sqlite3", "ssl"]` or "all". Available: ssl, sqlite3,
+   * lzma, cjkcodecs (CJK codecs), test-modules (`_testcapi`, ...). Later:
+   * `installPackages(["sqlite3"])`. (Only with a python whose extension
+   * modules are separate packages; otherwise they are always there.)
+   */
+  stdlib?: string[] | "all";
   /** files written into the file system before python starts (after the archives) */
   files?: IFile[];
   /**

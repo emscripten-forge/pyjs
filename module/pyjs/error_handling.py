@@ -78,14 +78,44 @@ class JSException(RuntimeError):
         self.name = _text_attribute(js_error, "name") or "Error"
         self.message = _message(js_error) if message is None else message
         self.stack = _text_attribute(js_error, "stack")
-        super().__init__(self.message)
+        # str(e) is "Name: message", like JavaScript shows errors (and
+        # pyodide): "TypeError: x is not a function"
+        super().__init__(f"{self.name}: {self.message}")
+
+    # A JavaScript Error object that reaches python (as value, not thrown)
+    # IS a JSException (PEP 818): it can be raised. Passed back to
+    # JavaScript it is the Error object again (the core takes `js_error`).
+    # Its other properties are reachable as attributes, like those of a
+    # JSProxy:
+    def __getattr__(self, name):
+        # (only called for names that are not found the normal way;
+        # `js_error` itself is always found, except while unpickling)
+        if name == "js_error":
+            raise AttributeError(name)
+        return getattr(self.js_error, name)
+
+    def __reduce__(self):
+        # Pickled without the JavaScript object (that cannot leave the
+        # page): name, message and stack only.
+        return (_unpickle_jsexception, (self.name, self.message, self.stack))
+
+
+def _unpickle_jsexception(name, message, stack):
+    """a JSException from its pickled parts (js_error: None)"""
+    exception = JSException(None, message)
+    exception.name = name
+    exception.stack = stack
+    return exception
 
 
 def error_to_py(err):
     """The exception (not raised) for a value thrown by JavaScript."""
     if isinstance(err, JSProxy):
-        # a proxy of a primitive (see _identity) becomes the Python value
+        # a proxy of a primitive (see _identity) becomes the Python value,
+        # an Error object a JSException
         err = _identity(err)
+    if isinstance(err, JSException):
+        return err
     return JSException(err)
 
 

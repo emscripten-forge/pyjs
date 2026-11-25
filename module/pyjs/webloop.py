@@ -147,7 +147,6 @@ class WebLoop(asyncio.AbstractEventLoop):
 
     def __init__(self):
         self._task_factory = None
-        asyncio._set_running_loop(self)
         self._exception_handler = None
         self._current_handle = None
         self._set_timeout = js.setTimeout
@@ -176,6 +175,20 @@ class WebLoop(asyncio.AbstractEventLoop):
         Always returns ``False`` because WebLoop has no lifecycle management.
         """
         return False
+
+    def close(self):
+        """Close the loop. Does nothing: the loop is the browser's event
+        loop, which cannot be stopped. (Code that cleans up after itself,
+        like ``asyncio.run`` or a framework creating its own loop, calls
+        this; it must not fail.)"""
+
+    async def shutdown_asyncgens(self):
+        """Finish the async generators that are still suspended. Nothing to
+        do here: the loop never stops, they may still be resumed."""
+
+    async def shutdown_default_executor(self, timeout=None):
+        """Shut down the executor of `run_in_executor`. There is none: the
+        functions run right away, see `run_in_executor`."""
 
     def _check_closed(self):
         """Used in create_task.
@@ -273,16 +286,19 @@ class WebLoop(asyncio.AbstractEventLoop):
 
         This uses `setTimeout(callback, delay)`
         """
-        if delay < 0:
-            raise ValueError("Can't schedule in the past")
-
         h = asyncio.Handle(callback, args, self, context=context)
         run_handle = self._make_handle_runner(h)
 
         # a JavaScript function for the timer that calls `run_handle` once and
         # then releases it (see _js_once_callback)
         once_callback = _js_once_callback(create_proxy(run_handle), self._promising)
-        self._set_timeout(once_callback, delay * 1000)
+        # The delay in milliseconds, within what setTimeout can do:
+        #   - a time in the past means "as soon as possible", as in asyncio
+        #   - setTimeout keeps the delay as 32 bit integer: a larger value
+        #     overflows and the timer fires immediately. So very long delays
+        #     (asyncio.sleep(1e9)) are cut to the maximum, about 24.8 days.
+        milliseconds = min(max(delay, 0) * 1000, 2**31 - 1)
+        self._set_timeout(once_callback, milliseconds)
         return h
 
     def call_at(
@@ -340,26 +356,18 @@ class WebLoop(asyncio.AbstractEventLoop):
         """
         return asyncio.futures.Future(loop=self)
 
-    def create_task(self, coro, *, name=None):
+    def create_task(self, coro, **kwargs):
         """Schedule a coroutine object.
 
-        Return a task object.
+        Return a task object. The keyword arguments (``name``, ``context``,
+        ``eager_start``) go to the task, or to the task factory if one is set.
 
         Copied from ``BaseEventLoop.create_task``
         """
         self._check_closed()
-        if self._task_factory is None:
-            task = asyncio.tasks.Task(coro, loop=self, name=name)
-            if task._source_traceback:  # type: ignore[attr-defined]
-                # Added comment:
-                # this only happens if get_debug() returns True.
-                # In that case, remove create_task from _source_traceback.
-                del task._source_traceback[-1]  # type: ignore[attr-defined]
-        else:
-            task = self._task_factory(self, coro)
-            asyncio.tasks._set_task_name(task, name)  # type: ignore[attr-defined]
-
-        return task
+        if self._task_factory is not None:
+            return self._task_factory(self, coro, **kwargs)
+        return asyncio.tasks.Task(coro, loop=self, **kwargs)
 
     def set_task_factory(self, factory):
         """Set a task factory that will be used by loop.create_task().
@@ -420,13 +428,12 @@ class WebLoop(asyncio.AbstractEventLoop):
         `call_exception_handler()`.
         """
 
-        message = context.get("message")
-
-        # internal.console_log("context", context)
-        # internal.console_log("message", message)
-
-        if not message:
-            message = "Unhandled exception in event loop"
+        # The first line always says what this is (as in pyodide), followed
+        # by asyncio's specific message, e.g. "Task exception was never
+        # retrieved".
+        message = "Unhandled exception in event loop"
+        if context.get("message"):
+            message += ": " + context["message"]
 
         if (
             "source_traceback" not in context
@@ -452,6 +459,12 @@ class WebLoop(asyncio.AbstractEventLoop):
                 value = repr(value)
             log_lines.append(f"{key}: {value}")
 
+        # the traceback of the exception, if there is one (what
+        # BaseEventLoop does through logging's exc_info)
+        exception = context.get("exception")
+        if exception is not None:
+            log_lines.append("".join(traceback.format_exception(exception)).rstrip())
+
         print("\n".join(log_lines), file=sys.stderr)
 
     def call_exception_handler(self, context):
@@ -474,8 +487,6 @@ class WebLoop(asyncio.AbstractEventLoop):
         For custom exception handling, use the
         `set_exception_handler()` method.
         """
-        js.console.log("call_exception_handler")
-        js.console.log("message", context['message'])
         if self._exception_handler is None:
             try:
                 self.default_exception_handler(context)
@@ -533,9 +544,10 @@ class WebLoopPolicy(asyncio.DefaultEventLoopPolicy):  # type: ignore[misc, valid
         return self.new_event_loop()
 
     def new_event_loop(self):
-        """Create a new event loop"""
-        self._default_loop = WebLoop()  # type: ignore[abstract]
-        return self._default_loop
+        """Create a new event loop. It does not become the current or the
+        running loop: that only happens for the first loop, below, or
+        explicitly with `set_event_loop`."""
+        return WebLoop()  # type: ignore[abstract]
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
         """Set the current event loop"""
@@ -547,4 +559,8 @@ if "PYJS_DONT_AUTOSTART_EVENT_LOOP" not in os.environ:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        asyncio.set_event_loop(WebLoop())
+        # The one loop of this interpreter. It is "running" all the time:
+        # the browser's event loop drives it, there is no run_forever().
+        _loop = WebLoop()
+        asyncio.set_event_loop(_loop)
+        asyncio._set_running_loop(_loop)

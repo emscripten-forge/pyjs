@@ -108,16 +108,39 @@ endif()
 ##########################################################
 # the runtime
 ##########################################################
+# C libraries of optional extension modules: needed only if libpython has the
+# module built in (older python builds). A newer python build has _sqlite3 /
+# _ssl / _lzma as side modules in lib-dynload, each with its own static copy of
+# the library. A second copy in the main module must not be linked then: the
+# dynamic linker binds the side module's exported symbols (sqlite3_free, ...)
+# to the main module's copy, whose global state the side module never
+# initialized (sqlite: "null function" trap in sqlite3_close).
+# (file(STRINGS) finds the name also in LTO bitcode: its string table is text)
+set(PYTHON_OPTIONAL_LIBRARIES)
+function(pyjs_link_if_builtin module)
+    file(STRINGS ${HOST_PREFIX}/lib/libpython${PY_VERSION}.a found
+         REGEX "PyInit_${module}" LIMIT_COUNT 1)
+    if(found)
+        foreach(lib ${ARGN})
+            list(APPEND PYTHON_OPTIONAL_LIBRARIES ${HOST_PREFIX}/lib/${lib})
+        endforeach()
+        set(PYTHON_OPTIONAL_LIBRARIES ${PYTHON_OPTIONAL_LIBRARIES} PARENT_SCOPE)
+    endif()
+    message(STATUS "pyjs: ${module} built into libpython: ${found}")
+endfunction()
+pyjs_link_if_builtin(_sqlite3 libsqlite3.a)
+pyjs_link_if_builtin(_lzma liblzma.a)
+pyjs_link_if_builtin(_ssl libssl.a libcrypto.a)
+pyjs_link_if_builtin(_hashlib libcrypto.a)
+list(REMOVE_DUPLICATES PYTHON_OPTIONAL_LIBRARIES)
+
 # what a python main module links (the static libraries of the host env)
 set(PYTHON_LIBRARIES
     ${HOST_PREFIX}/lib/libbz2.a
     ${HOST_PREFIX}/lib/libz.a
-    ${HOST_PREFIX}/lib/libsqlite3.a
     ${HOST_PREFIX}/lib/libffi.a
     ${HOST_PREFIX}/lib/libzstd.a
-    ${HOST_PREFIX}/lib/libssl.a
-    ${HOST_PREFIX}/lib/libcrypto.a
-    ${HOST_PREFIX}/lib/liblzma.a
+    ${PYTHON_OPTIONAL_LIBRARIES}
     ${HOST_PREFIX}/lib/libpython${PY_VERSION}.a
     ${HOST_PREFIX}/lib/python${PY_VERSION}/static/libexpat.a
     ${HOST_PREFIX}/lib/python${PY_VERSION}/static/libmpdec.a

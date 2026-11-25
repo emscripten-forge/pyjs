@@ -32,7 +32,10 @@ class BenchmarkError(RuntimeError):
 
 
 class Benchmark:
-    def __init__(self, name, min_round_time=0.05, rounds=5, max_iterations=10_000_000):
+    # Many short rounds rather than a few long ones: every round is one
+    # sample of the time per operation, and the samples are kept (`samples`
+    # in the result) to show their distribution, not only the median.
+    def __init__(self, name, min_round_time=0.01, rounds=30, max_iterations=10_000_000):
         self.name = name
         self.min_round_time = min_round_time
         self.rounds = rounds
@@ -111,6 +114,8 @@ class Benchmark:
             stddev=statistics.stdev(per_op) if len(per_op) > 1 else 0.0,
             # None: below the timer resolution (inf is not valid JSON)
             ops_per_sec=(1.0 / median) if median > 0 else None,
+            # the time per operation of every round (seconds)
+            samples=per_op,
         )
 
 

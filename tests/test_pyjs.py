@@ -12,13 +12,22 @@ from helpers import *
 
 import pyjs
 
-# check python version
-if sys.version_info[0] == 3 and sys.version_info[1] >= 13:
-    def test_ssl_import():
-        import ssl
+def _optional_missing(module):
+    """an optional stdlib extension module (its own package with a split
+    python) that is not installed: tested by test_stdlib.py instead"""
+    import importlib.util
 
-    def test_import_lzma():
-        import lzma
+    return importlib.util.find_spec(module) is None
+
+
+@pytest.mark.skipif(_optional_missing("_ssl"), reason="python-ssl not installed (test_stdlib.py)")
+def test_ssl_import():
+    import ssl
+
+
+@pytest.mark.skipif(_optional_missing("_lzma"), reason="python-lzma not installed (test_stdlib.py)")
+def test_import_lzma():
+    import lzma
 
 def test_js_module():
     # JavaScript's global scope under its three names
@@ -317,15 +326,16 @@ def test_to_js_dict_as_map():
     # ... or what dict_converter makes of its [key, value] pairs
     pydict = {1: "a"}
     jsmap = pyjs.to_js(pydict, dict_converter=pyjs.js.Map.new)
-    assert jsmap.keys().next().value == 1
-    assert jsmap.values().next().value == "a"
+    # (a proxy of a Map behaves like a python mapping)
+    assert list(jsmap.keys()) == [1]
+    assert list(jsmap.values()) == ["a"]
 
     assert jsmap.get(1) == "a"
 
 
 def test_to_js_depth():
     # depth=1: only the outer list is converted, the inner one stays python
-    pyproxies = []
+    pyproxies = pyjs.js.Array.new()
     jsarray = pyjs.to_js([[1, 2], 3], depth=1, pyproxies=pyproxies)
     is_array = pyjs.js.Array.isArray
     assert is_array(jsarray)
@@ -737,7 +747,8 @@ def test_js_exceptions(js_code, name):
     e = e_info.value
     assert e.name == name
     assert isinstance(e.message, str)
-    assert str(e) == e.message
+    # (as JavaScript shows an error)
+    assert str(e) == f"{e.name}: {e.message}"
     # the JS error object itself
     assert isinstance(e.js_error, pyjs.JSProxy)
     assert e.js_error.name == name

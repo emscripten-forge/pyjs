@@ -48,6 +48,9 @@ interface State {
   owned: boolean; // registered for finalization
   destroyed: string; // the message of the error for a use after destroy()
   promise?: Promise<any>; // of an awaitable, once it was awaited from JS
+  // made by create_proxy(obj, roundtrip=True): comes back to python as this
+  // proxy (JSDoubleProxy), not as `obj` (see encode in codec.ts)
+  roundtrip?: boolean;
 }
 
 const DESTROYED = "This proxy was destroyed: the Python object is no longer accessible.";
@@ -72,10 +75,14 @@ let thenHelper: any = null;
 // python `to_js`
 let toJsHelper: any = null;
 
-/** the python helpers of PyProxy.then / PyProxy.toJs */
-export function setPythonHelpers(then: any, toJs: any): void {
+// python `(generator, method, argument) -> {done, value}`
+let generatorStepHelper: any = null;
+
+/** the python helpers of PyProxy.then / PyProxy.toJs / generator methods */
+export function setPythonHelpers(then: any, toJs: any, generatorStep: any): void {
   thenHelper = then;
   toJsHelper = toJs;
+  generatorStepHelper = generatorStep;
 }
 
 /** bind the wasm exports (once the wasm module is instantiated) */
@@ -292,8 +299,19 @@ function destroy(state: State): void {
 function promiseOf(proxy: any): Promise<any> {
   const state: State = proxy[PYPROXY];
   return (state.promise ??= new Promise((resolve, reject) => {
-    // python: pyjs.core._then(awaitable, resolve, reject)
-    thenHelper(proxy, resolve, reject);
+    // python: pyjs.core._then(awaitable, settle). When the awaitable is
+    // done, python calls `settle` with a function `get` that returns the
+    // result or raises the exception of the awaitable. Calling it here
+    // turns both into what a promise needs with the ordinary machinery of
+    // calls into python: a result arrives as value (a Python object as
+    // PyProxy owned by the receiver), an exception is thrown as PythonError.
+    thenHelper(proxy, (get: () => any) => {
+      try {
+        resolve(get());
+      } catch (error) {
+        reject(error);
+      }
+    });
   }));
 }
 
@@ -326,6 +344,36 @@ function* iterate(iterator: State): Generator<any> {
   } finally {
     destroy(iterator);
   }
+}
+
+function returnThis(this: any): any {
+  return this;
+}
+
+/**
+ * The methods of a JS generator, for the proxy of a Python generator:
+ * next(value) (python's send), throw(error), return(value) (python's close),
+ * each giving a step {done, value}. Done by the python helper
+ * pyjs.core._generator_step.
+ */
+const generatorMethods: Record<string, (this: any, arg?: any) => any> = {
+  next(arg) {
+    return generatorStepHelper(this, "next", arg);
+  },
+  throw(arg) {
+    return generatorStepHelper(this, "throw", arg);
+  },
+  return(arg) {
+    return generatorStepHelper(this, "return", arg);
+  },
+};
+
+/** `next()` of the proxy of a Python iterator: a JS iterator step */
+function iteratorNext(this: any): { done: boolean; value: any } {
+  if (operate(PyOp.NEXT, this[PYPROXY], 0) === Rc.STOP) {
+    return { done: true, value: undefined };
+  }
+  return { done: false, value: decode(result, true) };
 }
 
 // The members of every PyProxy (they win over Python attributes of the same
@@ -364,7 +412,19 @@ const members: Record<string | symbol, any> = Object.assign(Object.create(null),
    * `f.callKwargs(1, 2, {sep: "-"})` is python's `f(1, 2, sep="-")`.
    */
   callKwargs(this: any, ...args: any[]): any {
+    if (args.length === 0) {
+      throw new TypeError("callKwargs requires at least one argument (the object with the keyword arguments)");
+    }
     const kwargs = args.pop();
+    // (a plain object: not a PyProxy, not an Array, not null)
+    if (
+      kwargs === null ||
+      typeof kwargs !== "object" ||
+      Array.isArray(kwargs) ||
+      kwargs[PYPROXY] !== undefined
+    ) {
+      throw new TypeError("callKwargs: the last argument must be an object with the keyword arguments");
+    }
     return callPython(this[PYPROXY], args, kwargs);
   },
   /** obj(*args), returns a promise: the Python code may use run_sync (JSPI) */
@@ -394,19 +454,43 @@ const handler: ProxyHandler<any> = {
     if (property === PYPROXY) {
       return target.state;
     }
+    const state: State = target.state;
+    if (property === Symbol.iterator) {
+      // only iterable Python objects are iterable in JS (code like
+      // Array.from / spread probes for this property); a Python iterator
+      // without __iter__ is its own iterator, as in JS
+      if (state.flags & PyFlag.ITERABLE) {
+        return members[property];
+      }
+      return state.flags & PyFlag.ITERATOR ? returnThis : undefined;
+    }
     const member = members[property];
     if (member !== undefined) {
       return member;
     }
-    const state: State = target.state;
     if (typeof property === "symbol") {
-      return undefined;
+      // (a callable's ES Proxy target is a function: the symbols of
+      // functions, e.g. Symbol.hasInstance)
+      return state.flags & PyFlag.CALLABLE ? Reflect.get(target, property) : undefined;
+    }
+    // (a generator first: it is an iterator too, but its `next` sends a
+    // value and reports the return value at the end)
+    if (state.flags & PyFlag.GENERATOR && (property === "next" || property === "throw" || property === "return")) {
+      return generatorMethods[property];
+    }
+    if (property === "next" && state.flags & PyFlag.ITERATOR) {
+      return iteratorNext;
     }
     switch (property) {
       case "type":
         return value(PyOp.TYPE, state, 0);
       case "length":
-        return value(PyOp.LEN, state, 0);
+        // len(obj) for objects that have one; for others `length` is an
+        // ordinary attribute
+        if (state.flags & PyFlag.SIZED) {
+          return value(PyOp.LEN, state, 0);
+        }
+        break;
       case "call":
       case "apply":
       case "bind":
@@ -436,21 +520,73 @@ const handler: ProxyHandler<any> = {
     if (typeof property === "symbol") {
       return false;
     }
+    if (property === "length" && target.state.flags & PyFlag.SIZED) {
+      // (`length` is len(obj) there, see `get`)
+      throw new TypeError("cannot set the length of a Python object");
+    }
     operate(PyOp.SETATTR, target.state, 2, property, item);
     return true;
   },
+  // `property in proxy`: the same answers as `get` gives values
   has(target, property) {
+    const flags = target.state.flags;
+    if (property === Symbol.iterator) {
+      return (flags & (PyFlag.ITERABLE | PyFlag.ITERATOR)) !== 0;
+    }
     if (property === PYPROXY || property in members) {
       return true;
     }
-    if (typeof property === "symbol") {
-      return false;
+    if (typeof property === "symbol" || (property === "prototype" && flags & PyFlag.CALLABLE)) {
+      // (see `get`; JS also requires `true` for the fixed properties of
+      // the target function)
+      return flags & PyFlag.CALLABLE ? Reflect.has(target, property) : false;
+    }
+    if (property === "next" && flags & PyFlag.ITERATOR) {
+      return true;
+    }
+    if ((property === "throw" || property === "return") && flags & PyFlag.GENERATOR) {
+      return true;
+    }
+    switch (property) {
+      case "type":
+        return true;
+      case "length":
+        if (flags & PyFlag.SIZED) {
+          return true;
+        }
+        break;
+      case "call":
+      case "apply":
+      case "bind":
+        if (flags & PyFlag.CALLABLE) {
+          return true;
+        }
+        break;
+      case "then":
+      case "catch":
+      case "finally":
+        if (flags & PyFlag.AWAITABLE) {
+          return true;
+        }
+        if (property === "then") {
+          return false;
+        }
     }
     return operate(PyOp.GETATTR, target.state, 1, property) !== Rc.NO_ATTR;
   },
   deleteProperty(target, property) {
     if (typeof property === "symbol") {
       return false;
+    }
+    const descriptor = Reflect.getOwnPropertyDescriptor(target, property);
+    if (descriptor !== undefined && !descriptor.configurable) {
+      // a fixed property of the target function (`prototype`): JS forbids
+      // deleting it, the Python attribute stays too
+      throw new TypeError(`Cannot delete property '${property}'`);
+    }
+    if (property === "length" && target.state.flags & PyFlag.SIZED) {
+      // (`length` is len(obj), see `get`: nothing to delete)
+      return true;
     }
     operate(PyOp.DELATTR, target.state, 1, property);
     return true;
@@ -462,6 +598,8 @@ const handler: ProxyHandler<any> = {
 
 /** the target of the ES Proxy of a callable (only functions can be called) */
 function callableTarget(state: State): any {
+  // A plain function (not an arrow function): with a `prototype`, like
+  // every JS function that can be used as class (pyodide does the same).
   const target: any = function () {};
   target.state = state;
   return target;
@@ -478,6 +616,24 @@ function create(ptr: number, flags: number, owned: boolean): any {
 }
 
 setPyProxyFactory(create);
+
+/**
+ * The JS error for a Python exception object (`proxy`: its PyProxy), as if
+ * the exception had just been raised by a call into Python. Used to throw a
+ * Python exception into JS code (generator.throw): when such an error
+ * comes back to Python uncaught, the original exception is raised again
+ * (see `fail` in jsops.ts).
+ */
+export function pythonErrorFor(proxy: any): PythonError {
+  const state: State = proxy[PYPROXY];
+  const ptr = alive(state);
+  const type = value(PyOp.TYPE, state, 0);
+  // (the repr as message: "ValueError('bad value')")
+  const message = value(PyOp.REPR, state, 0);
+  // the error owns a reference to the exception (see PythonError)
+  pyIncref(ptr);
+  return new PythonError(type, message, ptr);
+}
 
 /** `import name` */
 export function pyimport(name: string): any {

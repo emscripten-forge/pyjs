@@ -33,6 +33,7 @@
 #include <emscripten.h>
 
 #include <cstddef>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -47,6 +48,7 @@ enum JsRc : int
     RC_NO_KEY = 4,
     RC_STOP = 5,      // iterator exhausted
     RC_GENERIC = 6,   // no fast path for this object: use the generic operation
+    RC_UNSUPPORTED = 7,  // the object cannot do this: a TypeError
 };
 
 // operations of pyjs_js_op (rarely used ones share one import)
@@ -158,6 +160,11 @@ namespace pyjs
         // types are created the first time they are needed (type_for). All of
         // them derive from the type for "no abilities" (index 0), which is
         // the `JSProxy` users see, so isinstance(x, JSProxy) holds for all.
+        //
+        // (One pointer per possible combination: 16384 of them, almost all
+        // never used. That is 64 KiB of memory that starts out as zeros,
+        // which costs nothing in the binary, and finding the type is a
+        // single array access.)
         PyTypeObject* g_types[JS_FLAG_END] = {};
 
         Hooks g_hooks;
@@ -298,6 +305,9 @@ namespace pyjs
                     return nullptr;
                 case RC_NO_KEY:
                     PyErr_SetObject(PyExc_KeyError, key);
+                    return nullptr;
+                case RC_UNSUPPORTED:
+                    PyErr_SetString(PyExc_TypeError, "this JavaScript object does not support the operation");
                     return nullptr;
                 default:
                     PyErr_SetNone(PyExc_StopIteration);
@@ -511,8 +521,56 @@ namespace pyjs
                               ptr_to_num(out));
         }
 
+        // Slices (`proxy[1:3]`, `proxy[::2] = ...`, `del proxy[:2]`) are not
+        // done here but by Python functions named _getslice / _setslice /
+        // _delslice, which the proxy types of arrays and typed arrays
+        // inherit (pyjs/_proxy_types.py): a slice is several JavaScript
+        // operations, which is much shorter to write in Python.
+        //
+        // Returns that function for the type of `self` (a borrowed
+        // reference), or nullptr with a TypeError set if the JavaScript
+        // object is nothing that can be sliced.
+        PyObject* slice_function(PyObject* self, const char* name)
+        {
+            PyObject* key = PyUnicode_InternFromString(name);
+            if (key == nullptr)
+            {
+                return nullptr;
+            }
+            PyObject* function = _PyType_Lookup(Py_TYPE(self), key);
+            Py_DECREF(key);
+            if (function == nullptr)
+            {
+                PyErr_SetString(PyExc_TypeError, "this JavaScript object does not support slices");
+            }
+            return function;
+        }
+
+        Py_ssize_t js_proxy_len(PyObject* self);
+
+        // A negative index counts from the end, which needs the length. When
+        // such an index was out of range (rc RC_NO_INDEX), the reason may be
+        // a length that is no length (JavaScript objects can claim a negative
+        // or a huge one): then raise what len() raises for it, not the
+        // IndexError. False with that exception set.
+        bool negative_index_check(PyObject* self, PyObject* key, int rc)
+        {
+            if (rc != RC_NO_INDEX || !PyLong_Check(key))
+            {
+                return true;
+            }
+            // key < 0 (False is the int 0; an int of any size compares)
+            const int negative = PyObject_RichCompareBool(key, Py_False, Py_LT);
+            return negative != 1 || js_proxy_len(self) >= 0;
+        }
+
         PyObject* js_proxy_getitem(PyObject* self, PyObject* key)
         {
+            if (PySlice_Check(key))
+            {
+                PyObject* function = slice_function(self, "_getslice");
+                return function != nullptr ? PyObject_CallFunctionObjArgs(function, self, key, nullptr) : nullptr;
+            }
             Slot out;
             if (PyLong_CheckExact(key))
             {
@@ -525,16 +583,25 @@ namespace pyjs
                 const int rc = pyjs_js_getindex(as_proxy(self)->handle, index, ptr_to_num(&out));
                 if (rc != RC_GENERIC)
                 {
-                    return result(rc, &out, key);
+                    return negative_index_check(self, key, rc) ? result(rc, &out, key) : nullptr;
                 }
             }
             const int rc = op(OP_GETITEM, self, key, nullptr, &out);
-            return rc < 0 ? nullptr : result(rc, &out, key);
+            return rc < 0 ? nullptr : negative_index_check(self, key, rc) ? result(rc, &out, key) : nullptr;
         }
 
         // obj[key] = value, or del obj[key] (value: nullptr)
         int js_proxy_setitem(PyObject* self, PyObject* key, PyObject* value)
         {
+            if (PySlice_Check(key))
+            {
+                // (see slice_function)
+                PyObject* function = slice_function(self, value != nullptr ? "_setslice" : "_delslice");
+                PyObject* ret = function != nullptr ? PyObject_CallFunctionObjArgs(function, self, key, value, nullptr)
+                                                    : nullptr;
+                Py_XDECREF(ret);
+                return ret != nullptr ? 0 : -1;
+            }
             Slot out;
             const int rc = op(value != nullptr ? OP_SETITEM : OP_DELITEM, self, key, value, &out);
             return rc < 0 ? -1 : status(rc, &out, key);
@@ -548,7 +615,27 @@ namespace pyjs
             {
                 return -1;
             }
-            return static_cast<Py_ssize_t>(out.num);
+            // JavaScript can say anything here (`{length: -1}`,
+            // `{length: 1e20}`): python requires 0 <= len <= the largest
+            // Py_ssize_t. (A negative return value means "error" to
+            // python, so returning one without an exception set must not
+            // happen.)
+            const double length = out.num;
+            if (!(length >= 0))
+            {
+                PyErr_SetString(PyExc_ValueError, "__len__() should return >= 0");
+                return -1;
+            }
+            // (compared with 2^31 / 2^63 itself: PY_SSIZE_T_MAX = 2^63 - 1
+            // has no exact double and rounds UP to 2^63, so `length >
+            // PY_SSIZE_T_MAX` would let 2^63 through)
+            const double limit = std::ldexp(1.0, static_cast<int>(sizeof(Py_ssize_t) * 8 - 1));
+            if (length >= limit)
+            {
+                PyErr_SetString(PyExc_OverflowError, "the length of the JavaScript object does not fit a Python int index");
+                return -1;
+            }
+            return static_cast<Py_ssize_t>(length);
         }
 
         int js_proxy_contains(PyObject* self, PyObject* value)
@@ -673,7 +760,7 @@ namespace pyjs
             {
                 return nullptr;
             }
-            return create_proxy(obj, false);
+            return create_proxy(obj, false, false);
         }
 
         // proxy.to_py(*, depth=-1, default_converter=None): a deep copy of
@@ -827,14 +914,18 @@ namespace pyjs
             {
                 slots.push_back({ Py_sq_contains, reinterpret_cast<void*>(js_proxy_contains) });
             }
-            if (flags & JS_ITERABLE)
+            // (Not for map-likes: JavaScript iterates a Map as [key, value]
+            // pairs, but a Python mapping iterates its keys. Their __iter__
+            // comes from the Python class JSMap, see below.)
+            const bool iterable = (flags & JS_ITERABLE) && !(flags & JS_MAP);
+            if (iterable)
             {
                 slots.push_back({ Py_tp_iter, reinterpret_cast<void*>(js_proxy_iter) });
             }
             if (flags & JS_ITERATOR)
             {
                 slots.push_back({ Py_tp_iternext, reinterpret_cast<void*>(js_proxy_next) });
-                if (!(flags & JS_ITERABLE))
+                if (!iterable)
                 {
                     slots.push_back({ Py_tp_iter, reinterpret_cast<void*>(PyObject_SelfIter) });
                 }
@@ -846,12 +937,39 @@ namespace pyjs
             slots.push_back({ 0, nullptr });
 
             PyType_Spec spec = { "pyjs_core.JSProxy", sizeof(JsProxyObject), 0, type_flags, slots.data() };
-            PyObject* base = flags == 0 ? nullptr : reinterpret_cast<PyObject*>(type_for(0));
-            if (flags != 0 && base == nullptr)
+            if (flags == 0)
+            {
+                g_types[0] = reinterpret_cast<PyTypeObject*>(PyType_FromSpec(&spec));
+                return g_types[0];
+            }
+            // The base classes: (JSProxy, mixin classes...).
+            //
+            // The operations above are C functions. Some abilities come with
+            // many more methods (an array has append / pop / insert / ...,
+            // a map has keys / items / ...). Those are written in Python, as
+            // small classes without data ("mixins", pyjs/_proxy_types.py).
+            // The hook tells which of them belong to these flags, and the
+            // type inherits from them: their methods, including special ones
+            // like __aiter__, then work on the proxy like on any Python
+            // object. Operations defined above win over inherited ones.
+            PyObject* base = reinterpret_cast<PyObject*>(type_for(0));
+            if (base == nullptr)
             {
                 return nullptr;
             }
-            g_types[flags] = reinterpret_cast<PyTypeObject*>(PyType_FromSpecWithBases(&spec, base));
+            // (no hook: only before the python package pyjs is imported)
+            PyObject* mixins = g_hooks.proxy_mixins != nullptr ? PyObject_CallFunction(g_hooks.proxy_mixins, "i", flags)
+                                                               : PyTuple_New(0);
+            PyObject* first = PyTuple_Pack(1, base);
+            PyObject* bases = mixins != nullptr && first != nullptr ? PySequence_Concat(first, mixins) : nullptr;
+            Py_XDECREF(mixins);
+            Py_XDECREF(first);
+            if (bases == nullptr)
+            {
+                return nullptr;
+            }
+            g_types[flags] = reinterpret_cast<PyTypeObject*>(PyType_FromSpecWithBases(&spec, bases));
+            Py_DECREF(bases);
             return g_types[flags];
         }
 
@@ -875,6 +993,16 @@ namespace pyjs
             if (PyIter_Check(o))
             {
                 flags |= PY_ITERATOR;
+            }
+            if (PyGen_Check(o))
+            {
+                flags |= PY_GENERATOR;
+            }
+            // (len() is implemented by one of two type slots)
+            if ((type->tp_as_sequence != nullptr && type->tp_as_sequence->sq_length != nullptr)
+                || (type->tp_as_mapping != nullptr && type->tp_as_mapping->mp_length != nullptr))
+            {
+                flags |= PY_SIZED;
             }
             return flags;
         }
@@ -941,6 +1069,16 @@ namespace pyjs
     Hooks& hooks()
     {
         return g_hooks;
+    }
+
+    void js_proxy_forget_types()
+    {
+        // (the base type, index 0, stays: it has no mixins and is the
+        // `JSProxy` everybody already refers to)
+        for (int flags = 1; flags < JS_FLAG_END; ++flags)
+        {
+            Py_CLEAR(g_types[flags]);
+        }
     }
 
     int js_proxy_handle(PyObject* o)
@@ -1036,6 +1174,29 @@ namespace pyjs
             slot->num = PyFloat_AS_DOUBLE(o);
             return true;
         }
+        // A JSException (a JavaScript Error that came to python): JavaScript
+        // gets the Error itself back.
+        if (g_hooks.jsexception_type != nullptr
+            && PyObject_TypeCheck(o, reinterpret_cast<PyTypeObject*>(g_hooks.jsexception_type)))
+        {
+            PyObject* error = PyObject_GetAttrString(o, "js_error");
+            if (error == nullptr)
+            {
+                PyErr_Clear();
+            }
+            else
+            {
+                const int handle = js_proxy_handle(error);
+                // (`o` keeps its js_error, and with it the handle, alive)
+                Py_DECREF(error);
+                if (handle != 0)
+                {
+                    slot->tag = T_JS;
+                    slot->aux = handle;
+                    return true;
+                }
+            }
+        }
         // Any other object: JavaScript gets a PyProxy. The slot carries the
         // address of the object and what it can do (so that JavaScript need
         // not ask). Py_NewRef adds one reference to the object: it belongs
@@ -1101,7 +1262,17 @@ namespace pyjs
                 return bigint;
             }
             case T_JS:
-                return js_proxy_new(slot->aux, slot->i.a, slot->i.b);
+            {
+                PyObject* proxy = js_proxy_new(slot->aux, slot->i.a, slot->i.b);
+                if (proxy == nullptr || !(slot->i.a & JS_ERROR) || g_hooks.jsexception_type == nullptr)
+                {
+                    return proxy;
+                }
+                // a JavaScript Error: a JSException holding the proxy (PEP 818)
+                PyObject* exception = PyObject_CallOneArg(g_hooks.jsexception_type, proxy);
+                Py_DECREF(proxy);
+                return exception;
+            }
             case T_PY:
                 // a PyProxy coming back: the Python object itself
                 return Py_NewRef(num_to_ptr<PyObject>(slot->num));
@@ -1121,7 +1292,7 @@ namespace pyjs
         return result(rc, &out);
     }
 
-    PyObject* create_proxy(PyObject* obj, bool always)
+    PyObject* create_proxy(PyObject* obj, bool always, bool roundtrip)
     {
         Slot in, out;
         if (!to_slot(obj, &in))
@@ -1141,7 +1312,8 @@ namespace pyjs
             release_slots(&in, 1);
             return Py_NewRef(obj);
         }
-        const int rc = pyjs_js_op(OP_CREATE_PROXY, 0, ptr_to_num(&in), 0.0, ptr_to_num(&out));
+        // (the `h` argument of the operation carries `roundtrip`)
+        const int rc = pyjs_js_op(OP_CREATE_PROXY, roundtrip ? 1 : 0, ptr_to_num(&in), 0.0, ptr_to_num(&out));
         return result(rc, &out);
     }
 

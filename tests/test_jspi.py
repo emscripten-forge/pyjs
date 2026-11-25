@@ -1,9 +1,10 @@
 """Async tests for JSPI support: pyjs.run_sync / pyjs.can_run_sync.
 
-Async, because run_sync works in asyncio task steps (the event loop enters
-Python via a promising call in JSPI builds), see include/pyjs/pre_js/jspi.js.
-In builds without JSPI (cmake option PYJS_JSPI=OFF) only the fallback
-behaviour is tested.
+Async, because run_sync works in asyncio task steps (with JSPI the event
+loop enters Python via a promising call), see src/js/jspi.ts. Without JSPI
+(browser without it, or switched off: `pixi run test ... no-jspi`) only the
+fallback behaviour is tested. Many suspended stacks at once:
+tests/test_stack_switching.py.
 """
 
 import asyncio
@@ -120,16 +121,19 @@ async def test_jspi_no_run_sync_in_sync_js_callback():
     assert pyjs.can_run_sync()
 
 
-async def test_jspi_no_nested_run_sync():
+async def test_jspi_nested_run_sync():
     if not pyjs.jspi_enabled():
         return
-    # while this task is suspended other python code runs, but can not suspend
+    # while this task is suspended, the coroutine runs as another task, which
+    # can suspend in turn (several suspended stacks at once)
 
     async def inner():
         await asyncio.sleep(0)
-        return pyjs.can_run_sync()
+        assert pyjs.can_run_sync()
+        return pyjs.run_sync(_delayed_promise("inner", 1))
 
-    assert pyjs.run_sync(inner()) is False
+    assert pyjs.run_sync(inner()) == "inner"
+    assert pyjs.can_run_sync()
 
 
 async def test_jspi_concurrent_tasks():
@@ -151,15 +155,15 @@ async def test_jspi_concurrent_tasks():
     async def other():
         for i in range(3):
             await asyncio.sleep(0)
-            # waiter is suspended: no second suspended stack
-            seen.append((f"other {i}", pyjs.can_run_sync()))
+            # waiter is suspended: this task can suspend as well
+            seen.append((f"other {i}", pyjs.run_sync(js.Promise.resolve(i))))
         resolve("w")
 
     await asyncio.gather(waiter(), other())
     assert seen[0] == ("waiter start", True), seen
     assert seen[-1] == ("waiter end", "w"), seen
     others = [s for s in seen if s[0].startswith("other")]
-    assert len(others) == 3 and all(ok is False for _, ok in others), seen
+    assert others == [("other 0", 0), ("other 1", 1), ("other 2", 2)], seen
     assert pyjs.can_run_sync()
 
 

@@ -18,6 +18,7 @@ The names and the behaviour follow PEP 818 and pyodide.
 
 import asyncio
 import functools
+import struct
 from collections.abc import (
     ItemsView,
     KeysView,
@@ -77,6 +78,7 @@ _MAP = 1 << 10
 _GENERATOR = 1 << 11
 _ASYNC_ITERABLE = 1 << 12
 _ASYNC_ITERATOR = 1 << 13
+# a JSProxy whose JavaScript object is itself a PyProxy (see JSDoubleProxy)
 _DOUBLE_PROXY = 1 << 15
 
 
@@ -107,15 +109,36 @@ _apply_with_this = _js.Function("f", "this_", "...args", "return Reflect.apply(f
 
 
 class JSCallable(_Mixin):
-    """A JavaScript function or class: ``proxy(...)`` calls it,
-    ``proxy.new(...)`` is JavaScript's ``new proxy(...)``."""
+    """The proxy of a JavaScript function or class.
+
+    - ``proxy(1, 2)`` calls the function (the core does that, in C++)
+    - ``proxy.new(1, 2)`` is JavaScript's ``new proxy(1, 2)``: creates an
+      instance of a class
+    - a JavaScript function stored in a Python class works as a method, see
+      `__get__`
+    """
 
     __slots__ = ()
 
     def __get__(self, instance, owner=None):
-        # A JavaScript function stored as attribute of a Python class is a
-        # method, like a Python function there: `instance.f(1)` runs it with
-        # `this` = the instance (as pyodide does).
+        """Makes a JavaScript function a method when it is an attribute of a
+        Python class (Python's "descriptor protocol": `instance.f` calls
+        ``__get__`` of the class attribute `f`):
+
+        ```python
+        class Counter:
+            increment = js.Function("this.n += 1")  # a JS function
+
+        c = Counter()
+        c.n = 0
+        c.increment()  # runs the JS function with `this` = c
+        ```
+
+        Like a Python function in a class, which gets the instance as
+        `self`, the JavaScript function gets it as `this`. (Read from the
+        class itself, ``Counter.increment``, it is the plain function.) The
+        same as in pyodide.
+        """
         if instance is None:
             return self
         return functools.partial(_apply_with_this, self, instance)
@@ -166,14 +189,34 @@ def _slice_indices(proxy, key):
 
 
 class JSDoubleProxy(_Mixin):
-    """A Python object behind a JavaScript proxy behind a JSProxy: what
-    `create_proxy` returns. ``destroy()`` releases the JavaScript proxy (and
-    with it the reference to the Python object)."""
+    """What `create_proxy(obj)` returns: a proxy of a proxy.
+
+    Two kinds of proxies cross the border:
+
+    - a **PyProxy** is how JavaScript sees a Python object
+    - a **JSProxy** is how Python sees a JavaScript object
+
+    `create_proxy(obj)` makes a PyProxy for the Python object `obj` that
+    lives until it is destroyed explicitly (normally a PyProxy passed to a
+    JavaScript function is destroyed when the call returns). That PyProxy is
+    a JavaScript object, so Python can only hold it through a JSProxy. The
+    result is a JSProxy of a PyProxy of `obj`: a *double* proxy::
+
+        Python                     JavaScript
+        JSDoubleProxy  --------->  PyProxy  --------->  obj (Python)
+
+    Why it is useful: Python keeps a handle on the JavaScript side of the
+    reference. Pass it to JavaScript (``button.addEventListener("click",
+    proxy)``): JavaScript gets the PyProxy and calls `obj` through it. Later
+    ``proxy.destroy()`` releases the PyProxy and with it the reference to
+    `obj`, which can then be freed. ``proxy.unwrap()`` gives `obj` back.
+    """
 
     __slots__ = ()
 
     def unwrap(self):
-        """the Python object"""
+        """The Python object behind the two proxies: ``create_proxy(obj)
+        .unwrap() is obj``."""
         return _module._unwrap_double_proxy(self)
 
 
@@ -301,15 +344,27 @@ _ITEM_FORMATS = {
     "Float32Array": "f",
     "Float64Array": "d",
 }
-# formats that mean the same items (e.g. "l" is a 32 bit int here, like "i")
-_SAME_FORMAT = {"l": "i", "L": "I", "c": "B", "?": "B"}
+# Python's `struct` format characters that describe the same items under
+# another name. A Python buffer tells its item type as such a character
+# (memoryview(x).format), and some types have two: "l" (C long) is a 32 bit
+# int in wasm32, the same as "i"; "c" (a char) and "?" (a bool) are one byte
+# each, the same as "B". Mapped to the name used in _ITEM_FORMATS, so that
+# the comparison below does not refuse buffers that match. (A C long has 32
+# bits on wasm32 but 64 on wasm64: "l" is "i" there, "q" here.)
+_LONG = "i" if struct.calcsize("l") == 4 else "q"
+_SAME_FORMAT = {"l": _LONG, "L": _LONG.upper(), "c": "B", "?": "B"}
 
 
 def _check_same_items(js_buffer, python_buffer):
     """`assign` / `assign_to` copy raw bytes. Between a typed array and a
     Python buffer of another item type (int32 into float64, ...) that would
-    silently produce garbage: a ValueError instead. Raw byte buffers on
-    either side (bytes, ArrayBuffer, DataView) go with everything."""
+    silently produce garbage: a ValueError instead.
+
+    Plain bytes (format "B": `bytes`, `bytearray`, a Uint8Array, an
+    ArrayBuffer or DataView, which have no item type at all) are accepted
+    with every other side: copying raw bytes into / out of a typed buffer is
+    the way to fill it from a file, the network, ... (The caller still checks
+    that the sizes in bytes match.)"""
     js_format = _ITEM_FORMATS.get(js_buffer.constructor.name)
     python_format = python_buffer.format.lstrip("@=<")
     python_format = _SAME_FORMAT.get(python_format, python_format)
@@ -333,8 +388,16 @@ class JSBuffer(_Mixin):
         return pyjs_core.js_to_bytes(self)[0]
 
     def to_memoryview(self):
-        """A copy of the data as ``memoryview`` with the item type of the
-        typed array (a ``Float64Array`` gives items of type ``"d"``)."""
+        """The data as ``memoryview`` with the item type of the typed array
+        (a ``Float64Array`` gives items of type ``"d"``).
+
+        It is a copy: the bytes are copied ONCE, out of the JavaScript buffer
+        into a new Python ``bytes`` object (`js_to_bytes`; a JavaScript
+        buffer lives outside the wasm memory, Python cannot look at it in
+        place). The memoryview on top is no further copy, only a typed view
+        of those bytes (``cast``). Changing the JavaScript buffer afterwards
+        does not change the memoryview, and the other way round (use
+        `assign` / `assign_to` to write)."""
         data, item_format = pyjs_core.js_to_bytes(self)
         return memoryview(data).cast(item_format)
 
@@ -359,8 +422,12 @@ class JSBuffer(_Mixin):
         target = _bytes_of(self)
         if len(source) != target.length:
             raise ValueError(f"cannot assign {len(source)} bytes to a buffer of {target.length} bytes")
-        # (a Uint8Array looking directly at the memory of `source`, no copy;
-        # only valid during this statement)
+        # Exactly one copy: from the memory of `source` straight into the
+        # JavaScript buffer. `buffer_to_js(source, True)` makes no copy: it
+        # is a Uint8Array that looks directly at the bytes of `source` in
+        # wasm memory (a "view"). `target.set(view)` then copies them over in
+        # JavaScript. (The view is only valid during this statement: wasm
+        # memory may move when it grows, and `source` may be freed.)
         target.set(pyjs_core.buffer_to_js(source, True))
 
     def assign_to(self, target):
@@ -469,6 +536,10 @@ def _step(step):
     finished generator raises StopIteration with its return value, like a
     Python generator."""
     # (the messages are pyodide's)
+    # A JavaScript *object* reaches Python as a JSProxy; everything else a
+    # badly written iterator might answer (a number, a string, undefined) is
+    # converted to a Python value. So "is no JSProxy" here means "was no
+    # object in JavaScript", and the message names the JavaScript type.
     if not isinstance(step, JSProxy):
         raise TypeError(f'Result should have type "object" not "{_typeof(step)}"')
     if callable(getattr(step, "then", None)):
@@ -482,11 +553,20 @@ def _step(step):
     return value
 
 
-# typeof of a value as JavaScript says it
+# JavaScript's `typeof x` ("number", "string", "undefined", ...) of a value
+# Python holds. Used for error messages that name the JavaScript type of a
+# value that was already converted to a Python value (see _step).
 _typeof = _js.Function("x", "return typeof x;")
 
 
 async def _await_step(promise):
+    """One step of a JavaScript *async* generator / iterator.
+
+    Its next() / throw() / return() do not answer ``{done, value}`` right
+    away but a promise of it. This awaits the promise and then does what
+    `_step` does for a synchronous generator, with the async exception:
+    the value of the step, or StopAsyncIteration when the generator is
+    finished."""
     step = await promise
     value = getattr(step, "value", None)
     if getattr(step, "done", False):
@@ -495,15 +575,32 @@ async def _await_step(promise):
 
 
 def _async_step(promise):
-    """Like `_step`, for the promise of a step of an async generator. A
-    future (an asyncio task), as pyodide returns: it can also be inspected
-    without awaiting it (``done()``, ``exception()``)."""
+    """What `__anext__` / `asend` / `athrow` of an async generator proxy
+    return, for the promise its next() / throw() answered.
+
+    Python's `async for` and ``await anext(gen)`` need something awaitable.
+    The coroutine `_await_step(promise)` would do, but it is wrapped in an
+    asyncio task (``ensure_future`` starts it right away): pyodide returns a
+    future here, and a future can also be inspected without awaiting it
+    (``done()``, ``result()``, ``exception()``), which some code does."""
     return asyncio.ensure_future(_await_step(promise))
 
 
 def _exception(exc, value):
-    """the exception instance for the arguments of throw(exc, value): like
-    for Python generators, `exc` is an instance or an exception class"""
+    """The exception to throw into a generator, from the arguments of
+    ``generator.throw(exc, value)``.
+
+    Nothing has been thrown yet: this only builds the exception object.
+    Python's own generators accept two forms, and so do the proxies of
+    JavaScript generators:
+
+    - ``gen.throw(ValueError("bad"))``: an exception instance, used as is
+    - ``gen.throw(ValueError, "bad")``: an exception *class* (plus an
+      optional value): an instance is created from it (old style, still
+      supported by Python)
+
+    `throw` / `athrow` then hand the instance to JavaScript (see
+    `_stand_in`)."""
     if isinstance(exc, type):
         if isinstance(value, exc):
             return value
@@ -512,12 +609,19 @@ def _exception(exc, value):
 
 
 def _stand_in(exception):
-    """The JavaScript error thrown into a JavaScript generator for the
-    Python `exception` (throw / athrow): JavaScript code can only catch
-    JavaScript values. It is a ``PythonError``, the same kind of error
-    JavaScript gets when Python code it called raises. Whenever such an
-    error comes back to Python uncaught (now, or from a later ``next()``),
-    the original `exception` is raised again, not a JSException."""
+    """Yes: wraps the Python `exception` in a JavaScript object.
+
+    ``js_generator.throw(ValueError("bad"))`` throws the exception INTO
+    JavaScript code (the generator's `try` / `catch` may handle it). But
+    JavaScript can only throw and catch JavaScript values, so the generator
+    gets a stand-in: a ``PythonError`` (an Error object), the same kind of
+    error JavaScript gets when Python code it called raises. It holds a
+    reference to the Python exception.
+
+    If the JavaScript code does not catch it, the stand-in comes back to
+    Python (from this throw(), or from a later next()). The core recognizes
+    it and raises the original Python `exception` again, not a JSException
+    around it."""
     return _module._python_error(exception)
 
 
@@ -631,4 +735,8 @@ def mixins(flags):
         classes.append(JSIterable)
     if flags & _ITERATOR:
         classes.append(JSIterator)
+    # A tuple, not the list: the core creates the type with
+    # PyType_FromSpecWithBases (src/js_proxy.cpp, type_for), and CPython
+    # wants the base classes of a type as a tuple, like `__bases__` (a type
+    # cannot change its bases later; a list could still be changed).
     return tuple(classes)

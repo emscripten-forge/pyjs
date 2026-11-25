@@ -4,27 +4,43 @@
 #
 # Derived from pyodide (src/tests/test_stack_switching.py, release 314.0.8), modified for pyjs.
 #
-# Left out:
+# pyjs uses pyodide's implementation of several suspended stacks
+# (src/stack_switching.c, src/js/stack_state.ts), so these tests run as in
+# pyodide; pyjs' own stress tests: tests/test_stack_switching.py.
+#
+# Left out, and where pyjs covers the same:
 # - the fixture assert_no_stack_leak (compares `_module.stackSave()` before
 #   and after every test): fixtures with teardown do not work for the async
-#   tests here
+#   tests here. run_js_async checks instead that after each snippet no
+#   stack is left suspended and no C stack data of a finished task is
+#   tracked any more. (The stack pointer itself cannot be compared from
+#   inside a test: each step of an asyncio task is a new entry, placed
+#   wherever stack_state.ts finds room.)
 # - test_syncify_not_supported: needs a fresh page (loadPyodide after
-#   deleting WebAssembly.Suspending)
+#   deleting WebAssembly.Suspending). pyjs runs its WHOLE test suite a second
+#   time with JSPI switched off (`pixi run test <arch> ... no-jspi`, CI does
+#   it): every test then sees can_run_sync() False / no suspension, and
+#   tests/test_jspi.py::test_jspi_without_jspi_support checks that run_sync
+#   raises then.
 # - test_syncify2: package loading (loadPackage("micropip"))
 # - test_syncify_getset: needs pyodide's test package test-fpcast
 # - test_cpp_exceptions_and_syncify: needs pyodide's test package
 #   test-cpp-exceptions and `_module` internals
 # - test_signal_handler_runs_inside_promising_task: writes pyodide's signal
 #   words in the wasm memory (`_module.__Py_emscripten_signal_in_memory`)
-# - test_gc_with_evicted_suspended_task: overwrites the wasm stack of a
-#   suspended task (`_module.stackSave`, `HEAPU8.fill`): a regression test
-#   for pyodide's implementation of several suspended stacks
+# - test_gc_with_evicted_suspended_task: uses pyodide internals; the same
+#   (gc while a task's C stack data is evicted and overwritten) is
+#   tests/test_stack_switching.py::test_gc_while_evicted.
 #
 # Changes beyond the ones described in README.md:
 # - `run_js_async` runs a JS snippet like pyodide's host driver does: not
 #   called from Python. Afterwards it resolves the promises the snippet made
 #   and waits until no Python stack is suspended any more, so that a failed
-#   test (pyjs: one suspended stack at a time) does not disturb the next one.
+#   test does not disturb the next one.
+# - test_two_way_transfer: pyodide asserts one exact interleaving of two
+#   loops sleeping 15 ms / 21 ms, which depends on the timers (it differs in a
+#   worker); here: the order within each loop (interleaving without timers:
+#   tests/test_stack_switching.py).
 import asyncio
 import sys
 
@@ -32,15 +48,10 @@ import pytest
 
 import pyodide_helpers  # noqa: F401  (the JS helpers assert, assertThrows, ...)
 from pyodide.code import run_js
-from pyodide.ffi import JSProxy, can_run_sync
+from pyodide.ffi import JSProxy
 from pyodide_helpers import requires_jspi
 
-MULTIPLE_STACKS = "pyjs: no several suspended Python stacks at once (run_sync raises in the second)"
-NO_RUN_UNTIL_COMPLETE = "pyjs: run_until_complete does not block (it only schedules, also with JSPI)"
-NO_CONTEXT_COPY = (
-    "pyjs differs: a promising call runs in the context of its caller, "
-    "pyodide runs it in a copy (like an asyncio task)"
-)
+from pyjs.core import _module
 
 run_js(
     """
@@ -83,22 +94,32 @@ _run_snippet = run_js(
 )
 
 
-async def no_suspended_stack():
-    """wait until no Python stack is suspended in run_sync any more (called
-    from a step of an asyncio task, can_run_sync() is False exactly then)"""
+def suspended_stacks():
+    """the number of Python stacks suspended in run_sync, apart from the
+    caller's own"""
+    return int(_module._jspi_suspended_count())
+
+
+async def no_suspended_stack(before=0):
+    """wait until no Python stack (beyond `before`) is suspended in run_sync
+    any more (a hang guard, not a timing assumption)"""
     for _ in range(1000):
-        if can_run_sync():
+        if suspended_stacks() <= before:
             return
         await asyncio.sleep(0.01)
+    raise AssertionError(f"{suspended_stacks()} Python stacks still suspended")
 
 
 async def run_js_async(code, timeout=60):
     """pyodide's `selenium.run_js(code)`: the code is the body of an async
     function. (`timeout`: only a guard against a promise that never settles.)"""
+    before = suspended_stacks()
     try:
         result = await asyncio.wait_for(_run_snippet(code), timeout)
     finally:
-        await no_suspended_stack()
+        await no_suspended_stack(before)
+    # (the stack-leak check: no C stack data of a finished task is tracked)
+    assert int(_module._jspi_stack_state_count()) <= suspended_stacks()
     # arrays / objects as list / dict, like the values the host gets
     return result.to_py() if isinstance(result, JSProxy) else result
 
@@ -269,7 +290,6 @@ def test_syncify_ctypes():
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=MULTIPLE_STACKS)
 async def test_two_way_transfer():
     res = await run_js_async(
         """
@@ -291,22 +311,12 @@ async def test_two_way_transfer():
         return res;
         """
     )
-    assert res == [
-        ["a", 0],
-        ["b", 0],
-        ["a", 1],
-        ["b", 1],
-        ["a", 2],
-        ["a", 3],
-        ["b", 2],
-        ["a", 4],
-        ["b", 3],
-        ["b", 4],
-    ]
+    # (pyodide asserts one exact interleaving, see the top)
+    assert [i for n, i in res if n == "a"] == list(range(5))
+    assert [i for n, i in res if n == "b"] == list(range(5))
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=MULTIPLE_STACKS)
 async def test_sync_async_mix():
     res = await run_js_async(
         """
@@ -353,7 +363,6 @@ async def test_sync_async_mix():
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=MULTIPLE_STACKS)
 async def test_nested_syncify():
     res = await run_js_async(
         """
@@ -495,7 +504,6 @@ async def test_throw_from_switcher():
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=MULTIPLE_STACKS)
 async def test_switch_from_except_block():
     """Test for issue #4566"""
     result = await run_js_async(
@@ -589,9 +597,9 @@ def test(n):
     [
         LEAK_SCRIPT1,
         # (200 calls at once, each of them suspends)
-        pytest.param(LEAK_SCRIPT2, marks=pytest.mark.xfail(reason=MULTIPLE_STACKS)),
-        pytest.param(LEAK_SCRIPT3, marks=pytest.mark.xfail(reason=MULTIPLE_STACKS)),
-        pytest.param(LEAK_SCRIPT4, marks=pytest.mark.xfail(reason=MULTIPLE_STACKS)),
+        LEAK_SCRIPT2,
+        LEAK_SCRIPT3,
+        LEAK_SCRIPT4,
     ],
 )
 async def test_memory_leak(script):
@@ -625,7 +633,6 @@ async def test_memory_leak(script):
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=NO_RUN_UNTIL_COMPLETE)
 def test_run_until_complete():
     from asyncio import all_tasks, create_task, gather, get_event_loop, sleep
 
@@ -781,10 +788,6 @@ async def test_async_promising_async_error():
 
 
 @requires_jspi
-@pytest.mark.xfail(
-    reason="pyjs: no stack switching in a promising call made while Python runs "
-    "(a JS function called by Python calls callPromising: run_sync raises)"
-)
 async def test_return_promising_no_crash():
     """This used to fatally fail.
 
@@ -894,7 +897,6 @@ async def test_contextvars_ambient_context_survives_switch():
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=MULTIPLE_STACKS)
 async def test_contextvars_survive_interleaved_switches():
     """Stack switches are not properly nested.
 
@@ -1028,7 +1030,6 @@ async def test_contextvars_released_after_task():
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=MULTIPLE_STACKS)
 async def test_contextvars_concurrent_tasks():
     """Concurrent coroutines that syncify in the middle must not see each other's
     contextvars, and tasks they spawn must inherit the right context."""
@@ -1064,7 +1065,6 @@ async def test_contextvars_concurrent_tasks():
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=NO_RUN_UNTIL_COMPLETE)
 def test_asyncio_running_loop_in_task():
     """The running event loop lives on the thread state, so a task with a thread
     state of its own has to inherit it from its caller."""
@@ -1149,7 +1149,6 @@ async def test_task_does_not_invent_a_running_loop():
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=MULTIPLE_STACKS)
 async def test_contextvars_three_interleaved_tasks():
     """Three tasks, each suspending twice, resumed in an order unrelated to the
     order they suspended in.
@@ -1235,7 +1234,6 @@ async def test_contextvars_three_interleaved_tasks():
 
 
 @requires_jspi
-@pytest.mark.xfail(reason=MULTIPLE_STACKS)
 async def test_contextvars_task_spawned_from_running_task():
     """Two parent tasks that each re-enter Python from JS while running.
 

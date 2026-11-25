@@ -126,12 +126,31 @@ def create_proxy(obj, *, roundtrip=True):
     The result must be released with its ``destroy()`` method once JavaScript
     does not need it any more; `obj` cannot be freed before that.
 
-    The result is a `JSDoubleProxy`: a JSProxy of the JavaScript proxy of
-    `obj`. With ``roundtrip=True`` (the default, as in pyodide) that is also
-    what python gets when the proxy comes back from JavaScript (e.g. read
-    from an Array it was stored in), so that it can be destroyed; its
-    ``unwrap()`` gives `obj`. With ``roundtrip=False`` python gets `obj`
-    itself back.
+    What the result is: always a `JSDoubleProxy`. The lasting reference is a
+    JavaScript object (a PyProxy of `obj`), and Python can only hold a
+    JavaScript object through a JSProxy: so a proxy (JSProxy) of a proxy
+    (PyProxy) of `obj`. It is what you pass to JavaScript (JavaScript gets
+    the PyProxy) and what you call ``destroy()`` on. See `JSDoubleProxy`.
+
+    `roundtrip`: what Python gets when this PyProxy comes BACK from
+    JavaScript later, e.g. read from an Array it was stored in, or passed as
+    argument to a Python function:
+
+    - ``roundtrip=True`` (the default, as in pyodide): the JSDoubleProxy
+      again. So code that finds the proxy again can still destroy it;
+      ``proxy.unwrap()`` gives `obj`.
+    - ``roundtrip=False``: `obj` itself, as for any other PyProxy coming
+      back. Convenient when Python only wants to use the object, but that
+      value cannot destroy the PyProxy (keep the JSDoubleProxy for that).
+
+    ```python
+    p = create_proxy([1, 2])
+    arr = js.Array.new()
+    arr.push(p)
+    arr[0]              # p again (roundtrip=True); with roundtrip=False: [1, 2]
+    arr[0].unwrap()     # [1, 2]
+    p.destroy()
+    ```
 
     Example:
     ```python
@@ -145,18 +164,27 @@ def create_proxy(obj, *, roundtrip=True):
     return pyjs_core.create_proxy(obj, True, roundtrip)
 
 
-# destroys the PyProxies in a JavaScript Array, without handing them to python
-# (read in python, a PyProxy that is no round-trip proxy would be its
-# Python object, which has no destroy())
-_destroy_all = pyjs_core.global_this().Function("proxies", "for (const p of proxies) { p.destroy(); }")
+# Destroys the PyProxies stored in a JavaScript Array, inside JavaScript.
+#
+# Why not in Python: reading an item of the Array in Python does not give
+# the PyProxy. A PyProxy that comes back to Python becomes the Python object
+# it stands for (a list, a function, ...), and that object has no destroy().
+# So the loop must run where the items are still PyProxies: in JavaScript.
+_destroy_in_js = pyjs_core.global_this().Function("proxies", "for (const p of proxies) { p.destroy(); }")
 
 
 def destroy_proxies(proxies):
-    """Destroy every proxy of `proxies`: an iterable of `create_proxy`
-    results, or the JavaScript Array that `to_js(..., pyproxies=...)`
-    filled."""
+    """Destroy every proxy of `proxies`. Two kinds of argument:
+
+    - a Python list (any iterable) of `create_proxy` results: each is
+      destroyed with its `destroy()`
+    - a JavaScript Array, which Python sees as one JSProxy: the Array that
+      `to_js(obj, pyproxies=arr)` filled with the PyProxies it created. Its
+      items are destroyed in JavaScript (see `_destroy_in_js`).
+    """
     if isinstance(proxies, JSProxy):
-        _destroy_all(proxies)
+        # (the JSProxy of a JavaScript Array, not a single proxy)
+        _destroy_in_js(proxies)
         return
     for proxy in proxies:
         proxy.destroy()

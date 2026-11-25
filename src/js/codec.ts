@@ -133,21 +133,30 @@ export const enum PyFlag {
 //
 // The same JS object can have several handles at once; that is fine, each
 // JSProxy frees its own.
+//
+// Names: `h` (in parameters everywhere in this directory) is such a handle,
+// a plain number. The three functions below are the whole API of the table,
+// named after what they do with a handle ("h" + verb):
+//   hNew(value)  store a JS value, get a new handle for it
+//   hGet(h)      the JS value of a handle
+//   hFree(h)     give the handle back (the entry is emptied and reused)
 // ---------------------------------------------------------------------------
 const objects: any[] = [undefined]; // index 0 is never used: 0 means "no handle"
 const freeHandles: number[] = []; // indices of `objects` that are free again
 
-/** a handle for `value` (owned by the caller: hFree) */
+/** store `value` in the table: its new handle (owned by the caller, who must hFree it) */
 export function hNew(value: any): number {
   const h = freeHandles.length > 0 ? freeHandles.pop()! : objects.length;
   objects[h] = value;
   return h;
 }
 
+/** the JS value stored under handle `h` */
 export function hGet(h: number): any {
   return objects[h];
 }
 
+/** release handle `h` (0: nothing to do): the table no longer holds the value */
 export function hFree(h: number): void {
   if (h !== 0) {
     objects[h] = undefined;
@@ -178,6 +187,12 @@ export function hFree(h: number): void {
 // What does not fit into the region (a huge string, hundreds of arguments) is
 // allocated with malloc instead; see the OWNED flag and the callers of
 // scratchSlots.
+//
+// So the size is no limit, only a fast path: 64 KiB hold the arguments of
+// any normal call (a slot is 16 bytes; strings take their utf8 bytes). When
+// the region is full, the call still works, it is just a little slower
+// (malloc / free for what did not fit). tests/test_strings.py covers both:
+// strings and argument lists larger than the region, and nested calls.
 // ---------------------------------------------------------------------------
 const SCRATCH_SIZE = 1 << 16; // 64 KiB
 let scratchTop = 0; // address of the first free byte of the region
@@ -391,8 +406,19 @@ export function writeAuxAndNum(p: number, aux: number, num: number): void {
 /** key of the state of a PyProxy: `value[PYPROXY]` is undefined for other values */
 export const PYPROXY = Symbol("pyjs.pyproxy");
 
+// How decode() creates a PyProxy. Set once by pyproxy.ts, when the bundle
+// loads (`setPyProxyFactory(create)` at its end).
+//
+// Why not simply import the function from pyproxy.ts: pyproxy.ts imports
+// this file (it needs encode / decode for the arguments of its calls). If
+// this file imported pyproxy.ts too, the two modules would depend on each
+// other in a circle, and whichever is loaded first would see the other one
+// half initialized. So the dependency goes one way only (pyproxy.ts ->
+// codec.ts), and pyproxy.ts hands its factory over when it loads
+// ("dependency injection", like the hooks the C++ side gets from Python).
 let newPyProxy: (ptr: number, flags: number, owned: boolean) => any;
 
+/** called once by pyproxy.ts: the function that creates PyProxies (see newPyProxy) */
 export function setPyProxyFactory(factory: (ptr: number, flags: number, owned: boolean) => any): void {
   newPyProxy = factory;
 }
@@ -596,8 +622,21 @@ export function takeBorrowed(): any[] | null {
 }
 
 /**
- * slot -> JS value. Reads the slot at address `p`, which the C side filled
- * from a Python object. The implicit conversion in the other direction:
+ * slot -> JS value: how JavaScript receives every single value that comes
+ * from Python.
+ *
+ * Where it is used (high level): whenever a Python value arrives in
+ * JavaScript, it arrives as a slot (see the top of this file), and this
+ * turns it into the JS value.
+ *   - Python calls a JS function: each argument (jsops.ts `call`)
+ *   - Python sets `obj.x = value` / `obj[k] = value`: the value and the key
+ *     (jsops.ts `setattr`, `op`)
+ *   - JS called a Python function: its result (pyproxy.ts, after the call)
+ * It is the counterpart of `encode` (JS value -> slot, the other way) and of
+ * `to_slot` in src/js_proxy.cpp (which wrote the slot on the C side).
+ *
+ * Reads the slot at address `p`, which the C side filled from a Python
+ * object. The implicit conversion in the other direction:
  *
  *     None               -> undefined
  *     jsnull             -> null

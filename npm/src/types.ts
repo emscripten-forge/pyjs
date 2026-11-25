@@ -14,9 +14,13 @@
  * The Python attributes of the object are its properties (`proxy.name`), and
  * a callable Python object can be called like a function (`proxy(1, 2)`).
  *
- * A proxy keeps its Python object alive. Call `destroy()` when done with it
- * (otherwise the object is only released when the proxy is garbage
- * collected, which may be much later).
+ * A proxy keeps its Python object alive. Call `destroy()` when done with it.
+ * Otherwise the Python object is only released when JavaScript's garbage
+ * collector frees the proxy object itself (pyjs registers every proxy with
+ * a `FinalizationRegistry`, which then releases the Python object). That
+ * may be much later, or never if the page does not run short of memory:
+ * JavaScript's garbage collector knows nothing about the size of the Python
+ * object behind a small proxy.
  */
 export interface PyProxy {
   /** call the python object: `proxy(1, 2)` (only if it is callable) */

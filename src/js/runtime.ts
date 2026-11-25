@@ -11,7 +11,9 @@
 //   3. Module.startPython()   <- this file
 //   4. Module.exec("...") / Module.runPython("...") / Module.pyimport("...")
 import { PYPROXY } from "./codec";
+import { suspendedTaskCount } from "./jsops";
 import { canRunSync, jspi, jspiEnabled } from "./jspi";
+import { stackStateCount } from "./stack_state";
 import { PythonError, pyimport, pythonErrorFor, setPythonHelpers } from "./pyproxy";
 
 // from the emscripten runtime this code is embedded in
@@ -22,8 +24,6 @@ declare const getDylinkMetadata: any;
 declare const loadDynamicLibrary: any;
 declare const getPromise: any;
 declare const promiseMap: any;
-declare const stackSave: any;
-declare const stackRestore: any;
 declare const runtimeKeepalivePush: any;
 declare const UTF8ToString: any;
 declare const stringToUTF8OnStack: any;
@@ -99,7 +99,23 @@ function startPython(options: { env?: Record<string, any> } = {}): void {
   started = true;
 }
 
-/** import the python package `pyjs` and build the JS functions that call into it */
+/**
+ * Right after python started: import the python package `pyjs` and build
+ * the JavaScript API that calls into Python. Afterwards these exist on the
+ * Module (the object users get from initializePyjsRuntime / createModule):
+ *
+ *   Module.globals         the namespace code runs in by default (the dict of
+ *                          `__main__`), names of `builtins` found too
+ *   Module.runPython       run Python code, return the value of its last line
+ *   Module.runPythonAsync  the same with top-level `await`, returns a promise
+ *   Module.pyimport        `import name`, the module as PyProxy
+ *   Module.toPy            a JS value as Python object (python's to_py)
+ *
+ * and the JS side of the core gets the Python helpers it needs
+ * (setPythonHelpers: `then` of awaitables, PyProxy.toJs, generator steps).
+ * Each of these functions is a thin wrapper: the work is done by Python
+ * functions (mostly module/pyjs/code.py), called through PyProxies.
+ */
 function bindPython(): void {
   // (importing it also sets up the python side of the core, see
   // module/pyjs/__init__.py)
@@ -238,6 +254,12 @@ export function installModuleApi(): void {
   Module._jspi_disable = () => {
     jspi.disabled = true;
   };
+  /**
+   * for tests: how many Python call stacks are suspended in run_sync, and how
+   * many of them have data on the C stack (see stack_state.ts)
+   */
+  Module._jspi_suspended_count = suspendedTaskCount;
+  Module._jspi_stack_state_count = stackStateCount;
 
   /**
    * make `canvas` (HTMLCanvasElement or OffscreenCanvas) the canvas

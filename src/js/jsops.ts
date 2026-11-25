@@ -21,8 +21,9 @@ import {
   writePythonError,
 } from "./codec";
 import { fromStream, toStream } from "./deep";
-import { jspi } from "./jspi";
+import { canRunSync, jspi } from "./jspi";
 import { PythonError, destroyBorrowed } from "./pyproxy";
+import { StackState } from "./stack_state";
 
 /** return codes (JsRc in src/js_proxy.cpp) */
 const enum Rc {
@@ -115,9 +116,26 @@ function releaseBorrowed(proxies: any[], result: any): void {
 }
 
 /**
- * fn(...args) with `this` = self (handle or 0), or new fn(...args): `args`
- * points to npos + nkw value slots followed by nkw name slots; keyword
- * arguments become one trailing object
+ * Python calls a JavaScript function: `f(1, 2)` in Python, where `f` is a
+ * JSProxy of a JS function.
+ *
+ * Who calls this: CPython calls the proxy's vectorcall (js_proxy_vectorcall
+ * -> call_js in src/js_proxy.cpp), which writes the arguments into slots and
+ * calls the EM_JS function pyjs_js_call, a one-liner calling this. Also for
+ * `f.new(...)` (construct = 1: JavaScript's `new f(...)`).
+ *
+ * The parameters (all numbers: they come from wasm):
+ *   fn         handle of the function
+ *   self       handle of `this` (0: none), for a method fetched from an
+ *              object (`obj.method` in Python remembers `obj`)
+ *   args       address of the argument slots: npos positional values, nkw
+ *              keyword values, nkw keyword names
+ *   construct  1: `new fn(...)`
+ *   out        address of the result slot
+ * Keyword arguments become one trailing object (`f(1, a=2)` -> `f(1, {a: 2})`),
+ * as JavaScript functions take options that way.
+ *
+ * Returns a return code (Rc); the result or the thrown value is in `out`.
  */
 export function call(
   fn: number,
@@ -247,6 +265,23 @@ export function name(ptr: number, len: number): number {
   return hNew(str);
 }
 
+/**
+ * A JSProxy died in Python: release its handles (see "handles" in codec.ts).
+ *
+ * Who calls this: the C++ side, when the reference count of a JSProxy drops
+ * to 0 (js_proxy_dealloc in src/js_proxy.cpp -> the EM_JS function
+ * pyjs_js_free -> this). Afterwards JavaScript's garbage collector may
+ * reclaim the JS object, unless something else still references it.
+ *
+ * Why two handles: a JSProxy holds up to two (struct JsProxyObject there):
+ *   h    the JS object the proxy stands for
+ *   h2   only for a function fetched from an object (`f = obj.method`):
+ *        the handle of `obj`, kept so that `f()` runs with `this` = obj
+ *        (0 for every other proxy: hFree ignores 0)
+ * Both are freed with one call instead of two, because every call from wasm
+ * into JavaScript costs time and proxies die very often. (deep.cpp also uses
+ * it, with h2 = 0, to drop a handle it no longer needs.)
+ */
 export function free(h: number, h2: number): void {
   hFree(h);
   hFree(h2);
@@ -296,8 +331,37 @@ export function getindex(h: number, key: number, out: number): number {
   }
 }
 
-/** the operation `op` on the object `h` with the argument slots arg / arg2 */
+/**
+ * One of the less frequent operations Python does on a JS object, selected by
+ * the number `op`: `proxy[key]`, `proxy[key] = value`, `del proxy[key]`,
+ * `len(proxy)`, `x in proxy`, `bool(proxy)`, `repr(proxy)`, `proxy.typeof`,
+ * `iter(proxy)` / `next(it)`, `proxy == other`, `hash(proxy)`, and two that
+ * are no operation on an object (GLOBAL: the JSProxy of globalThis / Module;
+ * CREATE_PROXY: a PyProxy for a Python object).
+ *
+ * Where it is needed: every one of those Python operations ends up here. The
+ * C++ side (js_proxy.cpp: js_proxy_len, js_proxy_contains, ..., through its
+ * helper `op` and the EM_JS function pyjs_js_op) writes up to two arguments
+ * into slots and calls this with the operation number. The table of all
+ * operations, with the Python code that triggers each and the C++ function,
+ * is at `enum JsOp` in src/js_proxy.cpp (numbers identical to `Op` above).
+ *
+ * Why one long function and not one per operation: each separate function
+ * would be one more import of the wasm module (one EM_JS function each).
+ * The four most frequent operations (call, getattr, getindex, setattr) have
+ * their own, for speed; all the rarely used ones share this entry and are
+ * told apart by the switch below. Each case is short; the length comes from
+ * their number.
+ *
+ * Parameters: h the object (handle), arg / arg2 addresses of argument slots
+ * (0: unused), out the result slot. Returns an Rc.
+ */
 export function op(op: Op, h: number, arg: number, arg2: number, out: number): number {
+  // The proxies decode() creates for Python objects among the arguments
+  // (say the value of `proxy[k] = some_list`) are "borrowed": they may only
+  // live during this operation (see "Borrowed" proxies in codec.ts). decode()
+  // collects them; takeBorrowed() hands that list to this call right after
+  // decoding, and it is destroyed after the switch, whatever happened.
   let borrowed: any[] | null = null;
   try {
     const obj = hGet(h);
@@ -520,26 +584,106 @@ export function toJs(stream: number, out: number): number {
 }
 
 /**
- * awaited by the suspending import of run_sync: the Python call stack is
- * suspended until the promise `h` settles, its value / error is the result
+ * The JavaScript half of `run_sync(promise)` (JSPI): waits for the promise,
+ * while the Python call stack is suspended.
+ *
+ * Why the promise is a number: like every JS object Python refers to, it is
+ * passed as its handle (see "handles" in codec.ts). Python holds a JSProxy of
+ * the promise; the C side passes the proxy's handle `h`, and `hGet(h)` here
+ * is the promise itself. (Wasm can only pass numbers to JavaScript.)
+ *
+ * This function is wrapped in `WebAssembly.Suspending` (the EM_JS function
+ * pyjs_js_await in src/js_proxy.cpp): when it returns a promise, the wasm
+ * code that called it is suspended until that promise settles, then resumes
+ * with the number the promise resolved to: a token for jspiResume, which the
+ * C side calls right away. When it returns 0 instead (run_sync is not
+ * possible here; the error is in `out`), nothing is suspended.
+ *
+ * While the task is suspended, other Python code runs, also other tasks that
+ * suspend in turn. So before suspending, the task's state is moved out of the
+ * way, and jspiResume puts it back, from inside the resumed wasm before any
+ * of the task's code runs (doing it in the promise callback would leave a gap
+ * in which other code could run on the restored state):
+ *   - its part of CPython's thread state (frames, exception state, context):
+ *     pyjs_capture_task_state / pyjs_restore_task_state (src/stack_switching.c)
+ *   - its data on the C stack: StackState (stack_state.ts)
  */
-export async function jspiAwait(h: number, out: number): Promise<number> {
-  jspi.suspended = true;
+export function jspiAwait(h: number, out: number): number | Promise<number> {
+  if (!canRunSync()) {
+    fail(new Error("pyjs: run_sync is not possible here (see pyjs.can_run_sync())"), out);
+    return 0;
+  }
+  const promise = hGet(h);
+  const taskState = wasmExports.pyjs_capture_task_state();
+  if (!taskState) {
+    fail(new Error("pyjs: run_sync outside of a promising call (or out of memory)"), out);
+    return 0;
+  }
+  const task: SuspendedTask = { taskState, stackState: new StackState(), ok: false, value: undefined };
+  const token = nextToken++;
+  suspendedTasks.set(token, task);
+  // back at the event loop level until the task resumes
   jspi.depth -= 1;
+  jspi.canSuspend = false;
+  return Promise.resolve(promise).then(
+    (value) => {
+      task.ok = true;
+      task.value = value;
+      return token;
+    },
+    (error) => {
+      task.value = error;
+      return token;
+    },
+  );
+}
+
+/** a task suspended in run_sync (jspiAwait), until jspiResume */
+interface SuspendedTask {
+  /** address of its saved thread state (pyjs_capture_task_state) */
+  taskState: number;
+  stackState: StackState;
+  /** how the promise settled: value or error */
+  ok: boolean;
+  value: any;
+}
+
+const suspendedTasks = new Map<number, SuspendedTask>();
+let nextToken = 1;
+
+/**
+ * The second half of run_sync: the task was resumed (it runs again, called by
+ * the C side right after pyjs_js_await returned `token`). Put its state back,
+ * then write the promise's value / error into `out` (which lives on the
+ * task's C stack: only valid after restore()).
+ */
+export function jspiResume(token: number, out: number): number {
+  const task = suspendedTasks.get(token)!;
+  suspendedTasks.delete(token);
+  task.stackState.restore();
+  wasmExports.pyjs_restore_task_state(task.taskState);
+  jspi.depth += 1;
+  jspi.canSuspend = true;
+  if (!task.ok) {
+    return fail(task.value, out);
+  }
   try {
-    encode(await hGet(h), out, false);
+    encode(task.value, out, false);
     return Rc.OK;
   } catch (error) {
     return fail(error, out);
-  } finally {
-    // resumed: back on the promising call stack
-    jspi.suspended = false;
-    jspi.depth += 1;
-    jspi.canSuspend = true;
   }
 }
 
-// struct format character -> typed array class
+/** for tests: the number of tasks suspended in run_sync */
+export function suspendedTaskCount(): number {
+  return suspendedTasks.size;
+}
+
+// struct format character -> typed array class. (No "l" / "L", C long: its
+// size differs between wasm32 and wasm64, the C side sends it as "i" / "q",
+// see js_buffer_format in src/slot.hpp. An unknown character is an error,
+// never silently the wrong item size.)
 const TYPED_ARRAYS: Record<string, any> = {
   b: Int8Array,
   B: Uint8Array,
@@ -549,8 +693,6 @@ const TYPED_ARRAYS: Record<string, any> = {
   H: Uint16Array,
   i: Int32Array,
   I: Uint32Array,
-  l: Int32Array,
-  L: Uint32Array,
   q: BigInt64Array,
   Q: BigUint64Array,
   f: Float32Array,
@@ -558,8 +700,22 @@ const TYPED_ARRAYS: Record<string, any> = {
 };
 
 /**
- * a typed array of `nitems` items at `ptr` of the wasm memory (`format`: code
- * of the struct format character): a view of the memory, or a copy
+ * A JavaScript typed array for a block of numbers in wasm memory: what
+ * Python's `buffer_to_js(obj, view)` (src/module.cpp) gives JavaScript for a
+ * Python buffer (bytes, array.array, a numpy array, ...).
+ *
+ * Why it exists: a Python buffer IS just a block of wasm memory, and JS can
+ * look at wasm memory directly. So no element-by-element conversion is
+ * needed: a typed array of the right item type (Float64Array for "d", ...)
+ * is laid over the same bytes.
+ *   view = 1   that typed array itself: no copy at all, but only valid as
+ *              long as the Python buffer exists and the wasm memory does not
+ *              grow (growing replaces the underlying ArrayBuffer). Used for
+ *              short-lived access (JSBuffer.assign).
+ *   view = 0   a copy (`slice()`): independent of the Python object, what
+ *              to_js returns for buffers.
+ * `ptr`, `nitems`: where the items are and how many; `format`: the character
+ * code of their struct format character (see TYPED_ARRAYS).
  */
 export function typedArray(ptr: number, nitems: number, format: number, view: number, out: number): number {
   try {

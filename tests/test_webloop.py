@@ -72,6 +72,47 @@ async def test_webloop_call_soon_fifo():
     await _check_call_soon_fifo()
 
 
+async def test_webloop_call_later_delay_is_clamped():
+    """setTimeout keeps its delay as 32 bit int: a longer delay (sleep(1e9),
+    float("inf")) would overflow and fire at once. call_later cuts it to the
+    maximum (about 24.8 days); a delay in the past is 0. (The counterpart of
+    pyodide's test_call_later_skips_scheduling_for_infinite_delay.)"""
+    loop = _loop()
+    fired = []
+    with _CountSetTimeout(loop) as timers:
+        handles = [
+            loop.call_later(1e10, fired.append, "long"),
+            loop.call_later(float("inf"), fired.append, "inf"),
+            loop.call_later(-5, fired.append, "past"),
+        ]
+    assert timers.delays_ms == [2**31 - 1, 2**31 - 1, 0]
+    await _wait_for(lambda: fired == ["past"])
+    for handle in handles:
+        handle.cancel()
+    assert fired == ["past"]
+
+
+async def test_webloop_second_loop():
+    """asyncio.new_event_loop() while the loop runs (WebLoopPolicy
+    .new_event_loop): the new loop schedules onto the same browser event
+    loop, its plain callbacks run; the running loop stays the first one;
+    close() is harmless (libraries that make their own loop call it). (Its
+    tasks cannot run, see new_event_loop: not tested, the failure would only
+    be logged by the loop's exception handler.)"""
+    main = asyncio.get_running_loop()
+    second = asyncio.new_event_loop()
+    assert second is not main
+
+    got = []
+    second.call_soon(got.append, "soon")
+    second.call_later(0.001, got.append, "later")
+    await _wait_for(lambda: len(got) == 2)
+    assert got == ["soon", "later"]
+
+    second.close()
+    assert asyncio.get_running_loop() is main
+
+
 async def test_webloop_call_soon_args():
     got = []
     _loop().call_soon(lambda *a: got.append(a), 1, "two", None)

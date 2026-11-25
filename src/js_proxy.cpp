@@ -18,12 +18,25 @@
 //      what a slot is)
 //   2. one of the EM_JS functions below is called. EM_JS is emscripten's way
 //      of writing a JavaScript function inside a C++ file; each of them is a
-//      one-liner forwarding to the real code in src/js/jsops.ts (`pj.xxx`)
+//      one-liner forwarding to the real code in src/js/jsops.ts (`pyjsCore.xxx`)
 //   3. JavaScript does the operation and writes the result into a result slot
 //   4. back here the result slot becomes a Python object (from_slot)
 // JavaScript never throws into wasm: an error comes back as return code (JsRc)
 // with the thrown value in the result slot, and is raised here as a Python
 // exception.
+//
+// A call, `f(1, "a")` in Python (the same as a diagram: docs/design.md):
+//
+//   Python          C++ (this file)              JavaScript (jsops.ts)
+//   f(1, "a") ----> js_proxy_vectorcall
+//                   to_slot(1), to_slot("a")
+//                   pyjs_js_call(h, slots) ----> call(): decode the slots
+//                                                f(1, "a")
+//                                                encode(result) -> out slot
+//                   rc = OK / ERROR <----------- (borrowed PyProxies destroyed)
+//                   OK:    from_slot(out)
+//                   ERROR: raise_from_slot(out)
+//   result <------- (a value, or a JSProxy)
 //
 // This file also contains the two conversion functions to_slot / from_slot
 // (the "implicit conversion" of values between the languages), because they
@@ -51,7 +64,35 @@ enum JsRc : int
     RC_UNSUPPORTED = 7,  // the object cannot do this: a TypeError
 };
 
-// operations of pyjs_js_op (rarely used ones share one import)
+// The operations Python can do on a JS object (through a JSProxy), besides
+// the four frequent ones below.
+//
+// Every EM_JS function is one import of the wasm module, i.e. one way for
+// the C++ code to call into JavaScript. The frequent operations get an
+// import of their own (call, getattr, getindex, setattr: below), which keeps
+// them as fast as possible. All others go through ONE import, `pyjs_js_op`,
+// which gets the operation as a number (`JsOp`) and dispatches on it in
+// JavaScript (`op` in src/js/jsops.ts). The numbers must match the enum
+// `Op` there.
+//
+//   operation         Python code that triggers it        C++ function here
+//   OP_GETITEM        proxy[key] (non-index keys)         js_proxy_getitem
+//   OP_SETITEM        proxy[key] = value                  js_proxy_setitem
+//   OP_DELITEM        del proxy[key]                      js_proxy_setitem
+//   OP_LEN            len(proxy)                          js_proxy_len
+//   OP_CONTAINS       value in proxy                      js_proxy_contains
+//   OP_BOOL           bool(proxy), if proxy:              js_proxy_bool
+//   OP_REPR           repr(proxy), str(proxy)             js_proxy_repr
+//   OP_TYPEOF         proxy.typeof                        js_proxy_typeof
+//   OP_ITER           iter(proxy), for x in proxy         js_proxy_iter
+//   OP_NEXT           next(iterator)                      js_proxy_next
+//   OP_SAME           proxy == other (same JS object)     js_proxy_richcompare
+//   OP_GLOBAL         pyjs_core.global_this() / module()  js_global
+//   OP_CREATE_PROXY   pyjs_core.create_proxy(obj)         create_proxy
+//   OP_ID             hash(proxy), proxy.js_id            js_proxy_hash / _js_id
+//
+// All are tested: tests/test_pyjs.py, tests/test_proxy_types.py and the
+// ported pyodide tests (tests/pyodide/test_pyodide_jsproxy.py).
 enum JsOp : int
 {
     OP_GETITEM = 0,
@@ -65,7 +106,7 @@ enum JsOp : int
     OP_ITER = 8,
     OP_NEXT = 9,
     OP_SAME = 10,
-    OP_GLOBAL = 11,        // h: 0 = globalThis, 1 = Module
+    OP_GLOBAL = 11,        // handle: 0 = globalThis, 1 = the emscripten Module
     OP_CREATE_PROXY = 12,  // a PyProxy for a Python object, as JSProxy
     OP_ID = 13,            // a number identifying the JS object
 };
@@ -73,36 +114,36 @@ enum JsOp : int
 // call `fn` (handle) with `this` = self (handle or 0): `args` points to npos +
 // nkw value slots followed by nkw name slots; construct: `new fn(...)`
 EM_JS(int, pyjs_js_call, (int fn, int self, double args, int npos, int nkw, int construct, double out), {
-    return pj.call(fn, self, args, npos, nkw, construct, out);
+    return pyjsCore.call(fn, self, args, npos, nkw, construct, out);
 });
 
 EM_JS(int, pyjs_js_getattr, (int h, int name, double out), {
-    return pj.getattr(h, name, out);
+    return pyjsCore.getattr(h, name, out);
 });
 
 // obj[index] of an Array / typed array (negative: from the end); RC_GENERIC
 // for other objects
 EM_JS(int, pyjs_js_getindex, (int h, double index, double out), {
-    return pj.getindex(h, index, out);
+    return pyjsCore.getindex(h, index, out);
 });
 
 // value: a slot, or 0 to delete the attribute
 EM_JS(int, pyjs_js_setattr, (int h, int name, double value, double out), {
-    return pj.setattr(h, name, value, out);
+    return pyjsCore.setattr(h, name, value, out);
 });
 
 // handle of the JS string for an attribute name (utf8)
 EM_JS(int, pyjs_js_name, (double ptr, int len), {
-    return pj.name(ptr, len);
+    return pyjsCore.name(ptr, len);
 });
 
 // release handles (0: none)
 EM_JS(void, pyjs_js_free, (int h, int h2), {
-    pj.free(h, h2);
+    pyjsCore.free(h, h2);
 });
 
 EM_JS(int, pyjs_js_op, (int op, int h, double arg, double arg2, double out), {
-    return pj.op(op, h, arg, arg2, out);
+    return pyjsCore.op(op, h, arg, arg2, out);
 });
 
 // The suspend point of pyjs.run_sync (JSPI): a wasm import that is wrapped in
@@ -110,24 +151,42 @@ EM_JS(int, pyjs_js_op, (int op, int h, double arg, double arg2, double out), {
 // here, in the JS emitted for this function, which runs before the wasm module
 // is instantiated. Without JSPI the plain function stays in place; it is never
 // called then (pyjs.can_run_sync() is False).
+//
+// Returns 0 (not suspended, error in `out`) or, after the suspension, a token
+// for pyjs_js_resume. See jspiAwait / jspiResume in src/js/jsops.ts.
 EM_JS(int, pyjs_js_await, (int promise, double out), {
     throw new Error("pyjs: run_sync without JSPI support");
 }
 if (typeof WebAssembly !== "undefined" && typeof WebAssembly.Suspending === "function") {
-    pyjs_js_await = new WebAssembly.Suspending(async function (promise, out) {
-        return await pj.jspiAwait(promise, out);
+    // (no async function: a plain number result means "do not suspend")
+    pyjs_js_await = new WebAssembly.Suspending(function (promise, out) {
+        return pyjsCore.jspiAwait(promise, out);
     });
 }
 );
 
+// Right after the resumption: the task's state back in place, the result of
+// the promise into `out`.
+EM_JS(int, pyjs_js_resume, (int token, double out), {
+    return pyjsCore.jspiResume(token, out);
+});
+
 namespace pyjs
 {
+    // An "anonymous namespace" (a namespace without a name) makes everything
+    // inside it private to this file: other .cpp files cannot see or call it,
+    // and its names cannot clash with names elsewhere (C++'s version of
+    // `static` for functions and globals). Only what slot.hpp declares (to_slot,
+    // from_slot, js_proxy_new, ...) is defined outside of it and shared.
     namespace
     {
         // The memory of one proxy object.
         struct JsProxyObject
         {
-            // what every Python object starts with (reference count + type)
+            // PyObject_HEAD is a macro of CPython: it expands to the fields
+            // every Python object starts with (its reference count and a
+            // pointer to its type). Putting it first makes a JsProxyObject*
+            // usable wherever CPython expects a PyObject*.
             PyObject_HEAD
             // Which JavaScript object this proxy stands for. JavaScript keeps
             // the objects Python refers to in a table; the handle is the
@@ -139,9 +198,18 @@ namespace pyjs
             // can run the function as method of it (as JavaScript's `this`).
             // 0 for everything else. Owned and freed like `handle`.
             int32_t this_handle;
-            // The C function Python calls for `proxy(...)`. CPython's fast
-            // way of calling ("vectorcall") reads it from the object itself;
-            // it is nullptr for proxies of things that are not callable.
+            // The C function Python calls for `proxy(...)`.
+            //
+            // "Vectorcall" is CPython's fast calling convention (PEP 590):
+            // the arguments are passed as a plain C array of PyObject* (a
+            // "vector") plus a count, instead of first packing them into a
+            // new tuple (and the keyword arguments into a new dict), as the
+            // classic `tp_call` does. For a call into JavaScript, where the
+            // arguments are written into slots right away, the tuple would be
+            // pure overhead. A type opts in with Py_TPFLAGS_HAVE_VECTORCALL
+            // and tells CPython where in the object this function pointer is
+            // (`__vectorcalloffset__`, see type_for). nullptr for proxies of
+            // things that are not callable.
             vectorcallfunc vectorcall;
         };
 
@@ -167,6 +235,10 @@ namespace pyjs
         // single array access.)
         PyTypeObject* g_types[JS_FLAG_END] = {};
 
+        // The Python functions / classes of the `pyjs` package this core
+        // calls back into (raise a JS error, await a promise, ...): what they
+        // are and why they exist is explained at `struct Hooks` in slot.hpp.
+        // Filled by pyjs_core.set_hooks (src/module.cpp).
         Hooks g_hooks;
 
         // (the same memory, seen as proxy)
@@ -190,13 +262,19 @@ namespace pyjs
         // ------------------------------------------------------------------
         // The cache of attribute names.
         //
-        // `obj.title` needs the name "title" as a JavaScript string. Turning
-        // the Python string into a JavaScript string on every access would
-        // cost more than the access itself. But Python code uses the SAME
-        // string object every time a line like `obj.title` runs (names in
-        // code are created once). So the JavaScript string is created once,
-        // kept in JavaScript's table, and found again by the address of the
-        // Python string.
+        // The situation: Python code runs `obj.title`, where `obj` is a
+        // JSProxy. We are in C++ (Python called js_proxy_getattro), and have
+        // to make JavaScript do `obj["title"]`. In JavaScript a property name
+        // is a JavaScript string; Python only has the Python string "title".
+        // So the name has to become a JavaScript string on the JS side, which
+        // means copying its bytes over and decoding them there.
+        //
+        // Doing that on every access would cost more than the access itself.
+        // But Python code uses the SAME string object every time a line like
+        // `obj.title` runs (names in code are created once). So the
+        // JavaScript string is created once, kept in JavaScript's table of
+        // objects (a handle, see codec.ts), and found again by the address of
+        // the Python string.
         //
         // The cache is a plain array ("direct mapped"): the address of the
         // string, cut down to a number below N_NAMES, is the index. Two
@@ -246,14 +324,22 @@ namespace pyjs
     // Raise the Python exception for an error slot (tag T_ERROR): what
     // JavaScript reports when an operation threw. Two cases:
     //
-    //   aux == 0   The "JavaScript error" was a Python exception on its way
-    //              through JavaScript (Python called JS, JS called a Python
-    //              function, that raised). `num` is the address of that
-    //              exception: raise the very same one again.
+    //   aux == 0   Yes, really a Python error, passing through. Python
+    //              called a JS function, which called a Python function,
+    //              which raised:
+    //                  Python  ->  JS  ->  Python (raises ValueError)
+    //              On its way back the ValueError had to cross JavaScript,
+    //              where it was thrown as a JS Error (a "PythonError",
+    //              holding the address of the exception object). Now it
+    //              arrives back in Python: `num` is that address, and the
+    //              very same ValueError is raised again (not a JSException
+    //              around it), so `except ValueError` in the outer Python
+    //              code works.
     //   aux != 0   A JavaScript value was thrown; aux is a handle to it. It
     //              is wrapped in a JSProxy and handed to the hook
     //              (pyjs.error_handling.error_to_py_and_raise), which raises
-    //              a JSException for it.
+    //              a JSException for it (see error_to_py there for the
+    //              whole path).
     void raise_from_slot(Slot* slot)
     {
         if (slot->aux == 0)
@@ -285,6 +371,9 @@ namespace pyjs
         Py_DECREF(error);
     }
 
+    // (file-local again, see the first anonymous namespace above: the
+    // functions below are only used in this file. The namespace is closed
+    // in between because raise_from_slot above is shared with deep.cpp.)
     namespace
     {
         // the Python result of a JS operation: its value, or the exception of `rc`
@@ -356,6 +445,12 @@ namespace pyjs
 
         // proxy.name
         //
+        // Where we are: Python code (running in wasm) evaluates `proxy.name`,
+        // where `proxy` is a JSProxy, i.e. a Python object standing for a
+        // JavaScript object. CPython calls this function (the type's
+        // tp_getattro slot) to get the attribute. We are still in C++; the
+        // JavaScript object itself is only reached through pyjs_js_getattr.
+        //
         // Two places are searched, in this order:
         //   1. the Python type of the proxy. That is where the methods of the
         //      proxy itself live (to_py, new, typeof, js_id, __len__, ...).
@@ -394,7 +489,16 @@ namespace pyjs
             return result(rc, &out, name);
         }
 
-        // set (value) or delete (nullptr) a property of the JS object
+        // `proxy.name = value` and `del proxy.name`: set or delete a property
+        // of the JS object.
+        //
+        // Why one function for both: that is how CPython defines it. A type
+        // has ONE slot for writing attributes (tp_setattro), and CPython calls
+        // it with the new value for `proxy.name = value` and with
+        // value = nullptr for `del proxy.name`. (The same for items:
+        // `obj[k] = v` and `del obj[k]` both call mp_ass_subscript, see
+        // js_proxy_setitem.) The JS side gets the same convention: a value
+        // slot, or 0 for "delete" (`delete obj[name]`).
         int js_proxy_setattro(PyObject* self, PyObject* name, PyObject* value)
         {
             const int name_h = name_handle(name);
@@ -501,7 +605,20 @@ namespace pyjs
             return call_js(self, args, nargs, kwnames, 1);
         }
 
-        // an operation with up to two Python arguments
+        // Run one of the "rarely used" operations (JsOp, see the table at the
+        // top of this file) on the JS object of `self`.
+        //
+        // Why it exists: all those operations look the same from here. They
+        // take up to two Python values (`arg`: e.g. the key of proxy[key],
+        // `arg2`: e.g. the value of proxy[key] = value; nullptr if unused),
+        // convert them to slots, make ONE call into JavaScript (the shared
+        // import pyjs_js_op, dispatching on `op`) and get a return code (JsRc)
+        // plus the result in `out`. This function does the part that is the
+        // same for all: the slots and the call. Each user (js_proxy_len,
+        // js_proxy_contains, js_proxy_repr, ...) then only interprets `out`.
+        //
+        // Returns the JsRc of the JavaScript side, or -1 if converting an
+        // argument failed (Python exception set; JavaScript was not called).
         int op(JsOp op, PyObject* self, PyObject* arg, PyObject* arg2, Slot* out)
         {
             Slot in, in2;
@@ -1326,7 +1443,14 @@ namespace pyjs
             return nullptr;
         }
         Slot out;
-        const int rc = pyjs_js_await(handle, ptr_to_num(&out));
+        // suspends this whole call stack until the promise settled (other
+        // Python code runs meanwhile, see src/stack_switching.c)
+        const int token = pyjs_js_await(handle, ptr_to_num(&out));
+        if (token == 0)
+        {
+            return result(RC_ERROR, &out);
+        }
+        const int rc = pyjs_js_resume(token, ptr_to_num(&out));
         return result(rc, &out);
     }
 

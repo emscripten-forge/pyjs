@@ -13,8 +13,20 @@ a real copy is wanted:
 * `to_js` copies a Python value into JavaScript objects:
   list / tuple -> Array, dict -> Object, set -> Set, buffers -> typed array
 
-Both follow PEP 818. They are not exact inverses of each other (e.g. a Map
-becomes a dict, a dict becomes an Object).
+Both follow PEP 818.
+
+Round trips: the two are not exact inverses, because the languages do not
+have the same containers. What survives a round trip:
+
+    Python -> to_js -> to_py              JavaScript -> to_py -> to_js
+    list   -> Array  -> list    (same)    Array  -> list   -> Array   (same)
+    tuple  -> Array  -> list              Object -> dict   -> Object  (same)
+    dict   -> Object -> dict    (same)    Map    -> dict   -> Object
+    set    -> Set    -> set     (same)    Set    -> set    -> Set     (same)
+    bytes  -> Uint8Array -> memoryview    typed array -> memoryview -> typed array
+
+(dict keys that are no str come back as str: a JavaScript object only has
+string property names, see `_js_property_name`.)
 """
 
 import struct
@@ -33,23 +45,49 @@ class ConversionError(Exception):
 
 
 def _check_key(key, target):
-    """A Python value that would become a NEW JavaScript container (list,
-    tuple, dict, set) cannot be a key of a JavaScript object / Map or an item
-    of a Set: the key would be a different object than the Python one."""
+    """Yes: a list / tuple / dict / set cannot be a key (of a dict that
+    becomes a JavaScript object or Map) or an item of a set (that becomes a
+    Set). A ConversionError instead.
+
+    Why: Python compares such keys by value, JavaScript by identity. In
+    Python ``d[(1, 2)]`` finds the entry for any equal tuple. Converted, the
+    key would become a NEW JavaScript Array; JavaScript only finds a Map
+    entry with that very Array object, which nobody else has, so the entry
+    could never be looked up again (and two equal tuples would be two
+    different keys). For a plain JavaScript object it is worse: the Array
+    would be turned into the string "1,2". Rather than a silently broken
+    result, the conversion refuses. (Use a str / number key, or keep the
+    Python dict: without to_js, JavaScript gets a proxy of it.)"""
     if isinstance(key, (list, tuple, dict, set, frozenset)):
         raise ConversionError(f"Cannot use {key!r} as a key for a Javascript {target}")
 
 
+# JavaScript's String(): the property name JavaScript makes of a number
+_js_string = _js.String
+
+
 def _js_property_name(key):
-    """the name of the JavaScript property a dict key becomes (JavaScript
-    property names are strings), or None for keys that are no simple value"""
+    """The name of the JavaScript property a dict key becomes, or None for
+    keys that are no simple value.
+
+    A key that is not a str is written to JavaScript as the value it is (a
+    number, true / false, undefined), and JavaScript turns it into a string
+    when it becomes the property name (a JavaScript object has only string
+    property names): ``{True: 1}`` becomes ``{"true": 1}``, ``{1: 2}``
+    becomes ``{"1": 2}``, ``obj[1.0]`` is the property "1". The conversion
+    does not do that itself, JavaScript does; this function only predicts it.
+    This has to give exactly that string, or two keys that end up as the
+    same property are not noticed. ints and str read the same in both
+    languages. floats do not: JavaScript writes 1.0 as "1", inf as
+    "Infinity", 1e21 as "1e+21", 1e-7 as "1e-7" (Python: "1.0", "inf",
+    "1e+21", "1e-07"), so JavaScript itself is asked (only for float keys)."""
     if isinstance(key, bool):
         return "true" if key else "false"
     if key is None:
         return "undefined"
-    if isinstance(key, float) and key.is_integer():
-        return str(int(key))
-    if isinstance(key, (int, float, str)):
+    if isinstance(key, float):
+        return str(_js_string(key))
+    if isinstance(key, (int, str)):
         return str(key)
     return None
 
@@ -104,8 +142,15 @@ _flat_object = _js.Function(
 
 
 def _buffer_to_memoryview(js_buffer):
-    """a memoryview of a copy of the bytes of a typed array / ArrayBuffer,
-    with the item type of the typed array (Float64Array -> format 'd')"""
+    """What `to_py` makes of a typed array / ArrayBuffer: a memoryview with
+    the item type of the typed array (Float64Array -> format 'd').
+
+    Why "of a copy": the bytes of a JavaScript buffer live outside the wasm
+    memory, where Python cannot look at them. So they are copied once into a
+    new Python ``bytes`` object (`js_to_bytes`), and the memoryview is a
+    typed view of THAT (``cast``, no second copy). The result is
+    independent of the JavaScript buffer: changing one does not change the
+    other (like every result of to_py). Same as `JSBuffer.to_memoryview`."""
     data, fmt = pyjs_core.js_to_bytes(js_buffer)
     view = memoryview(data)
     return view if fmt == "B" else view.cast(fmt)
@@ -220,10 +265,21 @@ def _is_buffer(obj):
     return True
 
 
-# Stands in the cache for a dict whose JavaScript object does not exist yet
-# (`dict_converter` makes it only after all entries are converted). A
-# reference to such a dict from inside its own entries (a self-referencing
-# structure) is filled in once the object exists, see `_fill_in`.
+# Self-referencing structures with a `dict_converter`.
+#
+# `to_js` remembers every container it converted (the `cache`: id(python
+# object) -> its JavaScript object), so that an object referenced twice
+# becomes ONE JavaScript object, and a structure that contains itself
+# (``d = {}; d["self"] = d``) does not recurse forever.
+#
+# Normally the JavaScript object is created first and filled afterwards, so
+# it is in the cache before its contents are converted. With a
+# `dict_converter` (e.g. ``js.Map.new``) that is impossible: the converter
+# builds the object from the list of all converted entries, i.e. only AFTER
+# them. A reference to the dict from inside its own entries finds the dict
+# still "under construction": the cache holds this marker, `_store` notes
+# where the object will have to go, and `_fill_in` puts it there once it
+# exists.
 _PENDING = object()
 
 
@@ -276,8 +332,13 @@ def _kept(result, options):
 
 
 def _store(container, slot, value, obj_key_of, options):
-    """`container[slot] = value` for a value that may still be _PENDING:
-    then it is filled in later (see `_fill_in`)"""
+    """``container[slot] = value`` in JavaScript, for the result of
+    converting one item / entry.
+
+    The value may be the marker `_PENDING` (its JavaScript object does not
+    exist yet, see there). Then the slot is set to undefined for now and
+    noted in ``options["fill_in"]`` under the cache key `obj_key_of`;
+    `_fill_in` writes the real object there later."""
     if value is _PENDING:
         options["fill_in"].setdefault(obj_key_of, []).append((container, slot))
         value = None
@@ -285,7 +346,15 @@ def _store(container, slot, value, obj_key_of, options):
 
 
 def _convert_normally(obj, depth, cache, options):
-    """the conversion of `obj` without the eager converter for `obj` itself"""
+    """The built-in conversion of `obj` (list -> Array, dict -> Object, ...).
+
+    "Eager" refers to the option ``eager_converter`` of `to_js` (pyodide's
+    name): a function of the caller that is asked FIRST, for every value,
+    before the built-in rules (unlike ``default_converter``, which is only
+    asked for what the built-in rules cannot convert). It gets a `convert`
+    callback for the values it does not want to handle itself; that callback
+    is this function: the built-in conversion of the value, whose contents
+    then go through the eager converter again (see `_to_js`)."""
     if isinstance(obj, _PASSED_AS_IS):
         return obj
     key = id(obj)
@@ -366,17 +435,23 @@ def _buffer_rows(obj):
 
 
 def _fill_in(key, result, options):
-    """put `result`, the JavaScript object of the Python object with cache
-    key `key`, where it was referenced before it existed (see _PENDING)"""
+    """The JavaScript object `result` of a dict (cache key `key`) exists
+    now: write it into every slot that referenced the dict while it was
+    still under construction (noted by `_store`, see `_PENDING`)."""
     for container, slot in options["fill_in"].pop(key, []):
         _set_property(container, slot, result)
 
 
 def _lasting_proxy(obj, key, cache, options):
-    """A Python object that is not converted stays a Python object:
+    """A Python object that `to_js` cannot convert (an instance of a
+    custom class, a function, a range, ...) stays a Python object:
     JavaScript gets a proxy of it. It has to be a lasting one (create_proxy):
     the converted structure holds on to it after `to_js` returned. Whoever
-    called `to_js` destroys it later (option `pyproxies` collects them)."""
+    called `to_js` destroys it later (option `pyproxies` collects them).
+
+    With ``create_pyproxies=False`` the caller said "no proxies, only real
+    copies": then such an object is an error (ConversionError), rather than
+    a proxy the caller does not expect and would never destroy."""
     if not options["create_pyproxies"]:
         raise ConversionError(f"cannot convert an object of type {type(obj).__name__} to JavaScript")
     # (read back from the result in python, it is the object again; the

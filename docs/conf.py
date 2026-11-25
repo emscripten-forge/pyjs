@@ -18,6 +18,9 @@ extensions = [
     "myst_parser",
     "autoapi.extension",
     "sphinx.ext.napoleon",
+    # diagrams written as text (```{mermaid} blocks, docs/design.md), drawn
+    # in the browser by mermaid.js
+    "sphinxcontrib.mermaid",
 ]
 
 source_suffix = {
@@ -44,6 +47,35 @@ html_theme_options = {
     "pygments_dark_style": "monokai",
 }
 html_context = {"default_mode": "dark"}
+
+# mermaid diagrams at their natural size (sphinxcontrib-mermaid's default
+# squeezes every svg into a 100% x 500px box: wide sequence diagrams became
+# unreadably small); still shrunk to the column width on narrow screens
+mermaid_width = "auto"
+mermaid_height = "auto"
+# put into every diagram as front matter (survives the re-render on a theme
+# switch, unlike `mermaid_init_config`)
+mermaid_config = {
+    "fontSize": 15,
+    "sequence": {
+        "useMaxWidth": False,
+        "actorMargin": 16,
+        "width": 110,
+        "noteMargin": 6,
+        "boxMargin": 6,
+        "messageMargin": 30,
+        "messageFontSize": 15,
+        "noteFontSize": 15,
+        "actorFontSize": 15,
+    },
+    "flowchart": {"useMaxWidth": False},
+}
+# The diagrams sit on the dark monokai `pre` background in both page modes.
+# Dark page: pydata-sphinx-theme inverts mermaid svgs (css filter), so the
+# light mermaid theme turns dark (mermaid's dark theme inverted became grey
+# on grey). Light page: no filter, so mermaid's dark theme.
+mermaid_dark_theme = "default"
+mermaid_light_theme = "dark"
 # _templates/navbar-nav.html: + the playground link in the header
 templates_path = ["_templates"]
 html_static_path = ["_static"]

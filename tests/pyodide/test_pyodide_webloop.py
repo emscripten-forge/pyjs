@@ -5,18 +5,26 @@
 # Derived from pyodide (src/tests/test_webloop.py and
 # src/tests/test_webloop_webworker.py, release 314.0.8), modified for pyjs.
 #
-# Left out:
+# Left out, and where pyjs covers the same:
 # - test_call_later_skips_scheduling_for_infinite_delay: patches internals of
-#   pyodide's webloop module (`scheduleCallback`, `_MAX_TIMEOUT_MS`)
+#   pyodide's webloop module (`scheduleCallback`, `_MAX_TIMEOUT_MS`). The
+#   behaviour (a huge / infinite delay must not overflow setTimeout) is
+#   tested in tests/test_webloop.py: test_webloop_call_later_delay_is_clamped.
 # - test_inprogress: internals of pyodide's WebLoop (`_in_progress`,
-#   `_no_in_progress_handler`, `_keyboard_interrupt_handler`, ...)
+#   `_no_in_progress_handler`, `_keyboard_interrupt_handler`): pyodide's
+#   console tracks whether a task is running, to deliver Ctrl+C
+#   (KeyboardInterrupt). pyjs has no interrupts and no console, so there is
+#   nothing similar to test (see NO_INTERRUPTS in test_pyodide_pyodide.py).
 #
 # Changes beyond the ones described in README.md:
 # - tests that only use `pyodide.runPythonAsync` to run async Python code
 #   (test_cancel_handle, test_run_in_executor) have that code as body.
 # - test_zero_timeout / test_webworker_zero_timeout2 measure the time of 1000
-#   `asyncio.sleep(0)` in pyodide. Here they check what makes it fast: no
-#   `setTimeout` is used (no assertions on timing).
+#   `asyncio.sleep(0)` in pyodide. pyjs' tests make no assertions on timing
+#   (CI machines are slow and noisy: such tests fail at random). They check
+#   instead WHAT makes `sleep(0)` fast: that no `setTimeout` is used (browsers
+#   make nested setTimeout(0) wait at least 4 ms). The speed itself is
+#   measured by the benchmarks (benchmarks/, asyncio_sleep_0).
 # - the log of the page cannot be read from inside the page: the tests that
 #   look into it capture `sys.stderr`.
 import asyncio
@@ -36,6 +44,9 @@ TEXT_URL = "/tests/main.py"
 
 IN_WORKER = not hasattr(js, "window")
 
+# Could be added (a small feature, on the list of proposed additions): the
+# WebLoop would register `sys.set_asyncgen_hooks` like asyncio's own loops,
+# keep the started async generators, and close them in shutdown_asyncgens().
 NO_ASYNCGEN_TRACKING = (
     "pyjs: no async generator tracking by the WebLoop: shutdown_asyncgens() exists, "
     "but does not close the async generators started in the test (their finally does not run)"

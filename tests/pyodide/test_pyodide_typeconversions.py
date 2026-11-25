@@ -7,7 +7,13 @@
 # Left out (tests of pyodide internals):
 # - test_python2js_with_depth: calls pyodide._module._python2js_with_depth / PyProxy_getPtr
 # - test_tojs_literalmap: loadPyodide option `toJsLiteralMap` (needs a fresh interpreter)
-# - test_buffer_format_string: calls pyodide._module.processBufferFormatString
+# - test_buffer_format_string: calls pyodide._module.processBufferFormatString,
+#   an internal JavaScript function of pyodide that parses Python buffer
+#   format strings ("<i", "d", ...) into a typed array class. Not an API of
+#   either project. pyjs does the same in C++ (deep.cpp / module.cpp, plus
+#   js_buffer_format in src/slot.hpp) and the format handling is tested
+#   through the public functions: tests/test_conversion.py (test_c_long_buffer,
+#   buffers in to_js) and tests/test_proxy_types.py (assign, item types).
 # - test_converter_copy_refcount: refcounts of the converter objects of _pyodide_core
 #
 # Notes on the port:

@@ -64,6 +64,11 @@ pyjs_core._module = _module
 
 from . import _modules  # noqa: E402
 
+# Make this package importable under its other names: registers the modules
+# `js` (JavaScript's globalThis), `jstypes` / `jstypes.ffi` / ... (the names of
+# PEP 818) and `pyodide` / `pyodide.ffi` / `pyodide.code` (so code written for
+# pyodide runs) in sys.modules. They are no copies: their contents are the
+# objects of this package. See pyjs/_modules.py.
 _modules.install()
 
 # (after `js` is importable: the event loop uses it)

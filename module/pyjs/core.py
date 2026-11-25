@@ -3,7 +3,6 @@ awaiting across the two languages, the emscripten main loop / animation
 frames, and blocking on a promise (`run_sync`, JSPI)."""
 
 import asyncio
-import contextvars
 import time
 import traceback
 import warnings
@@ -300,8 +299,8 @@ def can_run_sync() -> bool:
     entered from JavaScript in a way that allows suspending: e.g. a step of an
     asyncio task (the event loop enters with a promising call), but not a
     plain synchronous callback (an event handler, `runPython`, ...).
-    Only one Python call stack can be suspended at a time, so this is False
-    while another `run_sync` is waiting.
+    Any number of Python call stacks can be suspended in `run_sync` at the
+    same time; they resume in any order.
     """
     return bool(_module._jspi_can_run_sync())
 
@@ -321,22 +320,12 @@ def _run_sync_python_awaitable(awaitable):
 
 
 def _run_sync_js(js_promise):
-    # while this stack is suspended the event loop runs other tasks: asyncio
-    # only allows one "current task" (per thread), so leave / re-enter it
-    from asyncio import tasks as _tasks
-
-    loop = asyncio.events._get_running_loop()
-    task = asyncio.current_task(loop) if loop is not None else None
-    if task is not None:
-        _tasks._leave_task(loop, task)
-    try:
-        # suspend inside a copy of the current context: python code entered
-        # while this stack is suspended (e.g. a kernel handling the next
-        # message) would otherwise write its ContextVars into this task's context
-        return contextvars.copy_context().run(pyjs_core.run_sync, js_promise)
-    finally:
-        if task is not None:
-            _tasks._enter_task(loop, task)
+    # While this stack is suspended, other Python code runs (other asyncio
+    # tasks, event handlers, other suspended stacks that resume). The C side
+    # takes this stack's part of the thread state away meanwhile (frames,
+    # exception state, contextvars context, asyncio's current task) and puts
+    # it back when it resumes: see src/stack_switching.c.
+    return pyjs_core.run_sync(js_promise)
 
 
 def run_sync(awaitable):
@@ -369,8 +358,7 @@ def run_sync(awaitable):
     if not can_run_sync():
         raise RuntimeError(
             "run_sync cannot be used here: python was not entered via a "
-            "promising call (e.g. it runs in a synchronous JavaScript callback) "
-            "or another run_sync is already waiting"
+            "promising call (e.g. it runs in a synchronous JavaScript callback)"
         )
     if not isinstance(awaitable, JSProxy):
         return _run_sync_python_awaitable(awaitable)

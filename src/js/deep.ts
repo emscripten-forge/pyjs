@@ -81,7 +81,9 @@ let textLength = 0; // how many bytes are written
 let seen: Map<object, number> | null = null;
 
 // struct format character (see formatOf) -> the typed array class with items
-// of that type
+// of that type. (No "l" / "L", C long: its size differs between wasm32 and
+// wasm64, the C side sends it as "i" / "q", see js_buffer_format in
+// src/slot.hpp.)
 const ARRAY_CLASSES: Record<string, any> = {
   b: Int8Array,
   B: Uint8Array,
@@ -91,8 +93,6 @@ const ARRAY_CLASSES: Record<string, any> = {
   H: Uint16Array,
   i: Int32Array,
   I: Uint32Array,
-  l: Int32Array,
-  L: Uint32Array,
   q: BigInt64Array,
   Q: BigUint64Array,
   f: Float32Array,
@@ -237,6 +237,33 @@ function checkKeys(container: Map<any, any> | Set<any>, target: string): void {
   }
 }
 
+/**
+ * Write one JS `value` into the stream of a to_py conversion (JS -> Python),
+ * and, for a container, everything inside it (recursively).
+ *
+ * The heart of to_py on the JavaScript side: `toStream` (below) calls it once
+ * for the top level value, and it calls itself for every item / entry of a
+ * container, with `depth` one less (depth 0: containers are not opened any
+ * more, they become proxies; -1: no limit). What the C side
+ * (read_value in src/deep.cpp) then makes of each kind:
+ *
+ *   value                         written as                      Python gets
+ *   number                        INT (safe integer) / FLOAT      int / float
+ *   string, BigInt                STR / BIGINT + text             str / int
+ *   true, false, undefined, null  TRUE / FALSE / UNDEF / NULL     True / False / None / jsnull
+ *   Array (and DOM lists)         LIST n, then the n items        list
+ *   Map                           DICT n, then key, value, ...    dict
+ *   Set                           SET n, then the n items         set
+ *   typed array / ArrayBuffer     BUFFER: handle, size, type      memoryview (a copy)
+ *   plain object {...}            DICT n, then name, value, ...   dict
+ *   anything else (a function,    an ordinary slot (`encode`)     a JSProxy
+ *     a class instance, ...)
+ *
+ * A container met a second time (shared, or containing itself) is written as
+ * REF n instead of again (`writtenBefore`), so the Python structure gets the
+ * same sharing and cycles do not recurse forever. Keys that cannot be dict
+ * keys in Python are rejected first (`checkKeys`).
+ */
 function write(value: any, depth: number): void {
   switch (typeof value) {
     case "number": {

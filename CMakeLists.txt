@@ -79,6 +79,9 @@ add_library(pyjs STATIC
     src/deep.cpp
     src/py_entry.cpp
     src/module.cpp
+    # several suspended Python stacks (JSPI), derived from pyodide: C, because
+    # it uses CPython's internal headers
+    src/stack_switching.c
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_js.cpp
     ${NANOBIND_DIR}/src/nb_combined.cpp
 )
@@ -116,6 +119,11 @@ endif()
 # to the main module's copy, whose global state the side module never
 # initialized (sqlite: "null function" trap in sqlite3_close).
 # (file(STRINGS) finds the name also in LTO bitcode: its string table is text)
+#
+# TODO: remove this block (and libsqlite-static / libopenssl-static /
+# liblzma-static from the host dependencies) once the split python recipe
+# (python-core + python-ssl / -sqlite3 / -lzma side modules) is merged into
+# emscripten-forge: then no python that pyjs builds against has them built in.
 set(PYTHON_OPTIONAL_LIBRARIES)
 function(pyjs_link_if_builtin module)
     file(STRINGS ${HOST_PREFIX}/lib/libpython${PY_VERSION}.a found

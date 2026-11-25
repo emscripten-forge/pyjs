@@ -223,6 +223,28 @@ def test_buffer_assign():
     assert list(whole) == [0, 7, 8, 0]
 
 
+def test_buffer_assign_item_types():
+    """assign between a typed array and a Python buffer: the item types must
+    match, under all their names; a C long ("l") is 32 bit on wasm32 and 64
+    bit on wasm64"""
+    import array
+    import struct
+
+    with pytest.raises(ValueError, match="incompatible formats"):
+        run_js("new Float64Array(1)").assign(array.array("q", [1]))
+    longs = array.array("l", [1, 2])
+    if struct.calcsize("l") == 4:
+        target = run_js("new Int32Array(2)")
+    else:
+        target = run_js("new BigInt64Array(2)")
+        with pytest.raises(ValueError, match="incompatible formats"):
+            run_js("new Int32Array(4)").assign(longs)
+    target.assign(longs)
+    assert [int(x) for x in target] == [1, 2]
+    # plain bytes go into every typed array
+    run_js("new Float64Array(1)").assign(bytes(8))
+
+
 def test_buffer_assign_to():
     a = run_js("new Uint16Array([1, 2])")
     target = bytearray(4)

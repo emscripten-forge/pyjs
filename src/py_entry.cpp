@@ -16,6 +16,16 @@ extern "C" PyObject* PyInit_pyjs_core(void);
 // initializes the JavaScript side (generated: build_utils/embed_js.cmake)
 extern "C" void pyjs_js_prelude(void);
 
+// a promising call's own part of the thread state (src/stack_switching.c)
+extern "C" int pyjs_enter_promising_task(void);
+extern "C" void pyjs_exit_promising_task(void);
+
+// the end of a promising call, for the JS bookkeeping (taskDone in
+// src/js/pyproxy.ts)
+EM_JS(void, pyjs_js_task_done, (), {
+    pyjsCore.taskDone();
+});
+
 namespace pyjs
 {
     namespace
@@ -356,32 +366,40 @@ extern "C"
     // side when the browser supports JSPI, the called Python code may then
     // suspend (pyjs.run_sync)
     //
-    // Such a call can be suspended in the middle (run_sync) while other
-    // Python code runs. So it runs like an asyncio task: in a COPY of the
+    // Such a call (a "task") can be suspended in the middle (run_sync) while
+    // other Python code runs, including other tasks. So it gets its own part
+    // of the thread state (frames, exception state, ...; see
+    // src/stack_switching.c) and runs like an asyncio task: in a COPY of the
     // current contextvars context. It sees the values set by the code that
     // was current when it started, but what it sets itself stays its own
     // and does not leak into code that runs while it is suspended or after
     // it (pyodide does the same).
+    //
+    // `out`: 4 slots (malloc'ed by JS, not on the C stack). The result /
+    // error as for pyjs_call, plus in out[3] the object that must stay alive
+    // until JS has read the result (or 0): JS releases it with pyjs_decref.
+    // (pyjs_call keeps it in g_keep instead, but JS reads the result of a
+    // promising call only in a later microtask, after other calls may have
+    // replaced g_keep.)
     EMSCRIPTEN_KEEPALIVE int pyjs_call_promising(double fn, double args, int npos, int nkw, double out)
     {
-        PyObject* context = PyContext_CopyCurrent();
-        if (context == nullptr || PyContext_Enter(context) != 0)
+        pyjs::Slot* result = pyjs::num_to_ptr<pyjs::Slot>(out);
+        if (pyjs_enter_promising_task() != 0)
         {
-            Py_XDECREF(context);
-            return pyjs::write_error(pyjs::num_to_ptr<pyjs::Slot>(out));
+            return pyjs::write_error(result);
         }
         const int rc = pyjs::call(pyjs::num_to_ptr<PyObject>(fn),
                                   pyjs::num_to_ptr<pyjs::Slot>(args),
                                   npos,
                                   nkw,
-                                  pyjs::num_to_ptr<pyjs::Slot>(out));
-        // (cannot fail: this call entered the context and nobody else exits
-        // it; an error here would leave an exception set: cleared)
-        if (PyContext_Exit(context) != 0)
-        {
-            PyErr_Clear();
-        }
-        Py_DECREF(context);
+                                  result);
+        // (pyjs::call took a raised exception off the thread state: the
+        // task's state can be dropped)
+        pyjs_exit_promising_task();
+        result[3].tag = pyjs::T_UNDEF;
+        result[3].num = pyjs::ptr_to_num(pyjs::g_keep);
+        pyjs::g_keep = nullptr;
+        pyjs_js_task_done();
         return rc;
     }
 

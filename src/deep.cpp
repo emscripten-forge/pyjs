@@ -13,8 +13,24 @@
 // A container that shows up a second time (shared, or containing itself) is
 // written as `T_REF n`: "the n-th container of this stream again".
 //
-//   JS -> Python (to_py):  deep.ts writes the stream, read_value() here reads it
-//   Python -> JS (to_js):  write_value() here writes it, deep.ts reads it
+// The arrows name the direction the VALUE travels:
+//
+//   JS -> Python (to_py):  a JavaScript value becomes Python objects.
+//                          deep.ts writes the stream, read_value() here reads it
+//   Python -> JS (to_js):  a Python value becomes JavaScript objects.
+//                          write_value() here writes it, deep.ts reads it
+//
+// As flow (the same as a diagram: docs/design.md):
+//
+//   to_py(proxy)   deep_to_py ---- 1 hop ----> deep.ts write(): walks the JS
+//                                              value, writes the stream
+//                  read_value() <-- stream --
+//                  builds lists / dicts / sets
+//   to_js(obj)     write_value(): walks the
+//                  Python value, writes the
+//                  stream ---------- 1 hop ---> deep.ts fromStream(): builds
+//                                               Arrays / Objects / Sets / ...
+//                  from_slot(result) <------- (a JSProxy of the new value)
 #include "slot.hpp"
 
 #include <emscripten.h>
@@ -29,20 +45,20 @@
 //   out[0]   aux: the number of slots, num: the address of the first slot
 //   out[1]   num: the address of the text block (see StreamReader)
 EM_JS(int, pyjs_js_to_py, (int h, int depth, double out), {
-    return pj.toPy(h, depth, out);
+    return pyjsCore.toPy(h, depth, out);
 });
 
 // Build the JS value of the stream at `stream`; `out` gets it as ordinary slot.
 EM_JS(int, pyjs_js_to_js, (double stream, double out), {
-    return pj.toJs(stream, out);
+    return pyjsCore.toJs(stream, out);
 });
 
 // Copy the bytes of the typed array / ArrayBuffer with handle `h` to `ptr`,
 // and release the handle: it was only needed for this copy. (Both in one
 // function, because each call into JavaScript costs time.)
 EM_JS(void, pyjs_js_buffer_take, (int h, double ptr), {
-    pj.bufferCopy(h, ptr);
-    pj.free(h, 0);
+    pyjsCore.bufferCopy(h, ptr);
+    pyjsCore.free(h, 0);
 });
 
 // (defined in js_proxy.cpp)
@@ -236,6 +252,10 @@ namespace pyjs
 
         // ------------------------------------------------------------------
         // Python -> JS: writing a stream
+        //
+        // (A Python value goes to JavaScript: `to_js(obj)`. This side walks
+        // the Python structure and writes the stream; deep.ts builds the
+        // JavaScript objects from it.)
         // ------------------------------------------------------------------
         struct StreamWriter
         {
@@ -414,7 +434,8 @@ namespace pyjs
                 return false;
             }
             Slot slot;
-            slot.tag = T_BUFFER | (static_cast<int32_t>(format[0]) << 16);
+            // (js_buffer_format: a C long as the fixed size type, see slot.hpp)
+            slot.tag = T_BUFFER | (static_cast<int32_t>(js_buffer_format(format[0])) << 16);
             slot.aux = static_cast<int32_t>(view.len / view.itemsize);
             slot.num = ptr_to_num(view.buf);
             writer.slots.push_back(slot);
@@ -542,6 +563,22 @@ namespace pyjs
         }
     }
 
+    // to_py(value): a copy of a JavaScript value as Python objects.
+    //
+    // Why the argument is a PyObject: this is called from Python
+    // (`pyjs.to_py(x)` -> `pyjs_core.to_py` in module.cpp), and everything
+    // Python passes is a Python object. The JavaScript value it is about
+    // arrives as its stand-in in Python, a JSProxy (yes: "a JavaScript thing
+    // inside"). Its handle says which JavaScript object to convert. Anything
+    // else (a str, an int, a list, ...) is already a Python value: returned as
+    // it is.
+    //
+    // The steps:
+    //   1. ONE call into JavaScript (pyjs_js_to_py -> deep.ts): JavaScript
+    //      walks its object and writes the whole structure as stream into
+    //      memory, `depth` levels deep
+    //   2. read_value() reads the stream front to back here and builds the
+    //      Python objects (lists, dicts, sets, memoryviews, strings, ...)
     PyObject* deep_to_py(PyObject* proxy, int depth)
     {
         const int handle = js_proxy_handle(proxy);
@@ -565,6 +602,12 @@ namespace pyjs
         return read_value(reader);
     }
 
+    // to_js(obj): a copy of a Python value as JavaScript objects, the other
+    // direction: write_value() walks `obj` here and writes the stream, then
+    // ONE call into JavaScript (pyjs_js_to_js -> deep.ts) builds the
+    // JavaScript objects from it. The result comes back as an ordinary slot:
+    // a JSProxy of the new JavaScript value (or the value itself if it is a
+    // primitive).
     PyObject* deep_to_js(PyObject* obj, int depth)
     {
         StreamWriter writer;

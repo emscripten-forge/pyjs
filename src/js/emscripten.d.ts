@@ -16,8 +16,13 @@ declare const wasmExports: any;
 declare function _malloc(size: number): number;
 declare function _free(ptr: number): void;
 
+// the C stack pointer (emscripten's stack in linear memory, grows down)
+declare function stackSave(): number;
+declare function stackRestore(sp: number): void;
+
 // writes `str` NUL terminated, returns the number of bytes without the NUL
 declare function stringToUTF8Array(str: string, heap: Uint8Array, outIdx: number, maxBytesToWrite: number): number;
 
-// what the C side (EM_JS functions) calls, set by index.ts
-declare let pj: any;
+// what the C side (EM_JS functions) calls, set by index.ts (declared by
+// build_utils/embed_js.cmake)
+declare let pyjsCore: any;

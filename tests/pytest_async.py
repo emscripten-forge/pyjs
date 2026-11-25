@@ -1,5 +1,9 @@
 """Async tests under pytest, inside the browser.
 
+(Written for pyjs. pyodide's test suite does not need this: it runs pytest
+on the host and sends each test body into the browser, so nothing of it is
+used here.)
+
 THE PROBLEM. pytest runs a test session with one blocking call,
 `pytest.main()`. An `async def` test only makes progress when control goes
 back to the event loop. In the browser the event loop is the browser's own,

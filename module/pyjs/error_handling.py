@@ -23,10 +23,9 @@ __all__ = ["JSException"]
 
 _js = global_this()
 
-# gives back its argument. Used to turn a JSProxy of a thrown *primitive*
-# (JavaScript can throw anything: `throw "text"`, `throw 42`) into the Python
-# value: passing the proxy to JavaScript hands over the primitive, and a
-# primitive coming back is converted instead of proxied.
+# Gives back its argument. Used by error_to_py: a JS function call is the
+# one place where the core turns a JS value into the right Python value (see
+# there).
 _identity = _js.Function("x", "return x;")
 
 
@@ -109,10 +108,30 @@ def _unpickle_jsexception(name, message, stack):
 
 
 def error_to_py(err):
-    """The exception (not raised) for a value thrown by JavaScript."""
+    """The exception (not raised) for a value thrown by JavaScript.
+
+    How a thrown value gets here (Python called into JavaScript, which
+    threw):
+
+    1. the JS side of the operation catches the value, keeps it in the
+       handle table and returns RC_ERROR; the result slot (tag T_ERROR)
+       holds the handle (src/js/jsops.ts, `writeJsError` in codec.ts)
+    2. C++ `raise_from_slot` (src/js_proxy.cpp) wraps the handle in a
+       *plain* JSProxy, whatever was thrown, and calls the hook
+       `raise_js_error` = `error_to_py_and_raise` (below), which calls this
+    3. here `err` is therefore always a JSProxy, also for `throw "text"` or
+       `throw 42`. Passing it through the JS function `_identity` sends the
+       value to JavaScript and back; on the way back the core converts it
+       the normal way (`from_slot` in src/js_proxy.cpp):
+         - an Error object (flag JS_ERROR) -> the hook `jsexception_type`
+           makes a JSException of it (PEP 818: a JS Error in Python IS a
+           JSException)
+         - a primitive (string, number, ...) -> the Python value
+         - any other object -> a JSProxy again
+    4. what is no JSException yet (primitive, other object) is wrapped in
+       one; error_to_py_and_raise raises it.
+    """
     if isinstance(err, JSProxy):
-        # a proxy of a primitive (see _identity) becomes the Python value,
-        # an Error object a JSException
         err = _identity(err)
     if isinstance(err, JSException):
         return err

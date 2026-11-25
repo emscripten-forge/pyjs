@@ -20,7 +20,7 @@ from typing import Callable
 import js
 from typing import Any, Dict, List, Tuple, Union
 
-from .core import jspi_enabled
+from .core import can_run_sync, jspi_enabled, run_sync
 from .ffi import create_proxy
 
 
@@ -213,15 +213,24 @@ class WebLoop(asyncio.AbstractEventLoop):
 
         The native event loop `run_until_complete` blocks until evaluation of the
         future is complete and then returns the result of the future.
-        Since we cannot block, we just ensure that the future is scheduled and
-        return the future. This makes this method a bit useless. Instead, use
-        `future.add_done_callback(do_something_with_result)` or:
+
+        With JSPI, where `pyjs.can_run_sync()` is True (e.g. in an asyncio task
+        or a `callPromising` call), it does the same: the Python stack is
+        suspended (`pyjs.run_sync`) until the future is done, and its result is
+        returned (or its exception raised). `asyncio.run` works there too.
+
+        Otherwise it cannot block (one thread: blocking would stall the browser
+        event loop), so it only ensures that the future is scheduled and returns
+        the future. Then use `future.add_done_callback(do_something_with_result)`
+        or:
         ```python
         async def wrapper():
             result = await future
             do_something_with_result(result)
         ```
         """
+        if can_run_sync():
+            return run_sync(future)
         return asyncio.ensure_future(future)
 
     #
@@ -544,9 +553,22 @@ class WebLoopPolicy(asyncio.DefaultEventLoopPolicy):  # type: ignore[misc, valid
         return self.new_event_loop()
 
     def new_event_loop(self):
-        """Create a new event loop. It does not become the current or the
-        running loop: that only happens for the first loop, below, or
-        explicitly with `set_event_loop`."""
+        """Create a new event loop (asyncio.new_event_loop()). It does not
+        become the current or the running loop: that only happens for the
+        first loop, below, or explicitly with `set_event_loop`.
+
+        What a second loop means here: the browser has exactly one event
+        loop, and every WebLoop schedules its callbacks onto it (call_soon:
+        the MessageChannel queue, call_later: setTimeout). So plain callbacks
+        of a second loop run, interleaved with those of the first.
+
+        But "the running loop" of asyncio stays the first loop (it is set
+        once, at import, below), and asyncio only runs a task step whose
+        loop is the running loop: a TASK of the second loop fails at its
+        first step ("loop ... is not the running loop", reported to the
+        loop's exception handler). So: use the running loop
+        (asyncio.get_running_loop()) for everything. Code that only creates
+        a loop and calls close() on it keeps working."""
         return WebLoop()  # type: ignore[abstract]
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):

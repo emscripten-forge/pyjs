@@ -47,8 +47,9 @@ async def test_optional_stdlib_installed_on_request():
     name; a second request is a no-op"""
     if importlib.util.find_spec("_multibytecodec") is not None:
         pytest.skip("python-cjkcodecs is installed already (by an earlier test)")
-    with pytest.raises(LookupError):
-        "日本".encode("shift_jis")
+    # (not checked with "...".encode("shift_jis"): python's codec registry
+    # caches a failed lookup, the codec would stay unknown after the install)
+    assert importlib.util.find_spec("_codecs_jp") is None
 
     assert await install(["cjkcodecs"]) == ["python-cjkcodecs"]
     assert "日本".encode("shift_jis").decode("shift_jis") == "日本"

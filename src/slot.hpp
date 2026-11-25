@@ -86,6 +86,36 @@ namespace pyjs
         PY_GENERATOR = 1 << 5,  // a generator (send / throw / close)
     };
 
+    // One value crossing the border, 16 bytes:
+    //
+    //   byte  0..3   tag   int32   what kind of value (Tag above)
+    //   byte  4..7   aux   int32   a small extra number, depends on the tag:
+    //                              length of a string, handle of a JS object,
+    //                              flags of a Python object, ...
+    //   byte  8..15  num   double  the value itself: a number, or an address
+    //                OR  a, b      two int32 for the kinds that need two more
+    //                              small numbers instead (T_JS: its flags and
+    //                              the handle of its `this`)
+    //
+    // Examples:
+    //   3.5             { tag: T_FLOAT, num: 3.5 }
+    //   "hi"            { tag: T_STR,   aux: 2 (bytes), num: address of "hi" }
+    //   a JS function   { tag: T_JS,    aux: 17 (its handle), a: JS_CALLABLE,
+    //                     b: 0 (no `this`) }
+    //   a Python list   { tag: T_PY,    aux: its PyFlags, num: its PyObject* }
+    // (Which field means what for each tag: the comments of enum Tag.)
+    //
+    // Why a union for the last 8 bytes: a value needs EITHER one double OR
+    // two small ints there, never both. Sharing the bytes keeps every slot at
+    // 16 bytes, so an array of argument slots is a plain array and slot i is
+    // at `base + 16 * i`.
+    //
+    // Why int32_t (and not int / size_t): JavaScript reads the slot through
+    // typed-array views of the wasm memory, HEAP32 (int32 items) and HEAPF64
+    // (float64 items). Fixed 32 bit fields map 1:1 onto HEAP32 items on wasm32
+    // AND wasm64 (where int is still 32 bit, but size_t / pointers are 64).
+    // `num` at byte 8 is 8-aligned, as HEAPF64 needs. Handles are indices
+    // into a JS array (src/js/codec.ts), small numbers: 32 bit is plenty.
     struct Slot
     {
         int32_t tag;
@@ -113,6 +143,26 @@ namespace pyjs
     T* num_to_ptr(double num)
     {
         return reinterpret_cast<T*>(static_cast<std::uintptr_t>(num));
+    }
+
+    // The struct format character of buffer items as JavaScript understands
+    // it (it picks the typed array class by this character, src/js/jsops.ts
+    // and src/js/deep.ts). Only "l" / "L" (C long) need translating: a long
+    // has 32 bits on wasm32 but 64 on wasm64 (numpy's int64 has format "l"
+    // there), so it becomes the character of the fixed size type: "i" / "I"
+    // or "q" / "Q". JavaScript does not know the size of a C long; this side
+    // does.
+    inline char js_buffer_format(char format)
+    {
+        if (format == 'l')
+        {
+            return sizeof(long) == 4 ? 'i' : 'q';
+        }
+        if (format == 'L')
+        {
+            return sizeof(long) == 4 ? 'I' : 'Q';
+        }
+        return format;
     }
 
     // Python -> slot (implicit conversion). `o` is borrowed; a T_PY slot
@@ -164,7 +214,26 @@ namespace pyjs
     PyObject* deep_to_py(PyObject* proxy, int depth);
     PyObject* deep_to_js(PyObject* obj, int depth);
 
-    // the Python callables / objects the core needs (set by the pyjs module)
+    // Hooks: Python functions / classes that this C++ core calls.
+    //
+    // WHY. Some parts of the bridge are much easier to write in Python than
+    // in C++: the exception class JSException and how it is built, awaiting a
+    // JS promise with asyncio, the methods of array / map proxies, ... They
+    // live in the Python package `pyjs` (module/pyjs/). But the dependency
+    // goes the other way: `pyjs` imports this core (`pyjs_core`), so the
+    // core cannot import `pyjs` (and must not: an embedder may use the core
+    // without the package).
+    //
+    // HOW. The core keeps a slot for each such Python object, initially empty
+    // (nullptr). When `pyjs` is imported it hands them over once:
+    // `pyjs_core.set_hooks(...)` in module/pyjs/__init__.py (defined in
+    // src/module.cpp). From then on the core calls them like callbacks, e.g.
+    // `raise_js_error(proxy)` when JavaScript threw. ("Hook": a place where
+    // other code hooks itself in.)
+    //
+    // Before that (only while the package itself is being imported) a hook
+    // is nullptr and the core does something simple instead (e.g. a plain
+    // RuntimeError for a JS error); every use checks for nullptr.
     struct Hooks
     {
         PyObject* raise_js_error = nullptr;  // (JSProxy of the thrown value) -> raises

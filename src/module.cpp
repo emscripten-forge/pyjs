@@ -16,23 +16,30 @@ namespace nb = nanobind;
 // a typed array for wasm memory at `ptr` (`format`: struct format character of
 // the items), as view of the memory or as copy; RC_ERROR for unknown formats
 EM_JS(int, pyjs_js_typed_array, (double ptr, double nitems, int format, int view, double out), {
-    return pj.typedArray(ptr, nitems, format, view, out);
+    return pyjsCore.typedArray(ptr, nitems, format, view, out);
 });
 
 // size in bytes (out.num), struct format character (out.aux) of a typed array
 // / ArrayBuffer / DataView
 EM_JS(int, pyjs_js_buffer_info, (int h, double out), {
-    return pj.bufferInfo(h, out);
+    return pyjsCore.bufferInfo(h, out);
 });
 
 // copy the bytes of a typed array / ArrayBuffer / DataView to `ptr`
 EM_JS(void, pyjs_js_buffer_copy, (int h, double ptr), {
-    pj.bufferCopy(h, ptr);
+    pyjsCore.bufferCopy(h, ptr);
 });
 
 namespace
 {
-    // a new reference from the C functions of the core, or their exception
+    // Bridges two error conventions. The functions of the core (js_proxy.cpp,
+    // deep.cpp) follow the CPython C API: they return a new reference, or
+    // nullptr with a Python exception set. nanobind (which defines the
+    // functions of this module) works with C++ objects and C++ exceptions.
+    // `checked` converts: nullptr -> throw nb::python_error (nanobind turns
+    // that back into the Python exception that is set); otherwise wrap the
+    // new reference in an nb::object, which then owns it ("steal": no extra
+    // reference count). Every m.def below passes its result through this.
     nb::object checked(PyObject* o)
     {
         if (o == nullptr)
@@ -62,7 +69,8 @@ namespace
         {
             rc = pyjs_js_typed_array(pyjs::ptr_to_num(buffer.buf),
                                      static_cast<double>(buffer.len / buffer.itemsize),
-                                     format[0],
+                                     // (a C long as the fixed size type, see slot.hpp)
+                                     pyjs::js_buffer_format(format[0]),
                                      view ? 1 : 0,
                                      pyjs::ptr_to_num(&out));
         }
@@ -159,13 +167,24 @@ namespace
 
 NB_MODULE(pyjs_core, m)
 {
-    // the interpreter is never finalized
+    // nanobind can report objects of nanobind types / functions that are
+    // still alive when the interpreter shuts down. Here the interpreter is
+    // never finalized (the page just goes away), and nanobind tracks none of
+    // the proxy objects anyway (they are plain CPython types, see type_for in
+    // js_proxy.cpp), so the check would only produce noise. Leaks of proxies
+    // / handles need a check of their own (per test; not built yet).
     nb::set_leak_warnings(false);
 
+    // Create the JSProxy base type and register it in this module
+    // (`pyjs_core.JSProxy`). Can fail like any type creation (out of
+    // memory): then a Python exception is set and the import fails with it.
     if (!pyjs::js_proxy_init(m.ptr()))
     {
         throw nb::python_error();
     }
+
+    // (every function below passes the result of the core through
+    // `checked`: see there)
 
     m.def("global_this", []() { return checked(pyjs::js_global(0)); }, "JSProxy of globalThis");
     m.def("module", []() { return checked(pyjs::js_global(1)); }, "JSProxy of the emscripten Module");
@@ -178,10 +197,13 @@ NB_MODULE(pyjs_core, m)
         nb::arg("obj").none(),
         nb::arg("always") = true,
         nb::arg("roundtrip") = false,
-        "A JSProxy of a PyProxy of obj, which lives until its destroy() is called. Objects that are "
-        "converted to JavaScript values (None, bool, int, float, str, JSProxy) have no proxy: with "
-        "always=True that is a TypeError, with always=False obj itself is returned. roundtrip: the "
-        "PyProxy comes back to python as this JSProxy, not as obj.");
+        "A JSProxy of a PyProxy of obj (a 'double proxy'), which lives until its destroy() is "
+        "called; the user-facing function is pyjs.create_proxy, which explains it in detail. "
+        "Objects that are converted to JavaScript values (None, bool, int, float, str, JSProxy) "
+        "have no proxy: with always=True that is a TypeError, with always=False obj itself is "
+        "returned. roundtrip: what Python gets when the PyProxy comes back from JavaScript later "
+        "(e.g. read from an Array it was stored in): with roundtrip=True this JSProxy again (so it "
+        "can still be destroyed), with roundtrip=False obj itself.");
     m.def(
         "run_sync",
         [](nb::handle promise) { return checked(pyjs::run_sync(promise.ptr())); },
@@ -207,7 +229,16 @@ NB_MODULE(pyjs_core, m)
     m.def("buffer_to_js", &buffer_to_js, "a typed array for a 1d buffer (view: of the wasm memory, no copy)");
     m.def("js_to_bytes", &js_to_bytes, "(bytes, format) of a typed array / ArrayBuffer / DataView");
 
-    // the Python side of the core (None: unset)
+    // pyjs_core.set_hooks(...): the Python package `pyjs` hands the core the
+    // Python functions / classes it calls back into ("hooks": what they are
+    // and why they exist is explained at `struct Hooks` in slot.hpp). Called
+    // ONCE, by module/pyjs/__init__.py while it is imported; each argument
+    // is stored in its field of the Hooks struct (set_hook above, which also
+    // keeps the object alive).
+    //
+    // "None: unset": passing None for an argument leaves that hook empty
+    // (nullptr), and the core then uses its simple fallback for it, as before
+    // the package was imported. (pyjs itself always passes all of them.)
     m.def(
         "set_hooks",
         [](nb::handle raise_js_error, nb::handle format_exception, nb::handle await_js, nb::handle jsnull,
@@ -217,6 +248,9 @@ NB_MODULE(pyjs_core, m)
             set_hook(pyjs::hooks().jsexception_type, jsexception_type);
             set_hook(pyjs::hooks().schedule_coroutine, schedule_coroutine);
             set_hook(pyjs::hooks().proxy_mixins, proxy_mixins);
+            // The proxy types made so far (while `pyjs` was being imported,
+            // it already used a few proxies) were created without the mixin
+            // classes: forget them, they are recreated with mixins on demand.
             pyjs::js_proxy_forget_types();
             pyjs::Hooks& hooks = pyjs::hooks();
             set_hook(hooks.raise_js_error, raise_js_error);

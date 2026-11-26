@@ -416,10 +416,9 @@ let pyjs;
 let runId = 0;
 let running = false;
 
-/** a readable message for JS errors and python errors ({has_err, ...}) */
+/** a readable message for JS errors and python errors (a PythonError's
+ * message is the python traceback) */
 function pyErrorText(e) {
-  // python errors are thrown as {has_err, message, error, ...}
-  if (e && typeof e === "object" && "has_err" in e) return `${e.error ?? ""}\n${e.message ?? ""}`.trim();
   return String((e && e.message) || e);
 }
 
@@ -433,10 +432,10 @@ async function run() {
   running = true;
   status("running…");
   try {
-    pyjs.exec("_remove_listeners()");         // event handlers of the previous run
-    pyjs.exec("stopped = _make_stopped()");   // a fresh `stopped()` per run
+    pyjs.runPython("_remove_listeners()");         // event handlers of the previous run
+    pyjs.runPython("stopped = _make_stopped()");   // a fresh `stopped()` per run
     const t0 = performance.now();
-    await pyjs.async_exec_eval(editorApi.get());
+    await pyjs.runPythonAsync(editorApi.get());
     // (imports included: fast when their bytecode came from the cache)
     if (myRun === runId) status(`done in ${((performance.now() - t0) / 1000).toFixed(2)} s`);
     // keep the bytecode of this run's imports for the next visit
@@ -458,7 +457,7 @@ const editorApi = await createEditor(EXAMPLES[select.value]);
 // switching examples: stop a running animation, remove its event handlers
 select.addEventListener("change", () => {
   runId += 1;
-  if (pyjs) pyjs.exec("_remove_listeners()");
+  if (pyjs) pyjs.runPython("_remove_listeners()");
   editorApi.set(EXAMPLES[select.value]);
 });
 $("run").addEventListener("click", run);
@@ -508,7 +507,7 @@ try {
     status("running…");
     return installed;
   };
-  pyjs.exec(`
+  pyjs.runPython(`
 import json as _json
 from pyjs import js as _js
 
@@ -520,21 +519,21 @@ async def install(specs, verbose=False):
     """install conda packages via mambajs, verbose=True shows the mambajs log"""
     await _js.window.pyjsInstall(_json.dumps(list(specs)), bool(verbose))
 
-_listeners = []  # (event, js callable, handle) added by on()
+_listeners = []  # (event, js proxy of the handler) added by on()
 
 def on(event, handler):
     """add a canvas event listener; removed before the next run / example"""
     import pyjs
-    js_handler, handle = pyjs.create_callable(handler)
+    js_handler = pyjs.create_proxy(handler)
     _js.canvas.addEventListener(event, js_handler)
-    _listeners.append((event, js_handler, handle))
+    _listeners.append((event, js_handler))
 
 def _remove_listeners():
     """remove the listeners of on() and free their python callables"""
     while _listeners:
-        event, js_handler, handle = _listeners.pop()
+        event, js_handler = _listeners.pop()
         _js.canvas.removeEventListener(event, js_handler)
-        handle.delete()
+        js_handler.destroy()
 `);
   const extra = PACKAGES.length ? ` + ${PACKAGES.join(", ")}` : "";
   const how = pinned ? "pinned" : PACKAGES.length ? "solved" : "";

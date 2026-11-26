@@ -27,8 +27,15 @@ ROOT = Path(__file__).resolve().parent.parent
 SUITES = {"tests": ROOT / "tests", "benchmarks": ROOT / "benchmarks"}
 # a hang guard only (a failed JSPI suspension can hang a page), not a speed limit
 TIMEOUT_S = 30 * 60
+# A second guard: a page that prints nothing for this long is taken for dead.
+# A page whose wasm code crashed (a trap, "Maximum call stack size exceeded"
+# thrown through Python) never publishes a result and never prints again; the
+# suite prints a line per test, so silence this long means nothing runs. Far
+# above the longest single test (installs from the network, the big
+# allocations of test_memory.py).
+SILENCE_S = 5 * 60
 # generated test data (no binary files in the repository): the download tests
-# (tests/sync/test_http.py, tests/async/test_jspi.py) fetch these
+# (tests/test_http.py, tests/test_jspi.py) fetch these
 TEST_DATA = {"/test-data/all_bytes.bin": bytes(range(256)) * 256}
 # + a self-hosted conda channel at /test-channel/ (tests/npm/test_channel.py)
 TEST_DATA.update(test_channel.build())
@@ -117,19 +124,45 @@ async def run_page(page_dir, browser_name="chromium", options=None, headless=Tru
     server, base_url = serve(page_dir)
     try:
         async with async_playwright() as p:
-            browser = await getattr(p, browser_name).launch(headless=headless)
+            # chromium: `globalThis.gc()` for the tests that need the JS
+            # garbage collector to run at a known point (the other browsers
+            # have no such switch: those tests skip there)
+            args = ["--js-flags=--expose-gc"] if browser_name == "chromium" else []
+            browser = await getattr(p, browser_name).launch(headless=headless, args=args)
             try:
                 page = await browser.new_page()
-                page.on("console", lambda msg: print(msg.text, flush=True))
-                page.on("pageerror", lambda err: print(f"[page error] {err}", flush=True))
+                # when the page last showed a sign of life, what it said last,
+                # and whether the browser reported it as crashed
+                state = {"heard": time.monotonic(), "last": "", "crashed": False}
+
+                def heard(text):
+                    state["heard"] = time.monotonic()
+                    state["last"] = text
+                    print(text, flush=True)
+
+                page.on("console", lambda msg: heard(msg.text))
+                page.on("pageerror", lambda err: heard(f"[page error] {err}"))
+                page.on("crash", lambda _page: state.update(crashed=True))
                 query = urllib.parse.urlencode(options)
                 await page.goto(f"{base_url}/index.html?{query}")
-                try:
-                    await page.wait_for_function(
-                        "() => window.__pyjs_result !== undefined", timeout=TIMEOUT_S * 1000
-                    )
-                except Exception as e:
-                    return {"ok": False, "error": f"no result within {TIMEOUT_S}s: {e}"}
+                start = time.monotonic()
+                while True:
+                    try:
+                        # (in short slices, to look at the guards in between)
+                        await page.wait_for_function("() => window.__pyjs_result !== undefined", timeout=5000)
+                        break
+                    except Exception as e:
+                        if state["crashed"]:
+                            return {"ok": False, "crashed": True, "error": f"the page crashed; last output: {state['last']}"}
+                        silent = time.monotonic() - state["heard"]
+                        if silent > SILENCE_S:
+                            return {
+                                "ok": False,
+                                "crashed": True,
+                                "error": f"no output for {int(silent)}s, the page seems dead; last output: {state['last']}",
+                            }
+                        if time.monotonic() - start > TIMEOUT_S:
+                            return {"ok": False, "crashed": True, "error": f"no result within {TIMEOUT_S}s: {e}"}
                 return await page.evaluate("() => window.__pyjs_result")
             finally:
                 await browser.close()
@@ -147,7 +180,9 @@ def run(page_dir, browser_name, options, result_json=None, meta=None, retries=0,
     """
     result = asyncio.run(run_page(page_dir, browser_name, options))
     for attempt in range(1, retries + 1):
-        if "error" not in result:
+        # (a dead page is no setup problem: running it again would only die
+        # again)
+        if "error" not in result or result.get("crashed"):
             break
         print(
             f"\nsetup failed, retry {attempt} / {retries} in {retry_delay}s: "

@@ -47,31 +47,47 @@ pixi run test wasm32 chromium "main worker" numpy no-jspi   # JSPI switched off
 `test` builds the npm package of that architecture and runs the suite on it;
 `test-npm` runs it on both architectures, tests the `lock` CLI and runs the
 suite on apps built with the bundlers. Browsers: `chromium`, `firefox`,
-`webkit` (the engine of Safari); modes: `main`, `worker`. One test suite
-(`tests/`), run inside the browser by `tests/main.py`:
+`webkit` (the engine of Safari); modes: `main`, `worker`. Every test must pass
+in all of them, and with JSPI switched off.
 
-| | | |
-|---|---|---|
-| `tests/js/test_*.js` | JavaScript tests of the Module API | ES modules, every exported `test_*(pyjs)` |
-| `tests/async/test_*.py` | async Python tests | own runner (pytest cannot await in the browser) |
-| `tests/sync/test_*.py` | sync Python tests | pytest |
-| `tests/npm/test_*.py` | the npm package: installs, archives, cache, progress, channels | own runner |
+One test suite (`tests/`), and the whole pytest session runs **inside the
+browser**: `tests/main.py` is started on the page and runs `pytest.main()`
+over `tests/`:
+
+| | |
+|---|---|
+| `tests/test_*.py` | the tests of pyjs. Plain functions are normal pytest tests. `async def` tests are collected by pytest too, but awaited after `pytest.main()` returned (pytest cannot await inside the browser, see `tests/pytest_async.py`); fixtures with cleanup do not work for them |
+| `tests/js/test_*.js` | JavaScript tests (ES modules, every exported `test_*(pyjs)` function), run as pytest tests by `tests/test_js.py` |
+| `tests/pyodide/` | pyodide's test suite (release 314.0.8, MPL-2.0), adapted to pyjs: the API follows pyodide / PEP 818. What pyjs does not have is kept as `xfail` with the reason, see `tests/pyodide/README.md` |
+
+Tests of the npm package (`test_install.py`, `test_channel.py`, ...) skip
+themselves on pages without it. Shared helpers: `tests/helpers.py`. No test
+depends on timing (CI runners are slow): the order is made explicit, e.g. with
+a promise the test resolves itself (`tests/test_stack_switching.py`); speed
+belongs in the benchmarks.
 
 It runs on **pages**, each a different way of loading pyjs, all with the same
 harness. `pyjs_test_driver` (in this repository) creates and runs them:
 
 ```bash
-# kinds: npm, vite, webpack, rollup, esbuild, parcel
+# kinds: npm, vite, webpack, rollup, esbuild, parcel, pyodide
 python -m pyjs_test_driver build-page <kind> --out <dir> ...
 
 # every browser x mode, then a summary
 python -m pyjs_test_driver run <dir> --browser chromium firefox \
     --mode main worker [--disable-jspi]
+
+# only some tests (a pytest -k expression / one file), xfail tests as normal ones
+python -m pyjs_test_driver run <dir> --option filter=test_proxy_types
+python -m pyjs_test_driver run <dir> --option file=pyodide/test_pyodide_jsproxy.py
+python -m pyjs_test_driver run <dir> --option runxfail=1
 ```
 
 - `npm`: the npm package; the test packages are solved and installed at
   runtime, a package of the driver's test channel is pinned
 - the bundler pages: an app around the npm package, built with that bundler
+- `pyodide`: a pyodide release, for the reference benchmarks
+  (`pixi run bench-pyodide`)
 
 A page dir only has to follow a small contract: `index.html` reads its options
 from the url, brings up pyjs, runs the suite with the shared
@@ -84,6 +100,8 @@ the page dir together with `tests/` and drives the browser (playwright).
 pixi run bench wasm32
 # bench <arch> [browsers] [modes] [filter]
 pixi run bench wasm32 "chromium firefox" "main worker" async
+# the same benchmarks on pyodide (the reference, wasm32 only)
+pixi run bench-pyodide chromium worker
 ```
 
 The benchmarks in `benchmarks/` measure the Python ↔ JavaScript FFI and the
@@ -101,7 +119,8 @@ async def bench_asyncio_sleep_0(benchmark):
 ```
 
 The results are stored in
-`build_root/benchmarks/<wasm>/<time>_<browser>_<mode>.json`. They run
+`build_root/benchmarks/<wasm>/<time>_<browser>_<mode>.json` (pyodide:
+`build_root/benchmarks/pyodide/`). They run
 on the npm page (`pyjs_test_driver run ... --entry benchmarks`).
 `python benchmarks/report.py <json>...` turns them into markdown tables; the
 CI (`.github/workflows/bench.yml`) runs the benchmarks for every architecture
@@ -116,3 +135,14 @@ pixi run docs                  # docs [out dir], default build_root/docs_html
 builds the npm package (deployed next to the html, the <a href="playground/index.html">playground</a>
 loads it), pins the playground's packages (`pyjs-lock.json`, no solver in the
 browser) and builds the docs with Sphinx.
+
+While writing docs:
+
+```bash
+pixi run docs-serve            # docs-serve [port], default 8000
+```
+
+serves the docs at `http://127.0.0.1:8000` and rebuilds them on every change
+(`docs/` and the docstrings in `module/` / `stubs/`), the browser reloads by
+itself (`sphinx-autobuild`). Only Sphinx runs, no npm package build: the
+playground and the run buttons use the package of the last `pixi run docs`.

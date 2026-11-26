@@ -23,6 +23,11 @@ from typing import Any, Dict, List, Tuple, Union
 from .core import can_run_sync, jspi_enabled, run_sync
 from .ffi import create_proxy
 
+# (what `from pyjs.webloop import *` in pyjs/__init__.py makes available as
+# `pyjs.<name>`: without this list every import above would be a public
+# name of pyjs, `pyjs.os`, `pyjs.sys`, ...)
+__all__ = ["WebLoop", "WebLoopPolicy"]
+
 
 class _MacrotaskQueue:
     """Run python callables as separate macrotasks, as soon as possible.
@@ -124,15 +129,30 @@ _js_once_callback = js.Function(
 )
 
 
+class _TimerHandle(asyncio.TimerHandle):
+    """What `WebLoop.call_later` returns: an ``asyncio.TimerHandle`` (with
+    ``when()``) that also knows its browser timer, so that ``cancel()`` can
+    stop it (`WebLoop._timer_handle_cancelled`)."""
+
+    __slots__ = (
+        # the id `setTimeout` returned
+        "_js_timer",
+        # the proxy of the Python function the timer calls; None once the
+        # timer fired or was stopped
+        "_js_callback",
+    )
+
+
 class WebLoop(asyncio.AbstractEventLoop):
-    """A custom event loop for use in pyodide
+    """The asyncio event loop of pyjs (adapted from pyodide's).
 
     Schedules tasks on the browser event loop. Does no lifecycle management and runs
     forever.
 
-    ``run_forever`` and ``run_until_complete`` cannot block like a normal event loop would
-    because we only have one thread so blocking would stall the browser event loop
-    and prevent anything from ever happening.
+    ``run_forever`` cannot block like a normal event loop would: there is one
+    thread, so blocking would stall the browser event loop and prevent anything
+    from ever happening. ``run_until_complete`` blocks only where the Python
+    stack can be suspended (JSPI, `pyjs.can_run_sync`), see there.
 
     We defer all work to the browser event loop. To ensure that this event loop
     doesn't stall out UI and other browser handling, each callback is scheduled on
@@ -150,6 +170,7 @@ class WebLoop(asyncio.AbstractEventLoop):
         self._exception_handler = None
         self._current_handle = None
         self._set_timeout = js.setTimeout
+        self._clear_timeout = js.clearTimeout
         # with JSPI the callbacks are entered via a promising call, so that
         # task steps may suspend (pyjs.run_sync)
         self._promising = jspi_enabled()
@@ -217,7 +238,14 @@ class WebLoop(asyncio.AbstractEventLoop):
         With JSPI, where `pyjs.can_run_sync()` is True (e.g. in an asyncio task
         or a `callPromising` call), it does the same: the Python stack is
         suspended (`pyjs.run_sync`) until the future is done, and its result is
-        returned (or its exception raised). `asyncio.run` works there too.
+        returned (or its exception raised).
+
+        (`asyncio.run` does not work anywhere: it refuses to start while a
+        loop is running, and this loop always is.)
+
+        Note that the two cases return different things: the result of the
+        future, or the future itself. Code that must work in both asks
+        `pyjs.can_run_sync()` first.
 
         Otherwise it cannot block (one thread: blocking would stall the browser
         event loop), so it only ensures that the future is scheduled and returns
@@ -295,20 +323,38 @@ class WebLoop(asyncio.AbstractEventLoop):
 
         This uses `setTimeout(callback, delay)`
         """
-        h = asyncio.Handle(callback, args, self, context=context)
-        run_handle = self._make_handle_runner(h)
+        h = _TimerHandle(self.time() + delay, callback, args, self, context=context)
+
+        def run_handle():
+            # (the timer fired: nothing left for cancel() to stop, and the
+            # JavaScript function below releases the proxy itself)
+            h._js_callback = None
+            if not h.cancelled():
+                h._run()
 
         # a JavaScript function for the timer that calls `run_handle` once and
         # then releases it (see _js_once_callback)
-        once_callback = _js_once_callback(create_proxy(run_handle), self._promising)
+        h._js_callback = create_proxy(run_handle)
+        once_callback = _js_once_callback(h._js_callback, self._promising)
         # The delay in milliseconds, within what setTimeout can do:
         #   - a time in the past means "as soon as possible", as in asyncio
         #   - setTimeout keeps the delay as 32 bit integer: a larger value
         #     overflows and the timer fires immediately. So very long delays
         #     (asyncio.sleep(1e9)) are cut to the maximum, about 24.8 days.
         milliseconds = min(max(delay, 0) * 1000, 2**31 - 1)
-        self._set_timeout(once_callback, milliseconds)
+        h._js_timer = self._set_timeout(once_callback, milliseconds)
         return h
+
+    def _timer_handle_cancelled(self, handle):
+        """Called by ``handle.cancel()`` of a `call_later` handle: stop the
+        browser timer and release the Python callback now. (Otherwise both
+        would stay until the delay is over, which for a long
+        ``asyncio.sleep`` that was cancelled can be days.)"""
+        proxy = handle._js_callback
+        if proxy is not None:
+            handle._js_callback = None
+            self._clear_timeout(handle._js_timer)
+            proxy.destroy()
 
     def call_at(
         self,

@@ -91,8 +91,8 @@ enum JsRc : int
 //   OP_CREATE_PROXY   pyjs_core.create_proxy(obj)         create_proxy
 //   OP_ID             hash(proxy), proxy.js_id            js_proxy_hash / _js_id
 //
-// All are tested: tests/test_pyjs.py, tests/test_proxy_types.py and the
-// ported pyodide tests (tests/pyodide/test_pyodide_jsproxy.py).
+// Their tests: tests/test_pyjs.py, tests/test_proxy_types.py and the ported
+// pyodide tests (tests/pyodide/test_pyodide_jsproxy.py).
 enum JsOp : int
 {
     OP_GETITEM = 0,
@@ -229,10 +229,10 @@ namespace pyjs
         // them derive from the type for "no abilities" (index 0), which is
         // the `JSProxy` users see, so isinstance(x, JSProxy) holds for all.
         //
-        // (One pointer per possible combination: 16384 of them, almost all
-        // never used. That is 64 KiB of memory that starts out as zeros,
-        // which costs nothing in the binary, and finding the type is a
-        // single array access.)
+        // (One pointer per possible combination: JS_FLAG_END = 65536 of
+        // them, almost all never used. That is 256 KiB of memory on wasm32
+        // (512 KiB on wasm64) that starts out as zeros, which costs nothing
+        // in the binary, and finding the type is a single array access.)
         PyTypeObject* g_types[JS_FLAG_END] = {};
 
         // The Python functions / classes of the `pyjs` package this core
@@ -1127,7 +1127,10 @@ namespace pyjs
         // an int that is no JS number: its decimal digits, freed by JS
         bool bigint_to_slot(PyObject* o, Slot* slot)
         {
-            PyObject* digits = PyObject_Str(o);
+            // The repr of `int` itself, not str(o): `o` may be an instance of
+            // a subclass with a `__str__` of its own (an Enum with int
+            // values prints its name), and JavaScript needs the digits.
+            PyObject* digits = PyLong_Type.tp_repr(o);
             if (digits == nullptr)
             {
                 return false;
@@ -1399,6 +1402,27 @@ namespace pyjs
             default:
                 PyErr_Format(PyExc_SystemError, "pyjs: unknown slot tag %d", slot->tag);
                 return nullptr;
+        }
+    }
+
+    void discard_js_slots(Slot* slots, Py_ssize_t n)
+    {
+        for (Py_ssize_t i = 0; i < n; ++i)
+        {
+            const int tag = slots[i].tag & 0xff;
+            if (tag == T_JS)
+            {
+                // the new handle meant for the JSProxy, and the one of `this`
+                pyjs_js_free(slots[i].aux, slots[i].i.b);
+            }
+            else if (tag == T_BUFFER || (tag == T_ERROR && slots[i].aux != 0))
+            {
+                pyjs_js_free(slots[i].aux, 0);
+            }
+            else if ((tag == T_STR || tag == T_BIGINT) && (slots[i].tag & T_OWNED))
+            {
+                std::free(num_to_ptr<char>(slots[i].num));
+            }
         }
     }
 

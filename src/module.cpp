@@ -25,9 +25,21 @@ EM_JS(int, pyjs_js_buffer_info, (int h, double out), {
     return pyjsCore.bufferInfo(h, out);
 });
 
-// copy the bytes of a typed array / ArrayBuffer / DataView to `ptr`
-EM_JS(void, pyjs_js_buffer_copy, (int h, double ptr), {
-    pyjsCore.bufferCopy(h, ptr);
+// Copy the bytes of a typed array / ArrayBuffer / DataView to `ptr`, where
+// there is room for `size` bytes. 0, or 1 if the buffer does not have that
+// size any more (see bufferCopy in src/js/jsops.ts).
+EM_JS(int, pyjs_js_buffer_copy, (int h, double ptr, double size), {
+    return pyjsCore.bufferCopy(h, ptr, size);
+});
+
+// A synchronous entry into Python that does not come through a PyProxy
+// starts / ends (see SyncEntry below, syncEnter in src/js/jspi.ts).
+EM_JS(int, pyjs_js_sync_enter, (), {
+    return pyjsCore.syncEnter();
+});
+
+EM_JS(void, pyjs_js_sync_leave, (int could_suspend), {
+    pyjsCore.syncLeave(could_suspend);
 });
 
 namespace
@@ -50,11 +62,27 @@ namespace
     }
 
     // a JS typed array with the items of a contiguous 1d buffer
-    nb::object buffer_to_js(nb::handle obj, bool view)
+    //   view:     the typed array is a view of the buffer's memory (no copy)
+    //   writable: with view, refuse read-only buffers (TypeError). A JS typed
+    //             array cannot be read-only, so a view of `bytes` would let JS
+    //             change an object Python assumes immutable. The public
+    //             buffer_to_js_typed_array asks for this; JSBuffer.assign does
+    //             not (it only reads through the view, right away).
+    // (the check is here, not in Python: `memoryview(x).readonly` there
+    // nearly doubled the cost of a view)
+    nb::object buffer_to_js(nb::handle obj, bool view, bool writable)
     {
         Py_buffer buffer;
         if (PyObject_GetBuffer(obj.ptr(), &buffer, PyBUF_FORMAT | PyBUF_C_CONTIGUOUS) != 0)
         {
+            throw nb::python_error();
+        }
+        if (view && writable && buffer.readonly)
+        {
+            PyBuffer_Release(&buffer);
+            PyErr_SetString(PyExc_TypeError,
+                            "buffer_to_js_typed_array: view=True needs a writable buffer, this one is "
+                            "read-only (JavaScript could change it); use view=False for a copy");
             throw nb::python_error();
         }
         // (no format: unsigned bytes; a byte order / size prefix is skipped)
@@ -70,7 +98,7 @@ namespace
             rc = pyjs_js_typed_array(pyjs::ptr_to_num(buffer.buf),
                                      static_cast<double>(buffer.len / buffer.itemsize),
                                      // (a C long as the fixed size type, see slot.hpp)
-                                     pyjs::js_buffer_format(format[0]),
+                                     pyjs::js_buffer_format(format[0], buffer.itemsize),
                                      view ? 1 : 0,
                                      pyjs::ptr_to_num(&out));
         }
@@ -99,7 +127,12 @@ namespace
             throw nb::python_error();
         }
         nb::object bytes = checked(PyBytes_FromStringAndSize(nullptr, static_cast<Py_ssize_t>(out.num)));
-        pyjs_js_buffer_copy(handle, pyjs::ptr_to_num(PyBytes_AS_STRING(bytes.ptr())));
+        if (pyjs_js_buffer_copy(handle, pyjs::ptr_to_num(PyBytes_AS_STRING(bytes.ptr())), out.num) != 0)
+        {
+            PyErr_SetString(PyExc_BufferError,
+                            "the JavaScript buffer changed its size (or was detached) while it was copied");
+            throw nb::python_error();
+        }
         const char format[2] = { static_cast<char>(out.aux), 0 };
         return nb::make_tuple(bytes, nb::str(format));
     }
@@ -113,9 +146,29 @@ namespace
     // ----------------------------------------------------------------------
     // emscripten main loop / requestAnimationFrame loop
     // ----------------------------------------------------------------------
+    // The two callbacks below are entries from JavaScript into Python that do
+    // not come through a PyProxy (emscripten calls these C functions from a
+    // browser event). The JavaScript side counts the entries that are
+    // running (see src/js/jspi.ts): Python code in them cannot suspend
+    // (run_sync), and a `callPromising` made from them must wait until they
+    // returned. So they tell it: SyncEntry at the start, gone at the end.
+    struct SyncEntry
+    {
+        int could_suspend;
+        SyncEntry()
+            : could_suspend(pyjs_js_sync_enter())
+        {
+        }
+        ~SyncEntry()
+        {
+            pyjs_js_sync_leave(could_suspend);
+        }
+    };
+
     // one iteration of the main loop: call the Python callable
     void main_loop_callback(void* callable)
     {
+        SyncEntry entry;
         PyObject* ret = PyObject_CallNoArgs(static_cast<PyObject*>(callable));
         if (ret == nullptr)
         {
@@ -136,6 +189,7 @@ namespace
     // loop owns a reference to the callable, released when the loop ends.
     bool animation_frame_callback(double time, void* user_data)
     {
+        SyncEntry entry;
         PyObject* callable = static_cast<PyObject*>(user_data);
         PyObject* time_obj = PyFloat_FromDouble(time);
         PyObject* ret = time_obj != nullptr ? PyObject_CallOneArg(callable, time_obj) : nullptr;
@@ -226,7 +280,8 @@ NB_MODULE(pyjs_core, m)
         "A deep copy of a Python value as JavaScript value: list / tuple -> Array, dict -> "
         "Object, set -> Set, buffer -> typed array; other objects become proxies. depth: levels of "
         "containers to convert, -1 for all.");
-    m.def("buffer_to_js", &buffer_to_js, "a typed array for a 1d buffer (view: of the wasm memory, no copy)");
+    m.def("buffer_to_js", &buffer_to_js, "a typed array for a 1d buffer (view: of the wasm memory, no copy; writable: "
+          "a view of a read-only buffer is a TypeError)");
     m.def("js_to_bytes", &js_to_bytes, "(bytes, format) of a typed array / ArrayBuffer / DataView");
 
     // pyjs_core.set_hooks(...): the Python package `pyjs` hands the core the

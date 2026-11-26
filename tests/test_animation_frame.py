@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 import pyjs
 
 
@@ -33,8 +35,7 @@ async def test_animation_frame_loop_stops_on_false():
     """The loop calls the callback once per frame with the frame time and stops
     when it returns False (no further calls)."""
     if not _has_raf():
-        print("skip test_animation_frame_loop_stops_on_false: no requestAnimationFrame")
-        return
+        pytest.skip("no requestAnimationFrame")
     done = asyncio.get_running_loop().create_future()
     times = []
 
@@ -59,8 +60,7 @@ async def test_animation_frame_loop_stops_on_false():
 async def test_animation_frame_loop_cancel():
     """`cancel()` stops the loop before its next frame."""
     if not _has_raf():
-        print("skip test_animation_frame_loop_cancel: no requestAnimationFrame")
-        return
+        pytest.skip("no requestAnimationFrame")
     calls = []
     loop = pyjs.request_animation_frame_loop(lambda t: calls.append(t) or True)
     loop.cancel()
@@ -72,8 +72,7 @@ async def test_animation_frame_loop_cancel():
 async def test_animation_frame_loop_stops_on_exception():
     """An exception in the callback is printed and stops the loop."""
     if not _has_raf():
-        print("skip test_animation_frame_loop_stops_on_exception: no requestAnimationFrame")
-        return
+        pytest.skip("no requestAnimationFrame")
     calls = []
 
     def tick(time_ms):

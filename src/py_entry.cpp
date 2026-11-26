@@ -1,5 +1,5 @@
 // JavaScript -> Python: the wasm exports the PyProxy objects of
-// include/pyjs/pre_js/pyproxy.js call. Plain exports (no binding layer):
+// src/js/pyproxy.ts call. Plain exports (no binding layer):
 // arguments arrive as slots (slot.hpp), the result is written into slots, no
 // exception crosses the boundary.
 #include "slot.hpp"
@@ -30,7 +30,7 @@ namespace pyjs
 {
     namespace
     {
-        // operations of pyjs_op, see pyproxy.js
+        // operations of pyjs_op (the same numbers as PyOp in src/js/pyproxy.ts)
         enum PyOp : int
         {
             P_GETATTR = 0,
@@ -47,18 +47,36 @@ namespace pyjs
             P_ITER = 11,
             P_NEXT = 12,
             P_IMPORT = 13,
+            // "name" in proxy: only yes / no (unlike P_GETATTR no value
+            // goes to JavaScript, so there is no reference to give back)
+            P_HASATTR = 14,
         };
 
-        // return codes (pyproxy.js)
+        // return codes (the same numbers as Rc in src/js/pyproxy.ts)
         constexpr int RC_OK = 0;
         constexpr int RC_ERROR = 1;
         constexpr int RC_NO_ATTR = 2;
         constexpr int RC_STOP = 5;
+        // only pyjs_call_promising: the task could not be started
+        constexpr int RC_NOT_ENTERED = 8;
 
-        // The last result that JavaScript still has to read (see write_result
-        // for when that is needed). It stays alive until the next result
-        // replaces it: one object is kept a little longer than necessary,
-        // which is harmless.
+        // The last result that JavaScript still has to read.
+        //
+        // Why this exists: a result slot can POINT INTO the Python object it
+        // describes (the text of a str, the handle of a JSProxy; see "who
+        // owns what" in slot.hpp, and write_result). JavaScript reads the
+        // slot after the C function returned, so the object must not die
+        // when the function drops its reference. It is parked here instead,
+        // until the next result replaces it. That is safe for the
+        // synchronous exports, because JavaScript decodes a result right
+        // after the call, before it can make another one. (One object is
+        // kept a little longer than necessary, which only costs memory if
+        // the last result happens to be big.)
+        //
+        // It is NOT safe for pyjs_call_promising: JavaScript reads that
+        // result in a later microtask, after other calls may have replaced
+        // g_keep. That export takes the object out of here and hands it to
+        // JavaScript in a result slot of its own (out[3]), see there.
         PyObject* g_keep = nullptr;
 
         inline void keep(PyObject* o)
@@ -81,10 +99,13 @@ namespace pyjs
             PyObject* traceback = PyException_GetTraceback(exc);
             PySys_SetObject("last_traceback", traceback != nullptr ? traceback : Py_None);
             Py_XDECREF(traceback);
-            out[0].tag = T_ERROR;
-            out[0].aux = 0;
-            out[0].num = ptr_to_num(exc);
 
+            // The text first, the slots after it: formatting runs Python
+            // code (the `__str__` of the exception), which may call
+            // JavaScript, which may call Python again and get an error of
+            // its own, written into the very same result slots (the
+            // synchronous exports share them). Nothing of this error may be
+            // in the slots before that is over.
             PyObject* message = nullptr;
             if (hooks().format_exception != nullptr)
             {
@@ -104,6 +125,9 @@ namespace pyjs
                 to_slot(message, &out[1]);
             }
             keep(message);
+            out[0].tag = T_ERROR;
+            out[0].aux = 0;
+            out[0].num = ptr_to_num(exc);
 
             const char* type_name = Py_TYPE(exc)->tp_name;
             out[2].tag = T_STR;
@@ -172,6 +196,8 @@ namespace pyjs
                 argv = static_cast<PyObject**>(PyMem_Malloc((n + 1) * sizeof(PyObject*)));
                 if (argv == nullptr)
                 {
+                    // (nothing read: what the slots hand over goes back)
+                    discard_js_slots(slots, n + nkw);
                     PyErr_NoMemory();
                     return write_error(out);
                 }
@@ -183,6 +209,10 @@ namespace pyjs
                 argv[converted] = from_slot(&slots[converted]);
                 if (argv[converted] == nullptr)
                 {
+                    // the slots after the one that failed are never read:
+                    // what they hand over (JS handles, malloc'ed text) goes
+                    // back, see discard_js_slots
+                    discard_js_slots(&slots[converted + 1], n + nkw - converted - 1);
                     break;
                 }
             }
@@ -192,6 +222,10 @@ namespace pyjs
             {
                 kwnames = PyTuple_New(nkw);
                 ok = kwnames != nullptr;
+                if (!ok)
+                {
+                    discard_js_slots(&slots[n], nkw);
+                }
                 for (int i = 0; ok && i < nkw; ++i)
                 {
                     PyObject* name = from_slot(&slots[n + i]);
@@ -199,6 +233,10 @@ namespace pyjs
                     if (ok)
                     {
                         PyTuple_SET_ITEM(kwnames, i, name);
+                    }
+                    else
+                    {
+                        discard_js_slots(&slots[n + i + 1], nkw - i - 1);
                     }
                 }
             }
@@ -248,10 +286,15 @@ namespace pyjs
             // every operation has at most two arguments
             PyObject* a = nullptr;
             PyObject* b = nullptr;
-            const bool has_a = op <= P_CONTAINS || op == P_IMPORT;
+            const bool has_a = op <= P_CONTAINS || op == P_IMPORT || op == P_HASATTR;
             const bool has_b = op == P_SETATTR || op == P_SETITEM;
             if (has_a && (a = from_slot(&args[0])) == nullptr)
             {
+                // (the second argument is never read: give back what it owns)
+                if (has_b)
+                {
+                    discard_js_slots(&args[1], 1);
+                }
                 return write_error(out);
             }
             if (has_b && (b = from_slot(&args[1])) == nullptr)
@@ -339,6 +382,11 @@ namespace pyjs
                 case P_IMPORT:
                     rc = write_result(PyImport_Import(a), out);
                     break;
+                case P_HASATTR:
+                    // (1 / 0, or -1 if the lookup itself raised something
+                    // other than AttributeError)
+                    rc = write_status(PyObject_HasAttrWithError(obj, a), out);
+                    break;
                 default:
                     PyErr_Format(PyExc_SystemError, "pyjs: unknown operation %d", op);
                     rc = write_error(out);
@@ -384,21 +432,36 @@ extern "C"
     EMSCRIPTEN_KEEPALIVE int pyjs_call_promising(double fn, double args, int npos, int nkw, double out)
     {
         pyjs::Slot* result = pyjs::num_to_ptr<pyjs::Slot>(out);
+        result[3].tag = pyjs::T_UNDEF;
+        result[3].num = 0.0;
         if (pyjs_enter_promising_task() != 0)
         {
-            return pyjs::write_error(result);
+            // The task was never started (another one is running, which
+            // JavaScript normally rules out, or out of memory). Reported
+            // with a return code of its own, so that JavaScript knows:
+            // nothing ran and pyjs_js_task_done was not called. The result
+            // area is filled like for any error (out[3]: the text of the
+            // error message, which JavaScript reads later).
+            pyjs::write_error(result);
+            result[3].num = pyjs::ptr_to_num(pyjs::g_keep);
+            pyjs::g_keep = nullptr;
+            return pyjs::RC_NOT_ENTERED;
         }
         const int rc = pyjs::call(pyjs::num_to_ptr<PyObject>(fn),
                                   pyjs::num_to_ptr<pyjs::Slot>(args),
                                   npos,
                                   nkw,
                                   result);
+        // Take over what keeps the result alive BEFORE the task's state is
+        // dropped: dropping it releases objects (the task's contextvars
+        // context, ...), which can run Python code (`__del__`) that makes
+        // further calls, and each of those replaces g_keep.
+        PyObject* kept = pyjs::g_keep;
+        pyjs::g_keep = nullptr;
         // (pyjs::call took a raised exception off the thread state: the
         // task's state can be dropped)
         pyjs_exit_promising_task();
-        result[3].tag = pyjs::T_UNDEF;
-        result[3].num = pyjs::ptr_to_num(pyjs::g_keep);
-        pyjs::g_keep = nullptr;
+        result[3].num = pyjs::ptr_to_num(kept);
         pyjs_js_task_done();
         return rc;
     }

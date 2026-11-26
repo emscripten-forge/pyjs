@@ -48,7 +48,9 @@ import { enterTask } from "./stack_state";
 import {
   PyFlag,
   PYPROXY,
+  alloc,
   decode,
+  discardSlots,
   encode,
   scratchMark,
   scratchRelease,
@@ -60,7 +62,7 @@ import {
 
 /**
  * The operations JavaScript can do on a Python object through a PyProxy
- * (except calling it, which has an export of its own). Yes: these are what
+ * (except calling it, which has an export of its own): these are what
  * the methods / traps of a PyProxy end up as. They all go through ONE wasm
  * export, `pyjs_op(op, obj, args, out)` in src/py_entry.cpp, which dispatches
  * on this number; the numbers must be identical to `PyOp` there. (The same
@@ -71,6 +73,8 @@ import {
  *   CONTAINS proxy.has(k)           LEN                proxy.length
  *   REPR / STR  repr / str          TYPE               proxy.type
  *   ITER / NEXT for (x of proxy)    IMPORT             pyimport("name")
+ *   HASATTR  "name" in proxy (only yes / no: no value comes back that
+ *            somebody would have to release)
  */
 const enum PyOp {
   GETATTR = 0,
@@ -87,6 +91,7 @@ const enum PyOp {
   ITER = 11,
   NEXT = 12,
   IMPORT = 13,
+  HASATTR = 14,
 }
 
 /**
@@ -100,6 +105,9 @@ const enum Rc {
   ERROR = 1, // Python raised: the result slots describe the exception
   NO_ATTR = 2, // the attribute does not exist (AttributeError): `undefined` in JS
   STOP = 5, // the iterator is exhausted (StopIteration)
+  // only pyjs_call_promising: the task was not started (the result slots
+  // describe the exception), and the C side did not call taskDone
+  NOT_ENTERED = 8,
 }
 
 /**
@@ -192,7 +200,7 @@ export function initPyProxy(): void {
   if (jspi.supported) {
     pyCallPromising = (WebAssembly as any).promising(wasmExports.pyjs_call_promising);
   }
-  result = _malloc(3 * 16);
+  result = alloc(3 * 16);
 }
 
 // The backstop for proxies nobody destroyed.
@@ -209,8 +217,18 @@ export function initPyProxy(): void {
 // the reference is never released twice. (PythonError objects use the same
 // registry for the exception they hold.)
 const registry = new FinalizationRegistry((ptr: number) => {
-  pyDecref(ptr);
+  ownedProxies -= 1;
+  release(ptr);
 });
+
+// for tests: the number of owned PyProxies that hold a reference right now
+// (created, and neither destroyed nor collected)
+let ownedProxies = 0;
+
+/** for tests: see `ownedProxies` */
+export function ownedProxyCount(): number {
+  return ownedProxies;
+}
 
 /** a Python exception that reached JavaScript */
 export class PythonError extends Error {
@@ -224,15 +242,27 @@ export class PythonError extends Error {
    */
   __pyjs_exception: number;
 
-  /** `message`: the formatted Python traceback */
-  constructor(type: string, message: string, exception: number) {
+  /**
+   * `message`: the formatted Python traceback. `exception`: the address of
+   * the Python exception. pyjs always passes it; the class is public (for
+   * `instanceof`), so user code can construct one too, without: such an
+   * error stands for no Python exception (0) and is an ordinary JavaScript
+   * error when it reaches Python.
+   */
+  constructor(type: string, message: string, exception?: number) {
     super(message);
     this.name = "PythonError";
     this.type = type;
-    this.__pyjs_exception = exception;
-    registry.register(this, exception);
+    this.__pyjs_exception = typeof exception === "number" ? exception : 0;
+    if (this.__pyjs_exception !== 0) {
+      errorRegistry.register(this, this.__pyjs_exception);
+    }
   }
 }
+
+// releases the Python exception of a PythonError that was garbage collected
+// (the same backstop as `registry` for proxies)
+const errorRegistry = new FinalizationRegistry((exception: number) => release(exception));
 
 /**
  * The JS error for a Python exception. When a call into Python raised, the C
@@ -278,22 +308,33 @@ function callPython(state: State, args: ArrayLike<any>, kwargs: any): any {
   let slots = scratchSlots(n);
   const big = slots === 0;
   if (big) {
-    slots = _malloc(16 * n);
+    slots = alloc(16 * n);
   }
   // a synchronous entry: the Python code cannot suspend (JSPI)
   const couldSuspend = jspi.canSuspend;
   jspi.canSuspend = false;
   jspi.depth += 1;
   let rc;
+  // how many slots are encoded: if a later argument cannot be encoded (a
+  // destroyed proxy), what the earlier ones own is given back
+  let encoded = 0;
   try {
-    for (let i = 0; i < npos; i++) {
-      encode(args[i], slots + 16 * i, true);
+    for (; encoded < npos; encoded++) {
+      encode(args[encoded], slots + 16 * encoded, true);
     }
     for (let i = 0; i < nkw; i++) {
-      encode(kwargs[names![i]], slots + 16 * (npos + i), true);
+      // (names behind the values: encoded only counts the complete front)
       encode(names![i], slots + 16 * (npos + nkw + i), true);
+      encode(kwargs[names![i]], slots + 16 * (npos + i), true);
+      encoded += 1;
     }
+    encoded = -1; // all of them: the C side takes over
     rc = pyCall(ptr, slots, npos, nkw, result);
+  } catch (error) {
+    if (encoded >= 0) {
+      discardSlots(slots, encoded);
+    }
+    throw error;
   } finally {
     jspi.depth -= 1;
     jspi.canSuspend = couldSuspend;
@@ -337,21 +378,31 @@ async function callPythonPromising(state: State, args: ArrayLike<any>): Promise<
   const ptr = alive(state);
   pyIncref(ptr);
   let slots = 0;
+  // copies of argument proxies made for the wait, see below
+  let copies: any[] | null = null;
   try {
     if (jspi.depth > 0) {
+      // Python arguments of the JavaScript function that calls us are
+      // "borrowed" proxies: gone when that function returns, which is
+      // before this call starts. They are arguments of THIS call now, so
+      // each gets a proxy of its own for as long as this call takes.
+      copies = [];
+      args = Array.from(args, (arg) => ownedCopyOfBorrowed(arg, copies!));
       await nextMacrotask();
     }
     const npos = args.length;
     // the slots must outlive this function's synchronous part: not in the
     // scratch region. `out`: 4 slots, see pyjs_call_promising.
-    slots = _malloc(16 * npos + 64);
+    slots = alloc(16 * npos + 64);
     const out = slots + 16 * npos;
     const mark = scratchMark();
     let promise;
+    let encoded = 0;
     try {
-      for (let i = 0; i < npos; i++) {
-        encode(args[i], slots + 16 * i, true);
+      for (; encoded < npos; encoded++) {
+        encode(args[encoded], slots + 16 * encoded, true);
       }
+      encoded = -1;
       // Where the task's C stack goes (stack_state.ts). From here on until
       // the wasm export runs, nothing may use the C stack.
       enterTask();
@@ -364,10 +415,15 @@ async function callPythonPromising(state: State, args: ArrayLike<any>): Promise<
       // scratch region are not needed after this call returned its promise)
       promise = pyCallPromising(ptr, slots, npos, 0, out);
     } catch (error) {
-      // (only if calling the export itself failed: we are at the event loop
-      // level, see above)
-      jspi.depth = 0;
-      jspi.canSuspend = false;
+      if (encoded >= 0) {
+        // an argument could not be encoded: nothing was entered
+        discardSlots(slots, encoded);
+      } else {
+        // calling the export itself failed: we are at the event loop level
+        // (see above), where nothing is entered
+        jspi.depth = 0;
+        jspi.canSuspend = false;
+      }
       throw error;
     } finally {
       scratchRelease(mark);
@@ -381,6 +437,10 @@ async function callPythonPromising(state: State, args: ArrayLike<any>): Promise<
       jspi.canSuspend = false;
       throw error;
     }
+    if (rc === Rc.NOT_ENTERED) {
+      // the task never ran, so it could not undo the bookkeeping of above
+      taskDone();
+    }
     // out[3]: what keeps the result alive until it is decoded
     const keep = slotNum(out + 48);
     try {
@@ -390,14 +450,57 @@ async function callPythonPromising(state: State, args: ArrayLike<any>): Promise<
       return decode(out, true);
     } finally {
       if (keep !== 0) {
-        pyDecref(keep);
+        release(keep);
       }
     }
   } finally {
     if (slots !== 0) {
       _free(slots);
     }
+    if (copies !== null) {
+      destroyBorrowed(copies);
+    }
+    release(ptr);
+  }
+}
+
+/**
+ * For callPythonPromising: `arg` itself, or, if it is a borrowed PyProxy (an
+ * argument of the JavaScript function calling us, destroyed when that
+ * returns), an owned proxy of the same Python object, also appended to
+ * `copies` (which the caller destroys when its call is over).
+ */
+function ownedCopyOfBorrowed(arg: any, copies: any[]): any {
+  if (arg === null || (typeof arg !== "object" && typeof arg !== "function")) {
+    return arg;
+  }
+  const state: State | undefined = arg[PYPROXY];
+  if (state === undefined || state.owned) {
+    return arg;
+  }
+  const ptr = alive(state);
+  pyIncref(ptr);
+  const copy = create(ptr, state.flags, true);
+  copies.push(copy);
+  return copy;
+}
+
+/**
+ * Py_DECREF, as an entry into Python of its own: releasing the last
+ * reference of an object runs Python code (`__del__`, weakref callbacks),
+ * which can call JavaScript, which can call Python again. So it is counted
+ * like every other synchronous entry (see jspi.ts): code running in it
+ * cannot suspend, and a `callPromising` made from it waits for it to end.
+ */
+function release(ptr: number): void {
+  const couldSuspend = jspi.canSuspend;
+  jspi.canSuspend = false;
+  jspi.depth += 1;
+  try {
     pyDecref(ptr);
+  } finally {
+    jspi.depth -= 1;
+    jspi.canSuspend = couldSuspend;
   }
 }
 
@@ -428,7 +531,7 @@ function operate(op: PyOp, state: State, nargs: number, a?: any, b?: any): numbe
   let slots = scratchSlots(2);
   const big = slots === 0;
   if (big) {
-    slots = _malloc(32);
+    slots = alloc(32);
   }
   const couldSuspend = jspi.canSuspend;
   jspi.canSuspend = false;
@@ -475,24 +578,16 @@ function destroy(state: State): void {
   if (state.ptr !== 0) {
     if (state.owned) {
       registry.unregister(state);
+      ownedProxies -= 1;
     }
     const ptr = state.ptr;
     state.ptr = 0;
-    // (releasing the object can run Python code: __del__)
-    const couldSuspend = jspi.canSuspend;
-    jspi.canSuspend = false;
-    jspi.depth += 1;
-    try {
-      pyDecref(ptr);
-    } finally {
-      jspi.depth -= 1;
-      jspi.canSuspend = couldSuspend;
-    }
+    release(ptr);
   }
 }
 
 /**
- * Yes: a JavaScript promise for an awaitable Python object (a coroutine, a
+ * A JavaScript promise for an awaitable Python object (a coroutine, a
  * task, a future: anything Python can `await`). It resolves with what
  * awaiting the object in Python gives, or rejects with its exception (as
  * PythonError). Python runs the awaitable as an asyncio task; this only
@@ -543,7 +638,7 @@ const promiseMembers: Record<string, any> = {
  * Destroy the "borrowed" proxies of one call (see "Borrowed" proxies in
  * codec.ts).
  *
- * Yes: borrowed are exactly the proxies created automatically when Python
+ * Borrowed are exactly the proxies created automatically when Python
  * passes Python objects to JavaScript, i.e. the arguments of a call from
  * Python into JS (`js_function(some_list)`), the value of `obj.x = some_list`,
  * and so on. JavaScript did not ask for them and does not own them, so they
@@ -561,19 +656,25 @@ export function destroyBorrowed(proxies: any[]): void {
 /**
  * A JS iterator over a Python iterator: what `for (const x of proxy)` uses.
  *
- * `iterator` is the State (see State) of a PyProxy of the Python iterator
- * that iter(obj) returned (made by the Symbol.iterator method of the proxy).
+ * `proxy` is the PyProxy of the Python iterator that iter(obj) returned
+ * (made by the Symbol.iterator method of the proxy of `obj`).
  * Each step calls next() in Python; when the Python iterator is exhausted
  * (StopIteration: Rc.STOP), the loop ends. The iterator proxy is destroyed
  * at the end, also when the loop is left early (`break`: `finally`).
  */
-function* iterate(iterator: State): Generator<any> {
+function* iterate(proxy: any): Generator<any> {
+  // `proxy` itself must stay referenced for the whole loop, not only its
+  // State: an owned proxy nobody refers to any more is collected by
+  // JavaScript's garbage collector, and the registry then releases the
+  // Python iterator while the loop still uses it. The `finally` below uses
+  // `proxy`, which keeps it alive until the loop is over.
+  const iterator: State = proxy[PYPROXY];
   try {
     while (operate(PyOp.NEXT, iterator, 0) !== Rc.STOP) {
       yield decode(result, true);
     }
   } finally {
-    destroy(iterator);
+    destroy(proxy[PYPROXY]);
   }
 }
 
@@ -671,8 +772,8 @@ const members: Record<string | symbol, any> = Object.assign(Object.create(null),
     return options === undefined ? toJsHelper(this) : toJsHelper.callKwargs(this, options);
   },
   [Symbol.iterator](this: any): Iterator<any> {
-    const iterator = value(PyOp.ITER, this[PYPROXY], 0);
-    return iterate(iterator[PYPROXY]);
+    // (the proxy of the Python iterator, not just its State: see iterate)
+    return iterate(value(PyOp.ITER, this[PYPROXY], 0));
   },
   [Symbol.toPrimitive](this: any, hint: string): any {
     const str = value(PyOp.STR, this[PYPROXY], 0);
@@ -819,7 +920,10 @@ const handler: ProxyHandler<any> = {
           return false;
         }
     }
-    return operate(PyOp.GETATTR, target.state, 1, property) !== Rc.NO_ATTR;
+    // (not GETATTR: that hands over the attribute's value, a reference
+    // somebody would have to give back; this only answers yes / no)
+    operate(PyOp.HASATTR, target.state, 1, property);
+    return decode(result, true) === true;
   },
   deleteProperty(target, property) {
     if (typeof property === "symbol") {
@@ -841,6 +945,17 @@ const handler: ProxyHandler<any> = {
   apply(target, _thisArg, args) {
     return callPython(target.state, args, undefined);
   },
+  // `new proxy(...args)`: for a Python class that is calling it (Python has
+  // no `new`). Without this trap JavaScript would run the target function
+  // itself as constructor: an empty object, and Python never called.
+  construct(target, args) {
+    const instance = callPython(target.state, args, undefined);
+    if (instance === null || (typeof instance !== "object" && typeof instance !== "function")) {
+      // (JavaScript requires an object as result of `new`)
+      throw new TypeError("new: the Python callable returned a value that is no object in JavaScript");
+    }
+    return instance;
+  },
 };
 
 /**
@@ -856,17 +971,29 @@ const handler: ProxyHandler<any> = {
 function callableTarget(state: State): any {
   // A plain function (not an arrow function): with a `prototype`, like
   // every JS function that can be used as class (pyodide does the same).
-  const target: any = function () {};
-  target.state = state;
+  return withState(function () {}, state);
+}
+
+/**
+ * Store the State of a proxy on its target, as property `state` that does not
+ * show: not enumerable, so that Object.keys(proxy), JSON.stringify(proxy) and
+ * `{...proxy}` do not list it (they would also ask Python for an attribute
+ * `state`). Configurable and writable: only then may the `get` trap answer
+ * `proxy.state` with the Python attribute of that name (JavaScript checks
+ * that a proxy does not lie about fixed properties of its target).
+ */
+function withState(target: any, state: State): any {
+  Object.defineProperty(target, "state", { value: state, enumerable: false, configurable: true, writable: true });
   return target;
 }
 
 /** a PyProxy for the Python object `ptr` (the proxy owns a reference) */
 function create(ptr: number, flags: number, owned: boolean): any {
   const state: State = { ptr, flags, owned, destroyed: owned ? DESTROYED_MESSAGE : BORROWED_DESTROYED_MESSAGE };
-  const proxy = new Proxy(flags & PyFlag.CALLABLE ? callableTarget(state) : { state }, handler);
+  const proxy = new Proxy(flags & PyFlag.CALLABLE ? callableTarget(state) : withState({}, state), handler);
   if (owned) {
     registry.register(proxy, ptr, state);
+    ownedProxies += 1;
   }
   return proxy;
 }
@@ -894,13 +1021,26 @@ export function pythonErrorFor(proxy: any): PythonError {
 /** `import name` */
 export function pyimport(name: string): any {
   const mark = scratchMark();
-  const slot = scratchSlots(1);
+  let slot = scratchSlots(1);
+  const big = slot === 0;
+  if (big) {
+    slot = alloc(16);
+  }
+  // a synchronous entry like every other (see callPython)
+  const couldSuspend = jspi.canSuspend;
+  jspi.canSuspend = false;
+  jspi.depth += 1;
   let rc;
   try {
     encode(name, slot, true);
     rc = pyOp(PyOp.IMPORT, 0, slot, result);
   } finally {
+    jspi.depth -= 1;
+    jspi.canSuspend = couldSuspend;
     scratchRelease(mark);
+    if (big) {
+      _free(slot);
+    }
   }
   if (rc !== Rc.OK) {
     throw decodeError(result);

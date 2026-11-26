@@ -30,6 +30,15 @@ export interface PyProxy {
    * `f.callKwargs(1, { sep: "-" })` is python's `f(1, sep="-")`
    */
   callKwargs(...args: unknown[]): any;
+  /**
+   * Call the python object so that its code may wait for a promise with
+   * `pyjs.run_sync` (needs a browser with JSPI; without: a plain call).
+   * Returns a promise of the result. Called while other python code runs,
+   * the call starts after that code is done.
+   */
+  callPromising(...args: unknown[]): Promise<any>;
+  /** `new proxy(...)` of a python class creates an instance, like calling it */
+  new (...args: unknown[]): any;
   /** `obj[key]`; several keys: `obj[k1, k2]` */
   get(...keys: unknown[]): any;
   /** `obj[key] = value` */
@@ -38,14 +47,40 @@ export interface PyProxy {
   has(key: unknown): boolean;
   /** `del obj[key]` */
   delete(key: unknown): void;
-  /** `len(obj)` */
-  readonly length: number;
-  /** the name of the python type, e.g. `"list"` */
+  /**
+   * `len(obj)` for python objects that have a length. For others `length`
+   * is an ordinary python attribute (usually missing: `undefined`).
+   */
+  readonly length: any;
+  /**
+   * the name of the python type, e.g. `"list"`. (Always this: a python
+   * attribute that is itself called `type` is hidden by it.)
+   */
   readonly type: string;
   /** `str(obj)` */
   toString(): string;
-  /** a deep copy as JS value: list -> Array, dict -> Object, ... (python's `pyjs.to_js`) */
+  /**
+   * A deep copy as JS value: list -> Array, dict -> Object, set -> Set, ...
+   * (python's `pyjs.to_js`). `options` are the keyword arguments of that
+   * python function, with their python names: `{ depth: 1 }`,
+   * `{ dict_converter: ..., default_converter: ... }`.
+   */
   toJs(options?: Record<string, unknown>): any;
+  /**
+   * Only python awaitables (a coroutine, a task, a future): the proxy can be
+   * awaited, `await proxy` gives the result or throws the PythonError.
+   */
+  then?(onFulfilled?: (value: any) => any, onRejected?: (error: any) => any): Promise<any>;
+  catch?(onRejected?: (error: any) => any): Promise<any>;
+  finally?(onFinally?: () => void): Promise<any>;
+  /**
+   * Only python iterators and generators: the next item as `{ done, value }`
+   * (a generator: `next(value)` sends a value; `throw` / `return` as for
+   * JavaScript generators).
+   */
+  next?(value?: unknown): IteratorResult<any>;
+  throw?(error?: unknown): IteratorResult<any>;
+  return?(value?: unknown): IteratorResult<any>;
   /** another proxy of the same python object, with its own lifetime */
   copy(): PyProxy;
   /** release the python object: the proxy is unusable afterwards */
@@ -55,7 +90,12 @@ export interface PyProxy {
   [key: string]: any;
 }
 
-/** The error thrown in JavaScript when python code raised an exception. */
+/**
+ * The error thrown in JavaScript when python code raised an exception.
+ * (`pyjs.PythonError` is its class, for `error instanceof pyjs.PythonError`.
+ * It is made by pyjs: an error constructed by other code stands for no
+ * python exception.)
+ */
 export interface PythonError extends Error {
   /** the name of the python exception type, e.g. `"KeyError"` */
   type: string;
@@ -136,6 +176,16 @@ export interface IInstallOptions {
   verifySha256?: boolean;
 }
 
+/** The options of `runPython` / `runPythonAsync`. */
+export interface IRunOptions {
+  /** the global namespace to run in (a proxy of a python dict); default: `pyjs.globals` */
+  globals?: PyProxy;
+  /** the local namespace; default: the same as `globals` */
+  locals?: PyProxy;
+  /** the file name shown in tracebacks; default `"<exec>"` */
+  filename?: string;
+}
+
 /** The initialized pyjs runtime. */
 export interface PyjsModule {
   /**
@@ -143,22 +193,28 @@ export interface PyjsModule {
    * expression (like a notebook cell): `runPython("x = 20\nx + 1")` is 21.
    * Throws a `PythonError` if the code raises.
    * `options.globals` / `options.locals`: the namespaces to run in (proxies
-   * of python dicts); default: `globals`.
+   * of python dicts); default: `globals`. `options.filename`: the file name
+   * shown in tracebacks (default `"<exec>"`).
    */
-  runPython(code: string, options?: { globals?: PyProxy; locals?: PyProxy }): any;
+  runPython(code: string, options?: IRunOptions): any;
   /**
    * A JS value as Python object (python's `pyjs.to_py`): Array -> list, Map /
    * plain Object -> dict, Set -> set, ...; the result as PyProxy.
    */
   toPy(value: any, options?: { depth?: number; defaultConverter?: any }): any;
   /** like `runPython`, for code that uses `await` at the top level */
-  runPythonAsync(code: string, options?: { globals?: PyProxy; locals?: PyProxy }): Promise<any>;
+  runPythonAsync(code: string, options?: IRunOptions): Promise<any>;
   /** `import name`: the python module, e.g. `pyimport("math").sqrt(2)` */
   pyimport(name: string): PyProxy;
   /** the namespace code runs in by default: the globals of the module `__main__` */
   globals: PyProxy;
-  /** the class of the errors thrown for python exceptions (for `instanceof`) */
-  PythonError: new (...args: any[]) => PythonError;
+  /**
+   * the class of the errors thrown for python exceptions, for
+   * `error instanceof pyjs.PythonError` (pyjs creates them, see PythonError)
+   */
+  PythonError: Function & { prototype: PythonError };
+  /** set an environment variable of python (before `startPython`: python reads them at its start) */
+  setenv(name: string, value: string): void;
   /** the emscripten file system */
   FS: any;
 

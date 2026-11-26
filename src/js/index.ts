@@ -13,7 +13,7 @@
 //   pyproxy.ts  JS operating on Python objects (JS -> Python)
 //   jspi.ts     state of run_sync (suspending Python until a promise settles)
 //   stack_state.ts  the C stack data of suspended run_sync calls
-//   runtime.ts  Module.startPython, Module.exec, ...
+//   runtime.ts  Module.startPython, Module.runPython, ...
 //
 // `pyjsCore` (below) is the JavaScript counterpart of the Python module
 // `pyjs_core` (the C++ core): one object holding the JavaScript half of the
@@ -48,6 +48,7 @@ import {
   toPy,
   typedArray,
 } from "./jsops";
+import { syncEnter, syncLeave } from "./jspi";
 import { initPyProxy, taskDone } from "./pyproxy";
 import { installModuleApi } from "./runtime";
 
@@ -81,6 +82,8 @@ pyjsCore = {
   jspiAwait,
   jspiResume,
   taskDone,
+  syncEnter,
+  syncLeave,
 };
 
 // runs right away, while the runtime script loads: Module.startPython etc.

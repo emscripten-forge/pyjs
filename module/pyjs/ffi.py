@@ -144,19 +144,38 @@ def create_proxy(obj, *, roundtrip=True):
       value cannot destroy the PyProxy (keep the JSDoubleProxy for that).
 
     ```python
-    p = create_proxy([1, 2])
+    import js
+    from pyjs import create_proxy
+
+    data = [1, 2]
     arr = js.Array.new()
+
+    # roundtrip=True (the default): a JSDoubleProxy comes back
+    p = create_proxy(data)
     arr.push(p)
-    arr[0]              # p again (roundtrip=True); with roundtrip=False: [1, 2]
-    arr[0].unwrap()     # [1, 2]
-    p.destroy()
+    back = arr[0]                 # a JSDoubleProxy of the same PyProxy as p
+    assert back.unwrap() is data
+    back.destroy()                # (the same as p.destroy())
+
+    # roundtrip=False: the object itself comes back
+    p = create_proxy(data, roundtrip=False)
+    arr[0] = p
+    assert arr[0] is data
+    p.destroy()                   # only p can destroy it
     ```
 
     Example:
     ```python
+    import js
+    from pyjs import create_proxy
+
+    def on_click(event):
+        print("clicked")
+
+    button = js.document.createElement("button")
     handler = create_proxy(on_click)
     button.addEventListener("click", handler)
-    ...
+    button.click()                # prints "clicked"
     button.removeEventListener("click", handler)
     handler.destroy()
     ```

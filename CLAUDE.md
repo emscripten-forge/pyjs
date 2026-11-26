@@ -1,9 +1,13 @@
 # pyjs
 
-Python <-> JavaScript FFI for emscripten/wasm Python, built with pybind11 + embind.
-C++ in `src/` + `include/pyjs/`, JS glue in `include/pyjs/pre_js/` + `post_js/`
-(merged by `build_utils/merge_js.py`), Python module in `module/pyjs/`,
-type stubs of the C++ module `pyjs_core` in `stubs/`.
+Python <-> JavaScript FFI for emscripten/wasm Python. pyjs 6: the core is
+nanobind (only for the module `pyjs_core`) + plain wasm exports + EM_JS, no
+pybind11 / embind (except `src/extract.cpp` of the runtime). API = PEP 818 /
+pyodide. C++ in `src/` (`slot.hpp`, `js_proxy.cpp`, `deep.cpp`, `py_entry.cpp`,
+`module.cpp`, `stack_switching.c`), the JS half in `src/js/*.ts` (bundled by
+esbuild and embedded into libpyjs by `build_utils/embed_js.cmake`: no
+`--pre-js` / `--post-js` files), Python module in `module/pyjs/`, type stubs
+of `pyjs_core` for the docs in `stubs/`.
 Targets: Python 3.14, emscripten 6.0.8, emscripten-forge `6x` channel
 (`https://repo.prefix.dev/emscripten-forge/6x`), `wasm32` and `wasm64`.
 Packaged by the emscripten-forge recipe `recipes/recipes_wasm/pyjs` (packages
@@ -23,6 +27,7 @@ pixi run test wasm32 chromium "main worker" numpy no-jspi  # JSPI switched off a
 pixi run test wasm32 chromium main no-numpy
 pixi run bench wasm32 [browsers] [modes] [filter]          # benchmarks
 pixi run docs [out dir]                      # npm package + sphinx docs
+pixi run docs-serve [port]                   # sphinx-autobuild: rebuild + live reload (no npm build)
 pixi run npm-package [archs]                 # npm package (default wasm32 + wasm64)
 pixi run test-npm [browsers]                 # npm package + both archs, lock CLI, bundlers
 pixi run clean                               # rm -rf build_root (envs stay)
@@ -63,8 +68,8 @@ target (cmake option `PYJS_WEBGPU`, default ON; emscripten downloads the port
 on first use), so every executable linking pyjs gets it: the runtime and, via
 the exported `pyjsTargets.cmake`, xeus-python. As a `MAIN_MODULE` such an
 executable carries the whole JS side of `webgpu.h` (`Module.WebGPU`, `wgpu*`)
-for side modules. Tests: `tests/sync/test_webgpu.py` (in the runtime),
-`tests/async/test_webgpu.py` (adapter / device; skips without `navigator.gpu` or
+for side modules. Tests: `tests/test_webgpu.py` (in the runtime),
+`tests/test_webgpu_device.py` (adapter / device; skips without `navigator.gpu` or
 adapter, the usual case headless).
 
 WebGL2 / SDL2: `MAIN_MODULE=1` implies `INCLUDE_FULL_LIBRARY`, so emscripten's
@@ -75,14 +80,14 @@ GL JS is always in the runtime, but only at WebGL1 level. cmake options
 downstream executables like xeus-python are not forced to). Side modules
 (imgui-bundle, ctypes / PyOpenGL via `ctypes.CDLL(None)`) resolve GL / SDL from
 the main module. Python: `pyjs.set_canvas(canvas)` (`Module.canvas` +
-`specialHTMLTargets["#canvas"]`, `pre_js/canvas.js`),
+`specialHTMLTargets["#canvas"]`, `Module._set_canvas` in `src/js/runtime.ts`),
 `pyjs.request_animation_frame_loop(cb)` (`emscripten_request_animation_frame_loop`,
-`src/export_pyjs_module.cpp`). Tests: `tests/sync/test_webgl.py` (context via
-ctypes; skips without WebGL2), `tests/async/test_animation_frame.py`.
+`src/module.cpp`). Tests: `tests/test_webgl.py` (context via
+ctypes; skips without WebGL2), `tests/test_animation_frame.py`.
 
 Memory: the runtime is linked with `-sMAXIMUM_MEMORY` = 4GB (wasm32) / 16GB
 (wasm64) (cmake cache var `PYJS_MAXIMUM_MEMORY`; emscripten's default is 2GB, also
-for wasm64). `tests/sync/test_memory.py` allocates beyond 2 GiB / 4 GiB and
+for wasm64). `tests/test_memory.py` allocates beyond 2 GiB / 4 GiB and
 passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
 `Py_ssize_t` is 32 bit, so it allocates chunks).
 
@@ -119,8 +124,9 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   reject 64 bit projects). Not used by pyjs anymore (the docs do not build
   xeus-python), matters for projects building against them. Never edit env
   files in place: they are hardlinked to the package cache.
-- `CMakeLists.txt` runs `$ENV{CONDA_PREFIX}/bin/python` (merge_js.py), so
-  `CONDA_PREFIX` must be the dev env (it is, in every task).
+- `CMakeLists.txt` needs `esbuild` on PATH (bundles `src/js/index.ts`, then
+  `build_utils/embed_js.cmake` turns the bundle into `pyjs_js.cpp`): it is in
+  the dev env, as in every task.
 - empack finds its default config via `sys.prefix.startswith(CONDA_PREFIX)`.
 - A build dir configured with another toolchain path (e.g. an old env) gets
   its cmake cache reset on the next configure ("You have changed variables
@@ -129,15 +135,19 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
 ## Tests
 
 - One suite (`tests/`), run inside the browser by `tests/main.py`
-  (`async def main(options) -> dict`): `tests/js/test_*.js` (ES modules,
-  exported `test_*(pyjs)`), `tests/async/test_*.py` (own runner, loaded by
-  path: `async` is a keyword), `tests/sync/test_*.py` (pytest). Helpers:
+  (`async def main(options) -> dict`): ONE `pytest.main()` over
+  `tests/test_*.py`; `async def` tests are collected and awaited afterwards
+  (`tests/pytest_async.py`, no fixtures with cleanup for them);
+  `tests/js/test_*.js` (ES modules, exported `test_*(pyjs)`, run by
+  `tests/test_js.py`); `tests/pyodide/` = pyodide's suite adapted (xfail =
+  what pyjs lacks). Options: `filter` (-k), `file`, `runxfail`. Helpers:
   `tests/helpers.py`. The download tests fetch `/test-data/all_bytes.bin`,
   generated by the driver (no binaries in the repo; absolute path: works on
   every page / worker).
 - pytest cannot run async tests in the browser: `pytest.main()` is synchronous and
   the browser event loop cannot be blocked (`WebLoop.run_until_complete` just
-  schedules). Async tests therefore go into `tests/async/`.
+  schedules without JSPI). Hence `tests/pytest_async.py`: `async def` tests
+  are collected, then awaited after `pytest.main()` returned.
 - `pyjs_test_driver/` (python, replaces pyjs-code-runner):
   `build-page <kind> --out <dir>` *creates* a page dir (`pages.py`),
   `run <dir> --browser --mode main|worker [--disable-jspi] [--entry
@@ -157,10 +167,20 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   / `rollup` / `esbuild` / `parcel` (bundled app around
   `web/bundler_main.js`, runtime files via `copy-assets` + `cdnUrl`, main
   thread only, built with `CI=true`).
-- The npm package loads the runtime as ES module = strict mode: an undeclared
-  variable in pre_js / post_js is a ReferenceError there (silently a global
-  in the classic script). Check: `tsc --allowJs --checkJs --noEmit` on
-  `include/pyjs/{pre,post}_js/*.js` (TS2304 besides the emscripten globals).
+- The npm package loads the runtime as ES module = strict mode (a classic
+  script embedding is sloppy mode: both must work). Type check of the JS
+  half (the cmake build only bundles, esbuild does not type check): `pixi run
+  node npm/node_modules/typescript/bin/tsc --noEmit --strict --target es2022
+  --lib es2022,dom src/js/index.ts src/js/emscripten.d.ts`.
+- A dead page (wasm trap, "Maximum call stack size exceeded" thrown through
+  Python) never reports a result: the driver gives up after 5 min of silence
+  (`SILENCE_S`). Tests expected to crash an unfixed build: run them alone
+  first (`--option filter=<name>`). Test helpers for leaks / GC:
+  `tests/helpers.py` (`handle_count`, `pyproxy_count`, `require_js_gc`:
+  chromium runs with `--expose-gc`), `requires_jspi`. JSPI tests must
+  `pytest.skip`, never `return`.
+- The test runner itself is tested: `tests/test_pytest_async.py` (XPASS,
+  xfail arguments, skip, per-test timeout).
 - Tests must pass in the main thread *and* in a worker, and in chromium,
   firefox and webkit.
 - npm / bundler pages need the network (mambajs fetches from prefix.dev,
@@ -170,45 +190,63 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   tests. Vanilla pages are offline, no retries.
 - No assertions that depend on timing (CI runners are slow and noisy): make the
   order explicit (e.g. a JS promise the test resolves itself), check structure
-  instead of speed (`_CountSetTimeout` in `tests/async/test_webloop.py`: the
+  instead of speed (`_CountSetTimeout` in `tests/test_webloop.py`: the
   fast path uses no `setTimeout`), only lower bounds for delays ("at least"),
   and timeouts only as hang guards. Speed belongs in `benchmarks/`.
 
 ## How JS and Python call each other
 
-JS -> Python (every entry goes through embind into wasm):
-- the embind class `pyobject` (= `py::object`, `src/export_py_object.cpp`):
-  `_raw_apply`, `_raw_getitem`, `_raw_getattr`, `__call__`, `__usafe_void_void__`,
-  `__usafe_void_val__`, `__toPrimitive`, `toString`, `toJSON`. JS helpers on its
-  prototype (`include/pyjs/pre_js/init.js`): `py_call` / `py_apply` (-> `_raw_apply`),
-  `get` (-> `_raw_getitem`), `_getattr`; they turn `{has_err, ...}` results into throws.
-- free embind functions (`src/export_js_module.cpp`): `_exec`, `_eval`, `_eval_file`,
-  `_initialize_interpreter`, ...; wrapped as `Module.exec` / `eval` / `eval_file`
-  (`init.js`). `Module.exec_eval` / `async_exec_eval` call `pyjs.exec_eval` /
-  `pyjs.async_exec_eval` via `pyobject.py_call`.
-- Python callables handed to JS: `create_callable` (`module/pyjs/core.py`) ->
-  bound `pyobject.py_call`; `create_once_callable` -> `Module._create_once_callable`
-  (`pre_js/create_once_callable.js`). The webloop: `call_soon` -> MessageChannel
-  `onmessage` -> `create_callable(_MacrotaskQueue._run_next)`; `call_later` ->
-  `setTimeout` + `_create_once_callable_unsave_void_void` (-> `__usafe_void_void__`).
-  So every asyncio task step is a *sync* JS -> Python call from a JS event.
-- The test harness (`pyjs_test_driver/web/harness.js`) awaits
-  `pyjs.async_exec_eval("... await main(options)")`: Python is re-entered from
-  JS events while the asyncio tasks run.
+(The long version with diagrams: `docs/design.md`; the headers of the source
+files explain the rest.)
 
-Python -> JS: `pyjs_core.internal.*` (`src/export_js_proxy.cpp`) call JS helpers on
-`Module` (`_apply_try_catch`, `_getattr_try_catch`, ... in `pre_js/apply.js`,
-`get_set_attr.js`). They never throw, they return `{has_err, err, has_ret, ret,
-type_string}` (`pre_js/wrap_result.js`); C++ `wrap_result` converts the value or raises
-via `pyjs.error_to_py_and_raise` (`module/pyjs/convert.py`) -> `JsException` subclasses
-(`module/pyjs/error_handling.py`). The `js` module / `pyodide.ffi` polyfill:
-`module/pyjs/core.py`, `module/pyjs/pyodide_polyfill.py`.
+Everything crosses as **slots** (`src/slot.hpp`, `src/js/codec.ts`): 16 bytes
+(tag, aux, double / 2 ints); only addresses of slots are passed, each
+operation is ONE hop. Pointers travel as `double` (same code on wasm64). JS
+objects are **handles** (index into a JS table, `hNew` / `hGet` / `hFree`).
+Errors never cross as exceptions: return code + the thrown value / exception
+in the result slot. **Who owns what in a slot is asymmetric**: the table "WHO
+OWNS WHAT IS IN A SLOT" in `slot.hpp` (read it before touching encode /
+decode / to_slot / from_slot; most lifetime bugs of the review came from it).
 
-Awaiting a rejected JS promise raises a `JsException` subclass (`error_to_py`,
-like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
-`AbortError`), which is also a `RuntimeError` (it used to be a plain
-`RuntimeError` with a JSON string). `module/pyjs/extend_js_val.py`,
-`include/pyjs/pre_js/promise.js`.
+JS -> Python: `PyProxy` = ES `Proxy` + one handler (`src/js/pyproxy.ts`);
+traps / methods call the wasm exports of `src/py_entry.cpp`: `pyjs_call`
+(args encoded into the scratch region, 64 KiB, malloc beyond), `pyjs_op`
+(getattr / setitem / len / iter / hasattr ..., `PyOp`), `pyjs_call_promising`
+(JSPI). A Python exception -> 3 result slots -> `PythonError`. Results that
+point into a Python object are kept alive by `g_keep` (sync) / `out[3]`
+(promising). Owned proxies: `destroy()` or FinalizationRegistry backstop;
+borrowed proxies (arguments of a Python -> JS call) die with the call.
+`Module.runPython` / `runPythonAsync` / `pyimport` / `globals` / `toPy`
+(`src/js/runtime.ts`) are thin wrappers around `pyjs.code` functions.
+
+Python -> JS: `JSProxy` (`src/js_proxy.cpp`): CPython heap types, one per
+set of ability flags (`JsFlag`), with Python mixins (`module/pyjs/_proxy_types.py`:
+`JSArray`, `JSMap`, ...) chosen by the hook `proxy_mixins`. Operations go
+through EM_JS one-liners `pyjs_js_*` -> `pyjsCore.<fn>` (`src/js/index.ts`,
+implemented in `src/js/jsops.ts`). **No function of jsops.ts may throw** (a
+JS exception through CPython's wasm frames is fatal): catch + `fail()`.
+A thrown JS value -> hook `raise_js_error` -> `JSException`
+(`module/pyjs/error_handling.py`, also a `RuntimeError`). Hooks: Python
+objects handed to the core once by `pyjs_core.set_hooks`
+(`module/pyjs/__init__.py`, positional: order must match `module.cpp`).
+
+Deep conversion `to_py` / `to_js` (`src/deep.cpp`, `src/js/deep.ts`): the
+whole structure as ONE stream of slots in one hop; **recursive, at most
+`MAX_NESTING = 200` levels** (RecursionError; a WebKit worker's call stack
+ends at ~500); containers that change during the walk -> RuntimeError;
+nested conversions (a getter / `__hash__` converting something) get their
+own stream blocks. With options (`pyproxies`, `dict_converter`, converters)
+the step-by-step Python path in `module/pyjs/convert.py` runs instead: a
+second implementation, keep both in sync.
+
+Every asyncio task step is a JS -> Python call from a JS event (webloop:
+MessageChannel / setTimeout -> `callPromising` with JSPI). `jspi.depth`
+counts the running JS -> Python entries (incl. `SyncEntry` in `module.cpp`
+for the main loop / rAF callbacks and `release()` for decrefs): a task is
+only started at depth 0.
+
+Other names of the package: `js`, `jstypes.*`, `pyodide.ffi` / `pyodide.code`
+(`module/pyjs/_modules.py`).
 
 ## asyncio event loop (`module/pyjs/webloop.py`)
 
@@ -224,7 +262,7 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   xeus-python must not need extra files.
 - `webloop.py` is adapted from pyodide (webloop.py + `src/js/scheduler.ts`):
   keep the MPL-2.0 header, `webloop_LICENSE`, `webloop_README.md`.
-- Tests: `tests/async/test_webloop.py`.
+- Tests: `tests/test_webloop.py`.
 
 ## JSPI (`pyjs.run_sync` / `can_run_sync`)
 
@@ -232,24 +270,36 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   has `WebAssembly.Suspending` / `WebAssembly.promising` (`pyjs.jspi_enabled()`),
   otherwise pyjs behaves as without it (`can_run_sync()` False, `run_sync`
   raises, urllib3 falls back to XHR). Same pattern as pyodide.
-- Suspend point: `EM_JS pyjs_jspi_await` (`src/export_js_proxy.cpp`), its JS
-  replaces the import with `new WebAssembly.Suspending(...)` before
-  instantiation if supported. Entry point: the plain wasm export
-  `pyjs_raw_apply_promising` (`src/export_py_object.cpp`), wrapped with
-  `WebAssembly.promising` at runtime; JS side `py_apply_promising`
-  (`include/pyjs/pre_js/jspi.js`). The webloop enters task steps through it, so
-  `run_sync` works in asyncio tasks, also in xeus-python cells (they run as
-  coroutines).
+- Suspend point: `EM_JS pyjs_js_await` (`src/js_proxy.cpp`), its JS replaces
+  the import with `new WebAssembly.Suspending(...)` before instantiation if
+  supported. Entry point: the plain wasm export `pyjs_call_promising`
+  (`src/py_entry.cpp`), wrapped with `WebAssembly.promising` at runtime; JS
+  side `callPythonPromising` (`src/js/pyproxy.ts`), state in `src/js/jspi.ts`.
+  The webloop enters task steps through it, so `run_sync` works in asyncio
+  tasks, also in xeus-python cells (they run as coroutines).
 - Suspending only works with **no JS frame** between the promising entry and the
-  suspend point. Only one suspended Python stack at a time (keeps the C stack /
-  CPython thread state LIFO); `can_run_sync()` is False in sync JS callbacks,
-  while another `run_sync` waits, and for promising calls nested in running
-  wasm (`depth`). `run_sync` leaves / re-enters the current asyncio task.
+  suspend point. **Any number of suspended Python stacks** (ported from pyodide
+  314.0.8, MPL-2.0, `src/stack_switching_README.md`): each promising call is a
+  task; `src/stack_switching.c` swaps the per-task part of the one CPython
+  thread state (frames, datastack, exc state, context, asyncio running task),
+  `src/js/stack_state.ts` evicts / restores the C stack data of suspended tasks.
+  `run_sync` = `pyjs_js_await` (Suspending; `jspiAwait` captures the state)
+  then `pyjs_js_resume` (`jspiResume` restores it from inside the resumed wasm,
+  before `out` on the task's C stack is written). Tasks are only entered at
+  the event loop level: `callPythonPromising` waits a macrotask if
+  `jspi.depth > 0` (pyodide does the same). `pyjs_call_promising` hands the
+  result keep-alive to JS in `out[3]` (not the global `g_keep`).
+  `can_run_sync()` = JSPI enabled and the innermost entry is a promising one
+  (False in sync JS callbacks). `run_until_complete` blocks via `run_sync`
+  where possible. Tests: `tests/test_stack_switching.py` (deterministic: the
+  test resolves the promises), `tests/pyodide/test_pyodide_stack_switching.py`;
+  `Module._jspi_suspended_count()` / `_jspi_stack_state_count()` for checks.
+  Open: `run_sync` inside `to_js` / `to_py` converters is not blocked.
 - Tests: `pixi run test <wasm> <browsers> "main worker" numpy no-jspi` switches JSPI off at
   runtime (`run --disable-jspi` -> option `disable_jspi` ->
   `pyjs.core._disable_jspi()` in `tests/main.py`), CI runs both. A browser without the APIs at all can be
   simulated with playwright: `delete WebAssembly.Suspending` in an init script.
-  `tests/async/test_jspi.py` (async: run_sync needs a task step).
+  `tests/test_jspi.py` (async: run_sync needs a task step).
   A failed suspension can hang a test run: use a timeout.
 - CPython calls C functions through `_PyEM_TrampolineCall`: must be the wasm-gc
   trampoline, the JS fallback is a JS frame ("trying to suspend JS frames").
@@ -283,17 +333,17 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   the solver from replacing the running python) -> `build_root/npm/stage/<wasm>/`;
   then `build_root/npm/package/` + `npm pack` -> `build_root/npm/tgz/*.tgz`.
   `pixi run test-npm` tests it fully (bundlers: `pixi run test-bundlers` alone).
-- pyjs 5 init: the core (libpyjs + pre/post js) never fills the file system
-  or preloads shared libs; whoever fills it calls `Module.startPython()` (synchronous)
-  (`pre_js/init.js`: python version from C++ `_python_version`, error without
-  `/lib/pythonX.Y`, idempotent). The classic API (`bootstrap_from_empack_*`,
+- Init (since pyjs 5): the core (libpyjs) never fills the file system or
+  preloads shared libs; whoever fills it calls `Module.startPython()` (synchronous)
+  (`src/js/runtime.ts`: python version from the export `pyjs_python_version`,
+  error without `/lib/pythonX.Y`, idempotent). The classic API (`bootstrap_from_empack_*`,
   `init_phase_*`, `_untar`, `_install_conda_file`, untar/inflate C++,
   `load_pkg.js`, `dynload.js`, `fetch.js`) is gone. The runtime target
   (not libpyjs) has `src/extract.cpp`: `Module._extract_archive(bytes, dest,
   {conda, meta, rename})` on libarchive (tar / zip, gzip / bzip2 / zstd, no
   xz; .conda = zip of pkg-/info-*.tar.zst), own write loop (no `..` /
   absolute paths / writes through the archive's symlinks; hard links ->
-  copies), returns `{files, sharedLibs, meta}`. Tests: `tests/sync/test_extract.py`.
+  copies), returns `{files, sharedLibs, meta}`. Tests: `tests/test_extract.py`.
 - npm init (`runtime.ts`), all in parallel: `createModule` (or `wasmModule`
   via `instantiateWasm`), solve (`solve.ts`: mambajs, lazy chunk, also
   `empackLockToMambajsLock` / `formatChannels` / `computePackageUrl` from it:
@@ -344,12 +394,12 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   `bin/lock.mjs`) -> `{wasm32: [{url, sha256}], ...}`; the docs build pins the
   playground's numpy with it (`pyjs-lock.json`).
 - Tests: the full test suite on npm pages (both archs x main / worker) and on
-  the 5 bundler pages (see Tests). npm-only tests: `tests/npm/test_*.py`
-  (async), run by `tests/main.py` only with option `npm_package` (the harness
-  sets it when the Module has `installPackages`); `test_install.py`: pinned at
+  the 5 bundler pages (see Tests). npm-only tests (`test_install.py`,
+  `test_channel.py`, ...) skip themselves when the Module has no
+  `installPackages` (`pytestmark = skipif`); `test_install.py`: pinned at
   init / runtime, `.conda`, relocation, replacing, sha256, cache, bytecode
   cache, progress, `compileRuntime`.
-  `tests/npm/test_channel.py` installs from a self-hosted channel (static
+  `tests/test_channel.py` installs from a self-hosted channel (static
   files, like GitHub Pages next to docs) that the driver generates at
   `/test-channel/` (`pyjs_test_driver/test_channel.py`: noarch python package
   + arch package, rattler-build output layout; unindexed for pinned tests: a
@@ -370,7 +420,7 @@ like synchronous JS errors; pyodide compatible: `.name` / `.message`, e.g.
   archive like a package: unpacked tar in `pyjs-packages-v2` + bytecode,
   key = URL + `?pyjs-archive-path=<path>` (`loadArchive` / `installArchive`
   in `runtime.ts`); bypassed with `verifySha256` + sha256.
-  Tests: `tests/npm/test_archives.py` with archives the driver generates
+  Tests: `tests/test_archives.py` with archives the driver generates
   (`pyjs_test_driver/test_archives.py`); the npm / bundler pages pass one in
   `archives`.
 - CI: `.github/workflows/npm.yml` builds + tests (all browsers), publishes on

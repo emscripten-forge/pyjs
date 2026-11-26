@@ -12,8 +12,8 @@ frames, the exception being handled, contextvars), which is what
 src/stack_switching.c (thread state) and src/js/stack_state.ts (C stack)
 move out of the way and back.
 
-Without JSPI the tests return right away (the no-jspi run checks the
-fallback in test_jspi.py).
+Without JSPI the tests are skipped (the no-jspi run checks the fallback in
+test_jspi.py).
 """
 
 import asyncio
@@ -23,6 +23,8 @@ import itertools
 import random
 import sys
 import weakref
+
+import pytest
 
 import pyjs
 from pyjs import js
@@ -146,7 +148,7 @@ async def _run_in_order(n, order, depths):
 
 async def test_every_permutation():
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     before = suspended(), tracked()
     for order in itertools.permutations(range(4)):
         await _run_in_order(4, order, depths=[0, 3, 1, 5])
@@ -155,7 +157,7 @@ async def test_every_permutation():
 
 async def test_seeded_random_orders():
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     before = suspended(), tracked()
     rng = random.Random(1234)
     for _ in range(10):
@@ -171,7 +173,7 @@ async def test_many_suspensions_per_task():
     """each task suspends several times; every round resumes them in another
     random order (stack data evicted and restored again and again)"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     before = suspended(), tracked()
     rng = random.Random(42)
     n, rounds = 8, 6
@@ -212,7 +214,7 @@ async def test_many_suspensions_per_task():
 async def test_stress_many_tasks():
     """200 tasks suspended at once, resumed in a seeded random order, twice"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     before = suspended(), tracked()
     rng = random.Random(7)
     n = 200
@@ -249,7 +251,7 @@ async def test_stress_many_tasks():
 # ---------------------------------------------------------------------------
 async def test_rejections_go_to_the_right_task():
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     deferreds = [Deferred() for _ in range(4)]
 
     def task(ready, i):
@@ -274,7 +276,7 @@ async def test_exception_being_handled_is_per_task():
     """sys.exception() inside an except block survives other tasks handling
     their own exceptions meanwhile"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     deferreds = [Deferred() for _ in range(3)]
 
     def task(ready, i):
@@ -297,7 +299,7 @@ async def test_exception_being_handled_is_per_task():
 
 async def test_task_raises_after_resume():
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     deferreds = [Deferred() for _ in range(2)]
 
     def task(ready, i):
@@ -325,7 +327,7 @@ async def test_task_raises_after_resume():
 # ---------------------------------------------------------------------------
 async def test_generators_suspended_inside_next():
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     deferreds = [[Deferred() for _ in range(3)] for _ in range(2)]
 
     def gen(i):
@@ -351,7 +353,7 @@ async def test_asyncio_tasks_suspend_concurrently():
     """steps of asyncio tasks are promising calls too: several of them can be
     suspended in run_sync at once"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     deferreds = [Deferred() for _ in range(5)]
     started = [Deferred() for _ in range(5)]
     order = []
@@ -374,7 +376,7 @@ async def test_asyncio_tasks_suspend_concurrently():
 async def test_current_task_per_stack():
     """asyncio's current task is part of what is switched"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     deferreds = [Deferred() for _ in range(3)]
     started = [Deferred() for _ in range(3)]
 
@@ -397,7 +399,7 @@ async def test_cancel_while_suspended():
     """a task suspended in run_sync cannot be interrupted: cancel() takes
     effect at its next await"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     deferred = Deferred()
     started = Deferred()
     steps = []
@@ -423,7 +425,7 @@ async def test_cancel_while_suspended():
 
 async def test_run_until_complete_blocks():
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     loop = asyncio.get_event_loop()
 
     async def coro():
@@ -438,7 +440,7 @@ async def test_sync_entry_while_tasks_suspended():
     """a synchronous JS -> Python call (an event handler) while tasks are
     suspended: cannot suspend itself, does not see the tasks' contextvars"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     cv = contextvars.ContextVar("cv", default="outer")
     deferreds = [Deferred() for _ in range(2)]
     seen = []
@@ -478,7 +480,7 @@ async def test_gc_while_suspended():
     """objects only referenced by a suspended task's frames survive
     gc.collect() (also reference cycles), and are freed after it finished"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     deferred = Deferred()
     refs = []
 
@@ -505,7 +507,7 @@ async def test_gc_while_evicted():
     suspended ones (evicted to a copy), then all of them resume intact (what
     pyodide's test_gc_with_evicted_suspended_task checks)"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     n = 4
     deferreds = [Deferred() for _ in range(n)]
     acks = [Deferred() for _ in range(n)]
@@ -542,7 +544,7 @@ async def test_gc_while_evicted():
 async def test_counts_back_to_baseline():
     """nothing of a finished task stays tracked (the stack-leak check)"""
     if not pyjs.jspi_enabled():
-        return
+        pytest.skip("needs JSPI")
     before = suspended(), tracked()
     deferreds = [Deferred() for _ in range(5)]
 
@@ -557,4 +559,261 @@ async def test_counts_back_to_baseline():
     for i in (4, 0, 2, 1, 3):
         deferreds[i].resolve(i)
     assert await tasks.finish() == list(range(5))
+    check_baseline(*before)
+
+
+# ---------------------------------------------------------------------------
+# the end of a task
+# ---------------------------------------------------------------------------
+async def test_result_survives_cleanup_of_the_task():
+    """When a task ends, its own state is dropped (its contextvars context,
+    ...), which can run Python code: here a `__del__` that calls into
+    JavaScript and back into Python. The result of the task, already
+    written for JavaScript at that point, must survive that."""
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+    variable = contextvars.ContextVar("variable")
+    call = js.Function("f", "return f();")
+    ran = []
+
+    def returns_a_string():
+        return "a string result of a nested call"
+
+    class Noisy:
+        def __del__(self):
+            # a JavaScript -> Python call with a result, while the task is
+            # being cleaned up
+            ran.append(call(returns_a_string))
+
+    def task():
+        # only the task's own context refers to this object: it dies with
+        # the task
+        variable.set(Noisy())
+        # (a new JavaScript object: Python's proxy of it must stay alive
+        # until JavaScript has read the result)
+        return js.Function("return {answer: 42};")()
+
+    proxy = pyjs.create_proxy(task)
+    try:
+        result = await proxy.callPromising()
+    finally:
+        proxy.destroy()
+    assert ran == ["a string result of a nested call"]
+    assert result is not None
+    assert result.answer == 42
+
+
+# Calls the wasm export behind `callPromising` directly, synchronously, with
+# a result area full of 0xff bytes. Returns [return code, what the fourth
+# result slot holds afterwards]. (A slot is 16 bytes: tag and aux, 4 bytes
+# each, then the value as 8 byte float.)
+_call_promising_export = js.Function(
+    "Module",
+    """
+    const out = Module._malloc(64);
+    Module.HEAPU8.fill(0xff, out, out + 64);
+    const rc = Module._pyjs_call_promising(0, 0, 0, 0, out);
+    const values = new Float64Array(Module.HEAPU8.buffer, out, 8);
+    // slot 3: 0, or the address of an object that keeps the result alive
+    // until it was read (which the caller releases)
+    const keep = values[7];
+    const keepIsAnAddress = Number.isInteger(keep) && keep >= 0;
+    if (keepIsAnAddress && keep !== 0) {
+        Module._pyjs_decref(keep);
+    }
+    if (rc !== 0) {
+        // the error slots: the first holds the exception, owned by us
+        Module._pyjs_decref(values[1]);
+    }
+    Module._free(out);
+    return [rc, keepIsAnAddress];
+    """,
+)
+
+
+async def test_task_cannot_be_entered_while_one_runs():
+    """The wasm export of `callPromising` refuses to start a task while
+    another one is running (JavaScript normally never asks: it waits for the
+    event loop first). The refusal must be a clean error: a return code that
+    says "not entered", and nothing left in the result area for JavaScript
+    to release that is not an object (it used to leave the "keep alive" slot
+    uninitialised, which JavaScript then released: a crash)."""
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+    # (this test itself runs in a task: the step of an asyncio task)
+    assert pyjs.can_run_sync()
+    rc, keep_is_an_address = _call_promising_export(_module)
+    NOT_ENTERED = 8
+    assert rc == NOT_ENTERED, rc
+    assert keep_is_an_address is True
+    # the bookkeeping of the running task is untouched
+    assert pyjs.can_run_sync()
+    assert pyjs.run_sync(js.Promise.resolve(3)) == 3
+
+
+# ---------------------------------------------------------------------------
+# suspending in unusual places, many tasks, memory growth
+# ---------------------------------------------------------------------------
+async def test_run_sync_inside_del():
+    """`__del__` runs wherever the last reference goes away: inside a task it
+    may wait for a promise too (the whole task is suspended, other code runs,
+    then the task goes on after the `del`)."""
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+    log = []
+    deferred = Deferred()
+
+    class WaitsWhenDeleted:
+        def __del__(self):
+            log.append(("del waits", pyjs.run_sync(deferred.promise)))
+
+    def task(ready):
+        obj = WaitsWhenDeleted()
+        ready()
+        del obj
+        log.append("after del")
+        return "done"
+
+    tasks = Tasks()
+    await tasks.start(task)
+    # the task is suspended inside __del__
+    assert suspended() >= 1
+    deferred.resolve("resumed")
+    assert await tasks.finish() == ["done"]
+    assert log == [("del waits", "resumed"), "after del"]
+
+
+async def test_run_sync_inside_del_during_gc():
+    """the same for an object freed by the cycle collector: the collection
+    is suspended in the middle; other code (which may allocate and collect
+    itself) runs meanwhile; afterwards everything is collected and the
+    collector works normally"""
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+    log = []
+    deferred = Deferred()
+
+    class InACycle:
+        def __init__(self):
+            self.me = self
+
+        def __del__(self):
+            log.append(pyjs.run_sync(deferred.promise))
+
+    def task(ready):
+        InACycle()
+        ready()
+        gc.collect()
+        return "collected"
+
+    tasks = Tasks()
+    await tasks.start(task)
+    # meanwhile: allocate a lot (and collect) while that collection waits
+    garbage = [[i] for i in range(100_000)]
+    del garbage
+    gc.collect()
+    deferred.resolve("finalizer resumed")
+    assert await tasks.finish() == ["collected"]
+    assert log == ["finalizer resumed"]
+    # the collector still works
+    refs = []
+
+    class Later:
+        def __init__(self):
+            self.me = self
+
+    refs.append(weakref.ref(Later()))
+    gc.collect()
+    assert refs[0]() is None
+
+
+async def test_recursion_limit_is_per_task():
+    """Python's recursion depth belongs to each task: a task suspended deep
+    in recursion does not use up the depth of the next one"""
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+    depth = int(sys.getrecursionlimit() * 0.6)
+    deferreds = [Deferred() for _ in range(2)]
+
+    def recurse(n, i, ready):
+        if n == 0:
+            ready()
+            return pyjs.run_sync(deferreds[i].promise)
+        return recurse(n - 1, i, ready)
+
+    def task(ready, i):
+        return recurse(depth, i, ready)
+
+    tasks = Tasks()
+    for i in range(2):
+        # (each one reaches 60 % of the limit while the other one is there too)
+        await tasks.start(task, i)
+    deferreds[1].resolve("b")
+    deferreds[0].resolve("a")
+    assert await tasks.finish() == ["a", "b"]
+
+
+async def test_memory_grows_while_tasks_are_suspended():
+    """the memory of WebAssembly grows (new, bigger buffer) while tasks have
+    data on the C stack, also data that was moved aside: everything comes
+    back intact"""
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+    n = 4
+    deferreds = [Deferred() for _ in range(n)]
+
+    def task(ready, i):
+        marker = [i] * 1000
+
+        def wait():
+            ready()
+            return pyjs.run_sync(deferreds[i].promise)
+
+        value = deep_through_c(5 + 10 * i, wait)
+        assert marker == [i] * 1000
+        return value
+
+    tasks = Tasks()
+    for i in range(n):
+        await tasks.start(task, i)
+    memory = js.Function("Module", "return Module.HEAPU8.buffer.byteLength;")
+    before = memory(_module)
+    # (allocate until the memory really grows: earlier tests may have grown
+    # it already, then a first block fits into what is there)
+    blocks = []
+    try:
+        while memory(_module) == before:
+            blocks.append(bytearray(64 * 1024 * 1024))
+    except MemoryError:
+        pass
+    grown = memory(_module) > before
+    for i in reversed(range(n)):
+        deferreds[i].resolve(i)
+    assert await tasks.finish() == list(range(n))
+    del blocks
+    if not grown:
+        pytest.skip("the memory is at its maximum already: it cannot grow")
+
+
+async def test_a_thousand_tasks():
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+    before = suspended(), tracked()
+    rng = random.Random(1000)
+    n = 1000
+    deferreds = [Deferred() for _ in range(n)]
+
+    def task(ready, i):
+        ready()
+        return deep_through_c(i % 7, lambda: pyjs.run_sync(deferreds[i].promise)) + i
+
+    tasks = Tasks()
+    for i in range(n):
+        await tasks.start(task, i)
+    assert suspended() >= before[0] + n
+    order = list(range(n))
+    rng.shuffle(order)
+    for i in order:
+        deferreds[i].resolve(i)
+    assert await tasks.finish() == [2 * i for i in range(n)]
     check_baseline(*before)

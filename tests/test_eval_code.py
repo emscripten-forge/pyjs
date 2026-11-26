@@ -98,3 +98,11 @@ async def test_eval_code_pyodide_names():
 
     assert eval_code is pyjs.eval_code
     assert eval_code_async is pyjs.eval_code_async
+
+
+def test_eval_code_last_line_is_an_annotation_without_value():
+    """`x: int` declares, it assigns nothing: with
+    return_mode="last_expr_or_assign" there is no value to return (it used
+    to look `x` up and raise NameError)"""
+    assert pyjs.eval_code("x: int", {}, return_mode="last_expr_or_assign") is None
+    assert pyjs.eval_code("x: int = 5", {}, return_mode="last_expr_or_assign") == 5

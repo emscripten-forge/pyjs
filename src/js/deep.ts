@@ -43,6 +43,7 @@
 import {
   T,
   PYPROXY,
+  alloc,
   decode,
   encode,
   hGet,
@@ -67,8 +68,15 @@ import {
 // It holds the OFFSET of the text inside the text block; the reader adds the
 // address of the block.
 //
-// The blocks are only valid until the next conversion. That is fine because
-// the C side reads the stream completely before anything else can run.
+// The blocks are only valid until the next conversion. Normally the C side
+// has read the stream completely by then. The exception is a conversion
+// that starts INSIDE another one:
+//   - while the outer stream is written: a getter of the object being
+//     converted runs code that converts something (`writing` below)
+//   - while the C side reads the outer stream: building the Python objects
+//     runs Python code (the `__hash__` of a dict key, ...) that converts
+//     something (the C side says so: parameter `fresh` of toStream)
+// Such a nested conversion gets blocks of its own, see toStream.
 // ---------------------------------------------------------------------------
 let slots = 0; // address of the slot block
 let slotCapacity = 0; // how many slots fit
@@ -79,6 +87,11 @@ let textLength = 0; // how many bytes are written
 
 // the containers written so far -> their number (for REF)
 let seen: Map<object, number> | null = null;
+
+// a stream is being written right now (a conversion started meanwhile is nested)
+let writing = false;
+// blocks of nested conversions, freed by the next conversion that is not nested
+const retired: number[] = [];
 
 // struct format character (see formatOf) -> the typed array class with items
 // of that type. (No "l" / "L", C long: its size differs between wasm32 and
@@ -116,7 +129,7 @@ const FORMATS = new Map<any, string>([
 
 /** move a block to a bigger one, keeping its `used` bytes; returns the new address */
 function grow(old: number, used: number, size: number): number {
-  const block = _malloc(size);
+  const block = alloc(size);
   if (old !== 0) {
     HEAPU8.copyWithin(block, old, old + used);
     _free(old);
@@ -183,6 +196,12 @@ function formatOf(value: any): string {
   return FORMATS.get(value.constructor) ?? "B";
 }
 
+/** an object as written with {...} (or made with Object.create(null)) */
+function isPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 /**
  * If `value` was written before: write a REF to it and return true.
  * Otherwise give it the next container number and return false.
@@ -244,7 +263,7 @@ function checkKeys(container: Map<any, any> | Set<any>, target: string): void {
  * The heart of to_py on the JavaScript side: `toStream` (below) calls it once
  * for the top level value, and it calls itself for every item / entry of a
  * container, with `depth` one less (depth 0: containers are not opened any
- * more, they become proxies; -1: no limit). What the C side
+ * more, they become proxies; -1: no limit, except TOO_DEEP). What the C side
  * (read_value in src/deep.cpp) then makes of each kind:
  *
  *   value                         written as                      Python gets
@@ -293,6 +312,9 @@ function write(value: any, depth: number): void {
         // the containers that are copied (the same choice as PEP 818)
         // (the lists of the DOM, e.g. document.querySelectorAll(...), are
         // copied like Arrays)
+        if (depth < floorDepth) {
+          throw TOO_DEEP;
+        }
         if (Array.isArray(value) || isDomList(value)) {
           if (!writtenBefore(value)) {
             const n = value.length;
@@ -303,13 +325,25 @@ function write(value: any, depth: number): void {
           }
           return;
         }
+        // (Map and Set: the number of entries is in the header. A getter
+        // of an item that runs while the container is written could add or
+        // remove entries; the count is checked, a wrong one would make the
+        // reader lose its place in the stream.)
         if (value instanceof Map) {
           if (!writtenBefore(value)) {
             checkKeys(value, "dict");
-            writeHeader(T.DICT, value.size);
+            const n = value.size;
+            writeHeader(T.DICT, n);
+            let written = 0;
             for (const [key, item] of value) {
+              if (written++ === n) {
+                changedSize("a Map");
+              }
               write(key, depth - 1);
               write(item, depth - 1);
+            }
+            if (written !== n) {
+              changedSize("a Map");
             }
           }
           return;
@@ -317,9 +351,17 @@ function write(value: any, depth: number): void {
         if (value instanceof Set) {
           if (!writtenBefore(value)) {
             checkKeys(value, "set");
-            writeHeader(T.SET, value.size);
+            const n = value.size;
+            writeHeader(T.SET, n);
+            let written = 0;
             for (const item of value) {
+              if (written++ === n) {
+                changedSize("a Set");
+              }
               write(item, depth - 1);
+            }
+            if (written !== n) {
+              changedSize("a Set");
             }
           }
           return;
@@ -339,8 +381,10 @@ function write(value: any, depth: number): void {
         // A "plain" object, as written with {...}: its constructor is Object
         // (or it has none). Instances of classes are NOT copied: they are
         // objects with behaviour, not data, and stay proxies.
-        const constructor = value.constructor;
-        if ((constructor === Object || constructor === undefined) && value[PYPROXY] === undefined) {
+        // (Decided by the prototype, not by `value.constructor`: data may
+        // have a key called "constructor". A PyProxy is never plain; asked
+        // first, because its other properties are Python attributes.)
+        if (value[PYPROXY] === undefined && isPlainObject(value)) {
           if (!writtenBefore(value)) {
             const keys = Object.keys(value);
             writeHeader(T.DICT, keys.length);
@@ -359,23 +403,81 @@ function write(value: any, depth: number): void {
   encode(value, nextSlot(), false);
 }
 
+function changedSize(what: string): never {
+  throw new Error(`to_py: ${what} changed size during the conversion`);
+}
+
+// The guard against structures nested too deeply. `write` calls itself once
+// per level of nesting, and the call stack of the browser is small and
+// cannot grow: a structure nested some hundred levels deep would end the
+// page ("Maximum call stack size exceeded"). So at most `limit` levels are
+// followed (MAX_NESTING of src/deep.cpp, given by the C side), then
+// TOO_DEEP is thrown, which becomes a RecursionError in Python.
+//
+// No counter is needed: `depth` already goes down by one per level (from
+// the caller's value, or from -1 for "all levels"), so "more than `limit`
+// levels below the start" is `depth < floorDepth`.
+let floorDepth = 0;
+
+/** thrown by `write` for a structure nested too deeply (see above) */
+export const TOO_DEEP = new Error("pyjs: the structure is nested too deeply");
+
 /**
  * to_py: write the JS object with handle `h` as stream (see the top of this
- * file). The result, in the two slots at `out`:
+ * file), following at most `limit` levels of nesting (see TOO_DEEP).
+ * `fresh`: the C side is still reading another stream (see the top of the
+ * writing section). The result, in the two slots at `out`:
  *   out          aux: the number of slots, num: the address of the slot block
  *   out + 16     num: the address of the text block
  */
-export function toStream(h: number, depth: number, out: number): void {
+export function toStream(h: number, depth: number, limit: number, fresh: number, out: number): void {
+  // A conversion inside a conversion (see `writing` above): it must not
+  // touch the two blocks of the outer one, which is still being written or
+  // read. It gets blocks of its own; the outer state is put back at the end.
+  const nested = writing || fresh !== 0;
+  const outer = nested ? { slots, slotCapacity, slotCount, text, textCapacity, textLength, seen, floorDepth } : null;
+  if (nested) {
+    slots = 0;
+    slotCapacity = 0;
+    text = 0;
+    textCapacity = 0;
+  } else {
+    // the blocks of earlier nested conversions: read long ago
+    while (retired.length > 0) {
+      _free(retired.pop()!);
+    }
+  }
   slotCount = 0;
   textLength = 0;
   seen = null;
+  floorDepth = depth - limit;
+  const wasWriting = writing;
+  writing = true;
+  let written = false;
   try {
     write(hGet(h), depth);
+    writeAuxAndNum(out, slotCount, slots);
+    writeAuxAndNum(out + 16, 0, text);
+    written = true;
   } finally {
+    writing = wasWriting;
     seen = null; // (do not keep the objects alive)
+    if (outer !== null) {
+      // The blocks of this nested conversion: the C side reads them right
+      // after we return (if it was written), so they are freed later, by
+      // the next conversion that is not nested.
+      for (const block of [slots, text]) {
+        if (block !== 0) {
+          if (written) {
+            retired.push(block);
+          } else {
+            _free(block);
+          }
+        }
+      }
+      ({ slots, slotCapacity, slotCount, text, textCapacity, textLength, seen, floorDepth } = outer);
+    }
   }
-  writeAuxAndNum(out, slotCount, slots);
-  writeAuxAndNum(out + 16, 0, text);
 }
 
 // ---------------------------------------------------------------------------
@@ -384,7 +486,28 @@ export function toStream(h: number, depth: number, out: number): void {
 let cursor = 0; // address of the next slot to read
 let created: any[] = []; // the containers created so far, by number (for REF)
 
-/** read the next value of the stream (a container: with all its items) */
+/**
+ * A typed array of class `cls` with a COPY of the `n` items at address `ptr`
+ * of the wasm memory.
+ *
+ * A typed array can only sit at an address that is a multiple of its item
+ * size (a Float64Array at a multiple of 8). Python buffers usually do, but
+ * need not (a slice of bytes seen as doubles). Then the bytes are copied
+ * first, and the copy (which starts at 0) is seen as items.
+ */
+export function copyOfMemory(cls: any, ptr: number, n: number): any {
+  const itemSize = cls.BYTES_PER_ELEMENT;
+  if (ptr % itemSize === 0) {
+    return new cls(HEAPU8.buffer, ptr, n).slice();
+  }
+  return new cls(HEAPU8.slice(ptr, ptr + n * itemSize).buffer);
+}
+
+/**
+ * Read the next value of the stream (a container: with all its items, for
+ * which this function calls itself; the C side wrote at most MAX_NESTING
+ * levels of nesting, see src/deep.cpp).
+ */
 function read(): any {
   const p = cursor;
   cursor += 16;
@@ -407,7 +530,14 @@ function read(): any {
       created.push(object);
       for (let k = 0; k < n; k++) {
         const key = read();
-        object[key] = read();
+        const item = read();
+        if (key === "__proto__") {
+          // (`object["__proto__"] = x` would set the prototype of the
+          // object instead of creating a property of that name)
+          Object.defineProperty(object, key, { value: item, enumerable: true, configurable: true, writable: true });
+        } else {
+          object[key] = item;
+        }
       }
       return object;
     }
@@ -422,15 +552,13 @@ function read(): any {
     }
     case T.REF:
       return created[HEAP32[i + 1]];
-    case T.BUFFER: {
+    case T.BUFFER:
       // A Python buffer (bytes, a numpy array, ...): `num` is the address of
       // its memory, `aux` the number of items, and the item type (a struct
-      // format character) sits in the upper half of the tag. `slice()`
-      // makes the copy; without it the array would be a window into Python's
-      // memory, which can move or be freed.
-      const cls = ARRAY_CLASSES[String.fromCharCode(tag >> 16)];
-      return new cls(HEAPU8.buffer, HEAPF64[i / 2 + 1], HEAP32[i + 1]).slice();
-    }
+      // format character) sits in the upper half of the tag. A copy;
+      // without it the array would be a window into Python's memory, which
+      // can move or be freed.
+      return copyOfMemory(ARRAY_CLASSES[String.fromCharCode(tag >> 16)], HEAPF64[i / 2 + 1], HEAP32[i + 1]);
     default:
       // A simple value, or a Python object that is not converted: that one
       // becomes a PyProxy which lives on inside the converted structure

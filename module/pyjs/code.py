@@ -25,6 +25,8 @@ def run_js(code):
 
     Example:
     ```python
+    from pyjs import run_js
+
     assert run_js("1 + 2") == 3
     add = run_js("(a, b) => a + b")
     assert add(1, 2) == 3
@@ -96,8 +98,11 @@ def _split_last_expression(source, return_mode, quiet_trailing_semicolon, filena
         if isinstance(last, ast.Assign):
             # (`a = b = 2`: every target got the value, take the first)
             targets = last.targets[:1]
-        elif isinstance(last, (ast.AugAssign, ast.AnnAssign)):
+        elif isinstance(last, ast.AugAssign):
             targets = [last.target]
+        elif isinstance(last, ast.AnnAssign):
+            # (`x: int` without a value only declares: nothing to return)
+            targets = [last.target] if last.value is not None else []
         else:
             targets = []
         if len(targets) == 1 and isinstance(targets[0], ast.Name):
@@ -145,6 +150,8 @@ def eval_code(
 
     Example:
     ```python
+    from pyjs import eval_code
+
     assert eval_code("x = 20\\nx + 1") == 21
     ```
     """

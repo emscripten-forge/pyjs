@@ -136,19 +136,45 @@ def _to_future(js_promise):
     """An asyncio future that gets the outcome of a JavaScript promise."""
     future = asyncio.Future()
 
+    # (`future.done()`: the await may have been cancelled meanwhile, e.g. by
+    # the timeout of `asyncio.wait_for`. The promise still settles later;
+    # nobody waits for the outcome any more, and setting it on a cancelled
+    # future would raise InvalidStateError into JavaScript.)
     def on_fulfilled(value):
-        future.set_result(value)
+        if not future.done():
+            future.set_result(value)
 
     def on_rejected(err):
-        future.set_exception(_rejection_to_exception(err))
+        if not future.done():
+            future.set_exception(_rejection_to_exception(err))
 
-    # The two Python functions are passed as plain arguments: their proxies
-    # live until the promise returned by `then` settles, which is after one
-    # of them ran. Nothing to destroy by hand.
     # then(ok, err), not then(ok).catch(err): an exception in `on_fulfilled`
     # must not end up in `on_rejected`.
-    js_promise.then(on_fulfilled, on_rejected)
+    if _is_promise(js_promise):
+        # The two Python functions are passed as plain arguments: their
+        # proxies live until the promise returned by `then` settles, which
+        # is after one of them ran. Nothing to destroy by hand.
+        js_promise.then(on_fulfilled, on_rejected)
+        return future
+
+    # Some other object with a `then` method. What its `then` returns says
+    # nothing about when the callbacks are called (often it returns nothing
+    # and calls them later), so they must not be tied to that call: they get
+    # proxies that last until one of them was called.
+    proxies = [_lasting(on_fulfilled), _lasting(on_rejected)]
+
+    def destroy_proxies(_future):
+        # (in a later step of the event loop: one of the proxies is being
+        # called right now)
+        asyncio.get_event_loop().call_soon(lambda: [proxy.destroy() for proxy in proxies])
+
+    future.add_done_callback(destroy_proxies)
+    js_promise.then(*proxies)
     return future
+
+
+# a real promise, not just any object with a `then` method
+_is_promise = _js.Function("p", "return Object.prototype.toString.call(p) === '[object Promise]';")
 
 
 def _await_js(js_promise):

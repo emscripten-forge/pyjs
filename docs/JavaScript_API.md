@@ -1,147 +1,117 @@
 # JavaScript API
 
-## `pyjs`
-The main module for the JavaScript API (what `initializePyjsRuntime` of the
-[npm package](npm.md) returns). Examples using numpy install it first with
+Running Python from JavaScript. `pyjs` below is what `initializePyjsRuntime`
+of the [npm package](npm.md) returns (the emscripten `Module` with the pyjs
+API). The names follow pyodide. Examples using numpy install it first with
 `pyjs.installPackages` (solved and downloaded from emscripten-forge at runtime).
-### `exec`
-Execute a string of Python code.
 
-Example:
+## Running code
+
+### `runPython(code, options?)`
+
+Run Python code and return the value of its last line if that is an
+expression, like a notebook cell. A Python exception is thrown as
+`PythonError`.
+
 ```javascript
-await pyjs.installPackages(["numpy"]);
-pyjs.exec(`
-import numpy
-print(numpy.random.rand(3))
-`);
+pyjs.runPython("print('hello from python')");
+pyjs.runPython("x = 20\nx + 1"); // 21
 ```
 
-### `exec_eval`
-Execute a string of Python code and return the last expression.
+`options`: `globals` / `locals` (proxies of Python dicts: the namespaces the
+code runs in, default `pyjs.globals`), `filename` (the file name in
+tracebacks).
 
-Example:
+### `runPythonAsync(code, options?)`
+
+The same for code with `await` at the top level; returns a promise.
+
 ```javascript
-await pyjs.installPackages(["numpy"]);
-const arr = pyjs.exec_eval(`
-import numpy
-numpy.random.rand(3)
-`);
-// use the array
-console.log(arr);
-// delete the array
-arr.delete();
-```
-
-### `eval`
-Evaluate a string with a Python expression.
-
-Example:
-```javascript
-const result = pyjs.eval("sum([i for i in range(100)])")
-console.log(result); // 4950
-```
-
-### `async_exec_eval`
-Schedule the execution of a string of Python code and return a promise.
-The last expression is returned as the result of the promise.
-
-Example:
-```javascript
-const py_code = `
+const result = await pyjs.runPythonAsync(`
 import asyncio
-await asyncio.sleep(2)
-sum([i for i in range(100)])
-`
-result = await pyjs.async_exec_eval(py_code)
+await asyncio.sleep(0.1)
+sum(range(100))
+`);
 console.log(result); // 4950
 ```
 
-### `eval_file`
-Evaluate a file from the virtual file system.
+### `pyimport(name)`
 
-Example:
+`import name`: the Python module as proxy.
+
+```javascript
+const math = pyjs.pyimport("math");
+console.log(math.sqrt(2)); // 1.4142135623730951
+math.destroy();
+```
+
+### `globals`
+
+The namespace code runs in by default (the globals of `__main__`), as a proxy
+of the dict: `get`, `set`, `has`, `delete`.
+
+```javascript
+pyjs.globals.set("n", 7);
+pyjs.runPython("n * 6"); // 42
+```
+
+### `toPy(value, options?)`
+
+A JavaScript value as Python object (Python's `pyjs.to_py`): Array -> list,
+Map / plain Object -> dict, Set -> set, ...
+
+```javascript
+const d = pyjs.toPy({ a: [1, 2, 3] });
+pyjs.globals.set("d", d);
+pyjs.runPython("sum(d['a'])"); // 6
+d.destroy();
+```
+
+## Python objects in JavaScript: `PyProxy`
+
+Numbers, strings, booleans and `None` (`undefined`) are converted when they
+cross over; every other Python object is a `PyProxy` in JavaScript.
+
 ```javascript
 await pyjs.installPackages(["numpy"]);
-const file_content = `
-import numpy
-
-def fobar():
-    return "fubar"
-
-def foo():
-  return "foo"
-    
-if __name__ == "__main__":
-    print(fobar())
-`
-pyjs.FS.writeFile("/hello_world.py", file_content);
-
-// evaluate the file
-// print "fubar"
-pyjs.eval_file("/hello_world.py")
-
-// use content from files scope
-// prints foo
-pyjs.eval("foo()") ;
+const arr = pyjs.runPython("import numpy\nnumpy.eye(2)");
+console.log(arr.shape.toString());   // (2, 2)
+console.log(arr.get(0).get(0));      // 1
+const asList = arr.tolist().toJs();  // [[1, 0], [0, 1]]
+arr.destroy();
 ```
 
-### `pyobject`
-A Python object exported as a JavaScript class.
-In Python, allmost everything is an object. This class holds the Python object 
-compiled to JavaScript.
+| | |
+|---|---|
+| `proxy(...args)` | call it (an `async def` function is started as asyncio task) |
+| `proxy.callKwargs(...args, {name: value})` | call it with keyword arguments |
+| `await proxy.callPromising(...args)` | call it so that it may wait in `run_sync` (JSPI) |
+| `proxy.attr`, `proxy.attr = x` | attribute access |
+| `proxy.get(key)`, `.set(key, value)`, `.has(key)`, `.delete(key)` | `obj[key]`, `key in obj`, `del obj[key]` |
+| `for (const x of proxy)` | iterate |
+| `await proxy` | await a coroutine / task / future |
+| `proxy.toJs(options?)` | a deep copy as JavaScript values (list -> Array, dict -> Object, set -> Set, ...); `options` are the keyword arguments of Python's `to_js` (`{depth: 1}`, `{dict_converter: ...}`) |
+| `proxy.copy()` | a second proxy of the same object |
+| `proxy.destroy()` | release the Python object (the proxy is unusable afterwards) |
 
+A proxy keeps its Python object alive until `destroy()` (or until the
+JavaScript garbage collector collected the proxy: a backstop, not the plan).
 
+## Errors
 
+A Python exception reaching JavaScript is thrown as `PythonError`
+(`pyjs.PythonError` for `instanceof`): `type` is the name of the exception
+class (`"KeyError"`), `message` the formatted traceback.
 
-#### `py_call`
-Call the `__call__` method of a Python object.
-
-Example:
 ```javascript
-const py_code = `
-class Foobar:
-    def __init__(self, foo):
-        self.foo = foo
-    def bar(self):
-      return f"I am {self.foo}"
-
-    def __call__(self, foobar):
-      print(f"called Foobar.__call__ with foobar {foobar}")
-      
-# last statement is returned 
-Foobar
-`
-
-// py_foobar_cls is a pyobject on
-// the JavaScript side and the class Foobar
-// on the Python side
-var py_foobar_cls = pyjs.exec_eval(py_code)
-
-// all function call-like statements (ie Foobar(2))
-// need to be done via py_call
-var instance  = py_foobar_cls.py_call(2)
-// prints 2
-console.log(instance.foo)
-
-// prints "I am 2"
-console.log(instance.bar.py_call())
-
-// prints called Foobar.__call__ with foobar 42
-instance.py_call(42)
+try {
+  pyjs.runPython("{}['missing']");
+} catch (e) {
+  console.log(e instanceof pyjs.PythonError, e.type); // true KeyError
+}
 ```
 
-#### `py_apply`
-Call the `__call__` method of a Python object with an array of arguments.
+## Installing packages and files
 
-#### `get`
-call the bracket operator `[]` of a Python object.
-
-Example:
-```javascript
-await pyjs.installPackages(["numpy"]);
-const arr = pyjs.exec_eval("import numpy;numpy.eye(2)");
-console.log(arr.get(0,0)) // prints 1
-console.log(arr.get(0,1)) // prints 0
-console.log(arr.get(1,0)) // prints 0
-console.log(arr.get(1,1)) // prints 1
-```
+`installPackages`, `unpackArchive`, `addFiles`, `saveBytecode`, `FS` (the
+emscripten file system): see [npm package](npm.md).

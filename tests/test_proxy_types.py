@@ -84,6 +84,26 @@ def test_array_append_extend_insert():
     assert isinstance(a, JSArray)
 
 
+def test_array_extend_with_itself():
+    """`a.extend(a)` doubles the array, like for a list (it must not follow
+    the items it appends itself, forever)"""
+    a = run_js("[1, 2]")
+    a.extend(a)
+    assert js_list(a) == [1, 2, 1, 2]
+    a += a
+    assert js_list(a) == [1, 2, 1, 2, 1, 2, 1, 2]
+
+
+def test_array_assign_a_very_long_slice():
+    """more items than one JavaScript call can take as arguments"""
+    a = run_js("[-1, -2, -3]")
+    a[1:2] = range(300_000)
+    assert len(a) == 300_002
+    assert [a[0], a[1], a[2], a[150_000], a[300_000], a[300_001]] == [-1, 0, 1, 149_999, 299_999, -3]
+    a[:] = []
+    assert len(a) == 0
+
+
 def test_array_pop():
     a = run_js("[1, 2, 3, 4]")
     assert a.pop() == 4

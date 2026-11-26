@@ -32,6 +32,24 @@ export const jspi = {
   depth: 0,
 };
 
+/**
+ * A synchronous entry into Python starts that does not come through a
+ * PyProxy (the C callbacks of the main loop / requestAnimationFrame loop,
+ * src/module.cpp): counted like the others. Returns what syncLeave needs.
+ */
+export function syncEnter(): number {
+  const couldSuspend = jspi.canSuspend;
+  jspi.canSuspend = false;
+  jspi.depth += 1;
+  return couldSuspend ? 1 : 0;
+}
+
+/** the entry of syncEnter ends */
+export function syncLeave(couldSuspend: number): void {
+  jspi.depth -= 1;
+  jspi.canSuspend = couldSuspend !== 0;
+}
+
 /** JSPI is used: supported by the browser and not switched off */
 export function jspiEnabled(): boolean {
   return jspi.supported && !jspi.disabled;

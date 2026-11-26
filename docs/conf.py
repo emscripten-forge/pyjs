@@ -32,8 +32,14 @@ exclude_patterns = ["_build", "_extra", "Thumbs.db", ".DS_Store"]
 myst_enable_extensions = ["colon_fence"]
 # anchors for links like `development.md#tests`
 myst_heading_anchors = 4
-# pygments' cmake lexer stumbles over `\$` in the embedding example
-suppress_warnings = ["misc.highlighting_failure"]
+suppress_warnings = [
+    # pygments' cmake lexer stumbles over `\$` in the embedding example
+    "misc.highlighting_failure",
+    # `JSProxy` in `pyjs.ffi.__all__` is imported from the C++ module
+    # pyjs_core: autoapi cannot follow that re-export (it is documented as
+    # pyjs_core.JSProxy, from stubs/)
+    "autoapi.python_import_resolution",
+]
 
 # -- html -----------------------------------------------------------------------
 html_theme = "pydata_sphinx_theme"
@@ -156,5 +162,6 @@ def _fill_in_npm_package(app, docname, source):
 # `pixi run docs`): the npm package built from this repository
 # (<html root>/pyjs/), which the playground loads
 html_extra_path = ["_extra"]
-if os.environ.get("PYJS_DOCS_EXTRA_DIR"):
+# (`pixi run docs-serve` sets it too, but builds no package: only if there)
+if os.path.isdir(os.environ.get("PYJS_DOCS_EXTRA_DIR", "")):
     html_extra_path.append(os.environ["PYJS_DOCS_EXTRA_DIR"])

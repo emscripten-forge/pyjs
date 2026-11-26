@@ -1,8 +1,8 @@
 # Design
 
 How Python and JavaScript reach each other in pyjs: the parts of the core,
-and three diagrams of what happens on a call in each direction and on a deep
-conversion. The source files named here explain the details in their
+and diagrams of what happens on a call in each direction, on a deep
+conversion and when Python waits for a promise (`run_sync`). The source files named here explain the details in their
 comments.
 
 ## The parts
@@ -143,3 +143,47 @@ browser's event loop: `call_soon` callbacks are posted on a private
 `MessageChannel` (no 4 ms clamping of nested `setTimeout`), `call_later` uses
 `setTimeout`. Every task step is therefore a call from JavaScript into
 Python, like the one in the second diagram.
+
+## Waiting for a promise in synchronous code: `run_sync` (JSPI)
+
+With JSPI (JavaScript Promise Integration), task steps and `callPromising`
+calls enter Python through `pyjs_call_promising`, wrapped in
+`WebAssembly.promising`. Each such call is a *task*. `pyjs.run_sync(promise)`
+calls the wasm import `pyjs_js_await`, wrapped in `WebAssembly.Suspending`:
+the browser suspends the task's wasm call stack until the promise settled,
+and the event loop goes on meanwhile.
+
+Any number of tasks can be suspended at the same time and resume in any
+order. The browser only keeps the wasm call stack; two more things a running
+Python call uses are shared by all tasks, so each task's part is moved out of
+the way when it suspends and put back when it resumes (ported from pyodide):
+
+- emscripten's C stack in linear memory (C locals, CPython's C frames):
+  `src/js/stack_state.ts` copies the bytes another task needs to overwrite
+  and restores them before the task continues
+- CPython's thread state (Python frames, the exception being handled, the
+  contextvars context, asyncio's current task): `src/stack_switching.c`
+  swaps these fields per task (one thread state, like greenlet)
+
+```{mermaid}
+sequenceDiagram
+    participant L as event loop
+    participant A as task A
+    participant B as task B
+    L->>A: enter (promising)
+    A->>A: run_sync(p1): save C stack data + thread state, suspend
+    A-->>L: (suspended)
+    L->>B: enter (promising)
+    B->>B: run_sync(p2): save, suspend
+    B-->>L: (suspended)
+    Note over L: p2 settles first
+    L->>B: resume: restore B's state
+    B-->>L: done
+    Note over L: p1 settles
+    L->>A: resume: restore A's state (bytes B overwrote come back)
+    A-->>L: done
+```
+
+`run_sync` is possible where `can_run_sync()` is True: inside a task, but not
+in a synchronous JavaScript -> Python call (an event handler, `runPython`)
+nested in it, since JavaScript frames cannot be suspended.

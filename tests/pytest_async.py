@@ -31,6 +31,7 @@ with cleanup (and `monkeypatch`, `tmp_path`, ...) cannot be used by async
 tests. Clean up inside the test with try / finally.
 """
 
+import asyncio
 import collections
 import inspect
 import time
@@ -38,12 +39,20 @@ import traceback
 
 import pytest
 
+# (pytest's own evaluation of `@pytest.mark.xfail(...)`: not public API, but
+# the only place that knows all the rules of the marker's arguments)
+from _pytest.skipping import evaluate_xfail_marks
+
 
 class AsyncTests:
     """The pytest plugin, see the module docstring. Also counts the outcomes
     of all tests (sync and async) for the summary in `counts`."""
 
-    def __init__(self):
+    def __init__(self, timeout=300):
+        # seconds one async test may take. A test waiting for something that
+        # never happens would otherwise hang the whole run, and all results
+        # with it. (Only a hang guard: far above what any test needs.)
+        self.timeout = timeout
         # the async tests put aside: (test id, coroutine)
         self._deferred = []
         self._deferred_ids = set()
@@ -63,9 +72,11 @@ class AsyncTests:
         # the arguments the test function asks for (parameters of
         # `parametrize`, values of fixtures), as pytest prepared them
         arguments = {name: pyfuncitem.funcargs[name] for name in pyfuncitem._fixtureinfo.argnames}
-        # (is the test marked as "expected to fail"? needed in phase 2)
+        # Is the test marked as "expected to fail"? Needed in phase 2. pytest
+        # itself evaluates the marker (its condition, `raises=`, `strict=`):
+        # None, or an object with `.raises` and `.strict`.
         # (not with --runxfail: then xfail tests are run like normal ones)
-        xfail = pyfuncitem.get_closest_marker("xfail") is not None and not pyfuncitem.config.option.runxfail
+        xfail = None if pyfuncitem.config.option.runxfail else evaluate_xfail_marks(pyfuncitem)
         self._deferred.append((pyfuncitem.nodeid, function(**arguments), xfail))
         self._deferred_ids.add(pyfuncitem.nodeid)
         return True
@@ -84,10 +95,31 @@ class AsyncTests:
         if report.nodeid in self._deferred_ids and report.when == "call":
             return  # counted in phase 2
         if report.when == "call" or report.outcome != "passed":
-            outcome = "xfailed" if hasattr(report, "wasxfail") else report.outcome
+            outcome = report.outcome
+            if hasattr(report, "wasxfail"):
+                # a test marked xfail. pytest sets `wasxfail` in both cases:
+                # it failed as expected (reported as "skipped"), or it
+                # PASSED although a failure was expected ("passed"): the
+                # marker is stale, which must be visible in the counts.
+                outcome = "xpassed" if report.outcome == "passed" else "xfailed"
             self.counts[outcome] += 1
 
     # -- phase 2: called by tests/main.py -----------------------------------
+    async def _await_with_timeout(self, coroutine):
+        """Await one test, at most `self.timeout` seconds: its result, or
+        its exception, or a TimeoutError.
+
+        The test runs as its own asyncio task. `asyncio.wait` (not
+        `wait_for`): `wait_for` waits until the cancelled task has really
+        ended, and a test stuck in `pyjs.run_sync` (suspended, not at an
+        `await`) never reacts to its cancellation."""
+        task = asyncio.ensure_future(coroutine)
+        done, _ = await asyncio.wait({task}, timeout=self.timeout)
+        if not done:
+            task.cancel()
+            raise TimeoutError(f"the test did not finish within {self.timeout} s")
+        return task.result()
+
     async def run_deferred(self):
         """await the async tests put aside in phase 1, one after the other"""
         if not self._deferred:
@@ -97,16 +129,27 @@ class AsyncTests:
         for nodeid, coroutine, xfail in self._deferred:
             start = time.time()
             try:
-                await coroutine
-                # (`@pytest.mark.xfail`: passing although a failure was
-                # expected is reported, but is no error, as in pytest)
-                outcome = "xpassed" if xfail else "passed"
+                await self._await_with_timeout(coroutine)
+                if xfail is None:
+                    outcome = "passed"
+                elif xfail.strict:
+                    # `xfail(strict=True)`: passing is an error
+                    outcome = "failed"
+                    failures.append((nodeid, "[XPASS(strict)] the test passed, but is marked xfail(strict=True)"))
+                else:
+                    # passing although a failure was expected is reported,
+                    # but is no error, as in pytest
+                    outcome = "xpassed"
             except pytest.skip.Exception as skipped:
                 # `pytest.skip(...)` called inside the test
                 outcome = f"skipped ({skipped})"
-            except BaseException:
-                if xfail:
-                    # `@pytest.mark.xfail`: the expected failure
+            except pytest.xfail.Exception:
+                # `pytest.xfail(...)` called inside the test
+                outcome = "xfailed"
+            except BaseException as error:
+                # `@pytest.mark.xfail`: the expected failure (with `raises=`:
+                # only an exception of that type is the expected one)
+                if xfail is not None and (xfail.raises is None or isinstance(error, xfail.raises)):
                     outcome = "xfailed"
                 else:
                     outcome = "failed"

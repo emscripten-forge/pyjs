@@ -242,8 +242,11 @@ pyjs_enter_promising_task(void)
 {
     if (in_task)
     {
-        // (a promising call is only started from the event loop level, see
-        // callPythonPromising: not reachable)
+        // A promising call is only started from the event loop level (see
+        // callPythonPromising), so normally no task is running here. It
+        // does happen after a task crashed (a wasm trap: its state was
+        // never taken off the thread state), and the caller must cope:
+        // pyjs_call_promising reports RC_NOT_ENTERED.
         PyErr_SetString(PyExc_SystemError,
                         "pyjs: cannot enter a promising task from inside another running one");
         return -1;
@@ -311,12 +314,4 @@ pyjs_restore_task_state(TaskState* saved)
     load_task_state(tstate, saved);
     free(saved);
     in_task = true;
-}
-
-// Whether a promising task is executing (and not suspended): run_sync is only
-// possible there. Used by the JS side (can_run_sync).
-EMSCRIPTEN_KEEPALIVE int
-pyjs_in_promising_task(void)
-{
-    return in_task ? 1 : 0;
 }

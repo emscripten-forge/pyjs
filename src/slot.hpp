@@ -132,6 +132,46 @@ namespace pyjs
     };
     static_assert(sizeof(Slot) == 16, "the JS side reads 16 byte slots");
 
+    // WHO OWNS WHAT IS IN A SLOT
+    //
+    // A slot of a number or a bool holds the value itself. The other kinds
+    // refer to something that lives elsewhere (text, a JS object, a Python
+    // object), and somebody has to release that. The rule depends on the
+    // direction the slot travels, and it is NOT symmetric:
+    //
+    //   slot             written by C, read by JS            written by JS, read by C
+    //                    (to_slot here, decode in            (encode in codec.ts,
+    //                    src/js/codec.ts)                    from_slot here)
+    //   ---------------  ----------------------------------  ------------------------------
+    //   T_STR, T_BIGINT  points INTO the Python str: the     points into JS's scratch
+    //                    writer keeps that object alive      memory, which JS releases
+    //                    until JS has read the slot          after the call
+    //   ... | T_OWNED    a malloc'ed copy: JS frees it       a malloc'ed copy: C frees it
+    //                    after reading                       after reading
+    //   T_JS             the handle of an EXISTING JSProxy   a NEW handle: it belongs to
+    //                    (not a new one): the writer keeps   the JSProxy that from_slot
+    //                    that proxy alive until JS has       creates. A slot that is
+    //                    read the slot                       never read leaks its handle
+    //   T_PY             a NEW reference: it belongs to the  borrowed (the PyProxy on the
+    //                    PyProxy JS creates, released when   JS side keeps the object):
+    //                    that proxy is destroyed             from_slot takes its own
+    //   T_ERROR          aux == 0: a NEW reference to the    aux != 0: a NEW handle of the
+    //                    exception, owned by the             thrown value, owned by the
+    //                    PythonError JS creates              JSProxy made for it
+    //
+    // "The writer keeps it alive until JS has read the slot": for the
+    // arguments of a call from Python into JS that is automatic (the caller
+    // holds them during the call). For the RESULT of a call from JS into
+    // Python it is not: the C function has returned when JS reads the slot.
+    // See g_keep in src/py_entry.cpp.
+    //
+    // Consequences worth knowing when changing code:
+    //   - every slot JS wrote must be consumed by C exactly once (from_slot),
+    //     or given back (discardSlots in codec.ts, release_stream in deep.cpp)
+    //   - every T_PY slot C wrote must reach `decode` in JS exactly once (an
+    //     operation that only wants a yes / no must not produce one: see
+    //     P_HASATTR in src/py_entry.cpp)
+
     // pointers cross the boundary as double (exact up to 2^53): the same code
     // for wasm32 and wasm64, no BigInt on the JS side
     inline double ptr_to_num(const void* p)
@@ -150,17 +190,21 @@ namespace pyjs
     // and src/js/deep.ts). Only "l" / "L" (C long) need translating: a long
     // has 32 bits on wasm32 but 64 on wasm64 (numpy's int64 has format "l"
     // there), so it becomes the character of the fixed size type: "i" / "I"
-    // or "q" / "Q". JavaScript does not know the size of a C long; this side
-    // does.
-    inline char js_buffer_format(char format)
+    // or "q" / "Q".
+    //
+    // Decided by `itemsize`, the size the buffer itself reports, not by
+    // sizeof(long): with a "<" / "=" prefix the struct rules say "standard
+    // size", where "l" is 4 bytes on every platform. Trusting the platform
+    // would read such a buffer on wasm64 as 8 byte items.
+    inline char js_buffer_format(char format, Py_ssize_t itemsize)
     {
         if (format == 'l')
         {
-            return sizeof(long) == 4 ? 'i' : 'q';
+            return itemsize == 4 ? 'i' : 'q';
         }
         if (format == 'L')
         {
-            return sizeof(long) == 4 ? 'I' : 'Q';
+            return itemsize == 4 ? 'I' : 'Q';
         }
         return format;
     }
@@ -173,6 +217,13 @@ namespace pyjs
     // slot -> Python (implicit conversion), a new reference. A T_ERROR slot
     // raises: nullptr with the Python exception set.
     PyObject* from_slot(Slot* slot);
+
+    // Give back what `n` slots WRITTEN BY JAVASCRIPT own, when C stops
+    // reading them half way (a conversion before them failed): the new
+    // handles of JS objects (T_JS, T_BUFFER, T_ERROR), malloc'ed text
+    // (T_OWNED). See "who owns what" above. (Slots written by C that never
+    // reached JS: release_slots in js_proxy.cpp.)
+    void discard_js_slots(Slot* slots, Py_ssize_t n);
 
     // a JSProxy for a handle (owned by the proxy) with its flags
     PyObject* js_proxy_new(int handle, int flags, int this_handle);

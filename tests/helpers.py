@@ -2,7 +2,39 @@
 
 import json
 
+import pytest
+
 import pyjs
+from pyjs.core import _module
+
+#: for tests that need JSPI (`pyjs.run_sync`): skipped, not silently passed,
+#: in browsers without it and in the run with JSPI switched off
+requires_jspi = pytest.mark.skipif(not pyjs.jspi_enabled(), reason="needs JSPI")
+
+
+def handle_count():
+    """how many JavaScript objects Python holds right now (handles in use,
+    see src/js/codec.ts). A test compares it before / after: a difference is
+    a leaked (or wrongly freed) handle."""
+    return int(_module._handle_count())
+
+
+def pyproxy_count():
+    """how many owned PyProxies hold a Python reference right now"""
+    return int(_module._pyproxy_count())
+
+
+def js_gc():
+    """Run JavaScript's garbage collector now, if the browser lets us
+    (chromium started with --expose-gc by the test driver). Tests that depend
+    on it call `require_js_gc()` first."""
+    return bool(pyjs.js.Function("if (typeof gc !== 'function') return false; gc(); return true;")())
+
+
+def require_js_gc():
+    """skip the calling test where the garbage collector cannot be forced"""
+    if not js_gc():
+        pytest.skip("needs a browser with gc() (chromium --expose-gc)")
 
 # `a === b` in JavaScript, for two values passed from python
 js_assert_eq = pyjs.js.Function(

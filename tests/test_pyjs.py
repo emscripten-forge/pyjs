@@ -827,20 +827,9 @@ def test_int_container():
 
 
 
-def test_sleep():
-    import time
-    start = time.time()
-    time.sleep(2)
-    end = time.time()
-
-    assert end - start >= 2
-
-    # probably we can also do more precise tests
-    # but lets keept it simple for now
-    assert end - start < 2.1
-
-
 def test_imports_sys():
+    # (what packages import at import time; tests/test_mocks.py checks the
+    # stand-ins and time.sleep)
     import termios
     import fcntl
     import pexpect
@@ -848,4 +837,9 @@ def test_imports_sys():
 
 
 def test_webbrowser():
-    from webbrowser import open, open_new, open_new_tab
+    import webbrowser
+
+    assert callable(webbrowser.open)
+    assert callable(webbrowser.open_new)
+    assert callable(webbrowser.open_new_tab)
+    assert isinstance(webbrowser.name, str)

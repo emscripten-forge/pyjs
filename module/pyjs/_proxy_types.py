@@ -85,6 +85,11 @@ _DOUBLE_PROXY = 1 << 15
 _module = pyjs_core.module()
 
 
+# how many values are passed to one JavaScript call at most (browsers limit
+# the number of arguments: far above this, but not by a known amount)
+_MAX_ARGUMENTS = 10_000
+
+
 def _keep(item):
     """What to hand to JavaScript when it will STORE `item` (in an Array,
     ...). A Python object passed to a JavaScript function is normally only
@@ -126,12 +131,15 @@ class JSCallable(_Mixin):
         ``__get__`` of the class attribute `f`):
 
         ```python
+        import js
+
         class Counter:
             increment = js.Function("this.n += 1")  # a JS function
 
         c = Counter()
         c.n = 0
         c.increment()  # runs the JS function with `this` = c
+        assert c.n == 1
         ```
 
         Like a Python function in a class, which gets the instance as
@@ -265,6 +273,11 @@ class JSArray(_Sliceable):
 
     def extend(self, items):
         """Add every item of the iterable `items` at the end."""
+        if isinstance(items, JSArray):
+            # A JavaScript Array is iterated live: the loop would also visit
+            # the items it appends itself (`a.extend(a)` would never end).
+            # A list copies the items first; so does this.
+            items = list(items)
         for item in items:
             self.push(_keep(item))
 
@@ -309,7 +322,17 @@ class JSArray(_Sliceable):
         indices = _slice_indices(self, key)
         if indices.step == 1:
             # like a list: the slice is replaced, the array may grow / shrink
-            self.splice(indices.start, max(indices.stop - indices.start, 0), *items)
+            start = indices.start
+            removed = max(indices.stop - start, 0)
+            if len(items) <= _MAX_ARGUMENTS:
+                self.splice(start, removed, *items)
+                return
+            # Many items: `splice` takes them as arguments of one call, and
+            # the number of arguments of a JavaScript call is limited (some
+            # ten thousands, depending on the browser). In portions.
+            self.splice(start, removed)
+            for offset in range(0, len(items), _MAX_ARGUMENTS):
+                self.splice(start + offset, 0, *items[offset : offset + _MAX_ARGUMENTS])
             return
         if len(items) != len(indices):
             raise ValueError(
@@ -423,12 +446,12 @@ class JSBuffer(_Mixin):
         if len(source) != target.length:
             raise ValueError(f"cannot assign {len(source)} bytes to a buffer of {target.length} bytes")
         # Exactly one copy: from the memory of `source` straight into the
-        # JavaScript buffer. `buffer_to_js(source, True)` makes no copy: it
+        # JavaScript buffer. `buffer_to_js(source, True, False)` makes no copy: it
         # is a Uint8Array that looks directly at the bytes of `source` in
         # wasm memory (a "view"). `target.set(view)` then copies them over in
         # JavaScript. (The view is only valid during this statement: wasm
         # memory may move when it grows, and `source` may be freed.)
-        target.set(pyjs_core.buffer_to_js(source, True))
+        target.set(pyjs_core.buffer_to_js(source, True, False))
 
     def assign_to(self, target):
         """Copy the bytes of this JavaScript buffer into the writable Python
@@ -609,7 +632,7 @@ def _exception(exc, value):
 
 
 def _stand_in(exception):
-    """Yes: wraps the Python `exception` in a JavaScript object.
+    """Wraps the Python `exception` in a JavaScript object.
 
     ``js_generator.throw(ValueError("bad"))`` throws the exception INTO
     JavaScript code (the generator's `try` / `catch` may handle it). But

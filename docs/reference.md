@@ -1,10 +1,10 @@
 # API reference
 
-- [JavaScript API](JavaScript_API.md): running Python from JavaScript (the
-  pyjs `Module`: `exec`, `eval`, `exec_eval`, `async_exec_eval`, ...)
+- [JavaScript API](JavaScript_API.md): running Python from JavaScript
+  (`runPython`, `runPythonAsync`, `pyimport`, `globals`, `toPy`, PyProxy)
 - [Python API](python_api.md): using JavaScript from Python
-  (`pyjs.js`, conversion, callables, promises, `run_sync`, the asyncio event
-  loop)
+  (`pyjs.js`, proxies, conversion, `run_js`, promises and `run_sync`, the
+  asyncio event loop, errors)
 
 ```{toctree}
 :maxdepth: 2

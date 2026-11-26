@@ -1,1 +1,2 @@
-"""this module is the core of pyjs, it contains the C++ implementation of most of the functions and classes used by pyjs."""
+"""The C++ core of pyjs: the `JSProxy` type and the conversion of values (a
+builtin module of the runtime; this file only exists for the docs)."""

@@ -104,6 +104,8 @@ def _unpickle_jsexception(name, message, stack):
     exception = JSException(None, message)
     exception.name = name
     exception.stack = stack
+    # (str(exception) is built by the constructor, which had no name yet)
+    exception.args = (f"{name}: {message}",)
     return exception
 
 

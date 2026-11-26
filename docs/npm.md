@@ -27,12 +27,12 @@ import { initializePyjsRuntime } from "@PYJS_NPM_PACKAGE@";
 
 const pyjs = await initializePyjsRuntime({ packages: ["numpy"] });
 
-pyjs.exec("import numpy as np");
-pyjs.eval("int(np.arange(10).sum())");  // 45
-pyjs.exec_eval("x = 2\nx * 21");        // 42
-await pyjs.async_exec_eval(
+pyjs.runPython("import numpy as np");
+pyjs.runPython("int(np.arange(10).sum())");  // 45
+pyjs.runPython("x = 2\nx * 21");             // 42
+await pyjs.runPythonAsync(
   "import asyncio\nawait asyncio.sleep(0)\n'done'"
-);
+);                                            // "done"
 
 // install more later (verbose: with the solver log)
 await pyjs.installPackages(["regex"]);
@@ -40,9 +40,9 @@ await pyjs.installPackages(["scipy"], { verbose: true });
 ```
 
 `initializePyjsRuntime` returns the pyjs runtime (the emscripten `Module`) with
-the API described in {doc}`JavaScript_API` (`exec`, `eval`, `exec_eval`,
-`async_exec_eval`, `eval_file`, `to_js`, `FS`, ...), plus `installPackages`,
-`unpackArchive` and `addFiles`.
+the API described in {doc}`JavaScript_API` (`runPython`, `runPythonAsync`,
+`pyimport`, `globals`, `toPy`, `FS`, ...), plus `installPackages`,
+`unpackArchive`, `addFiles` and `saveBytecode`.
 
 Without a bundler, the package can be imported directly from a CDN, see [CDN](cdn.md).
 
@@ -123,7 +123,7 @@ accepts both, specs and pinned packages.
   `saveBytecode()` themselves).
 
   ```js
-  pyjs.exec("import numpy, scipy.linalg");
+  pyjs.runPython("import numpy, scipy.linalg");
   await pyjs.saveBytecode();
   ```
 
@@ -260,7 +260,7 @@ const pyjs = await initializePyjsRuntime({
 });
 await pyjs.unpackArchive({ url: "more_data.tar.bz2", path: "/data" });
 await pyjs.addFiles([{ path: "/data/extra.csv", url: "extra.csv" }]);
-pyjs.exec("import sys; sys.path.insert(0, '/examples')");
+pyjs.runPython("import sys; sys.path.insert(0, '/examples')");
 ```
 
 A filtered package (stripped of tests, headers, docs, ...) as an archive with
@@ -277,6 +277,21 @@ wasm32 is the default and works in all browsers. wasm64 (memory64) allows
 more than 4 GB of memory (pyjs is linked with up to 16 GB) but needs a
 browser with memory64 support. Extra packages are taken from the matching
 channel subdir (`emscripten-wasm32` / `emscripten-wasm64`).
+
+## Changes in 6.0
+
+* New FFI core (nanobind + TypeScript instead of pybind11 + embind), see
+  {doc}`design`.
+* The API follows PEP 818 and pyodide. JavaScript side: `runPython`,
+  `runPythonAsync`, `pyimport`, `globals`, `toPy` replace `exec`, `eval`,
+  `exec_eval`, `async_exec_eval`, `eval_file`; Python objects are `PyProxy`
+  objects (`proxy(...)`, `proxy.get(key)`, `destroy()`) instead of
+  `pyobject` (`py_call`, `delete()`). Python side: `JSProxy` replaces
+  `JsValue`, `JSException` the `Js*Error` classes, `create_proxy` /
+  `create_once_callable` the callable helpers; see {doc}`python_api`.
+* `run_sync` (JSPI): any number of Python stacks can wait at the same time;
+  `loop.run_until_complete` blocks where `can_run_sync()` is true.
+* Optional stdlib parts (`stdlib` option), see above.
 
 ## Changes in 5.2
 

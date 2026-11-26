@@ -156,12 +156,41 @@ export function hGet(h: number): any {
   return objects[h];
 }
 
+// what a free entry of `objects` holds (to tell "free" from "holds undefined")
+const FREE = Symbol("free handle");
+
 /** release handle `h` (0: nothing to do): the table no longer holds the value */
 export function hFree(h: number): void {
-  if (h !== 0) {
-    objects[h] = undefined;
-    freeHandles.push(h);
+  if (h === 0) {
+    return;
   }
+  if (objects[h] === FREE) {
+    // Released twice: a bug in pyjs. Putting the index on the free list a
+    // second time would make two later objects share it, and a proxy would
+    // silently use the wrong object. Reported, not thrown (this is called
+    // from wasm, where nothing may throw).
+    console.error(`pyjs: handle ${h} released twice (a bug in pyjs, please report it)`);
+    return;
+  }
+  objects[h] = FREE;
+  freeHandles.push(h);
+}
+
+/**
+ * `_malloc(size)`, but an exhausted memory is an error: malloc returns 0
+ * then, and writing to address 0 would silently corrupt whatever is there.
+ */
+export function alloc(size: number): number {
+  const ptr = _malloc(size);
+  if (ptr === 0 && size > 0) {
+    throw new RangeError(`pyjs: out of memory (allocating ${size} bytes)`);
+  }
+  return ptr;
+}
+
+/** for tests: how many handles are in use (a leak check compares before / after) */
+export function handleCount(): number {
+  return objects.length - 1 - freeHandles.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +229,7 @@ let scratchEnd = 0; // address just behind the region
 
 /** allocate the scratch region (once the wasm memory exists) */
 export function initScratch(): void {
-  scratchTop = _malloc(SCRATCH_SIZE);
+  scratchTop = alloc(SCRATCH_SIZE);
   scratchEnd = scratchTop + SCRATCH_SIZE;
 }
 
@@ -282,7 +311,7 @@ function encodeString(str: string, i: number, tag: number, advance: boolean): vo
   let ptr = scratchTop;
   if (ptr + capacity > scratchEnd) {
     // does not fit into the scratch region
-    ptr = _malloc(capacity);
+    ptr = alloc(capacity);
     tag |= T.OWNED;
     advance = false; // (the scratch region was not used)
   }
@@ -332,6 +361,25 @@ export function slotNum(p: number): number {
 /** the string of a STR slot at `p`: `num` is the address, `aux` the length */
 export function slotString(p: number): string {
   return utf8(HEAPF64[p / 8 + 1], HEAP32[p / 4 + 1]);
+}
+
+/**
+ * Give back what `count` encoded slots at `p` own, when the C side never got
+ * them (a later argument of the same call failed to encode). Normally the C
+ * side takes these over: the handle of a JS object goes to its JSProxy, a
+ * malloc'ed string (OWNED) is freed after reading.
+ */
+export function discardSlots(p: number, count: number): void {
+  for (let k = 0; k < count; k++) {
+    const i = (p + 16 * k) / 4;
+    const tag = HEAP32[i];
+    if (tag === T.JS) {
+      hFree(HEAP32[i + 1]);
+      hFree(HEAP32[i + 3]); // (the handle of `this`, 0: none)
+    } else if (tag & T.OWNED) {
+      _free(HEAPF64[i / 2 + 1]);
+    }
+  }
 }
 
 /**

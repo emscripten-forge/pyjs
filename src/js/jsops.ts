@@ -1,7 +1,13 @@
 // Python -> JavaScript: what the EM_JS functions of src/js_proxy.cpp /
 // src/module.cpp call (a JSProxy operating on its JS object). Arguments
-// arrive as slots, the result is written into a slot (codec.ts); nothing
-// throws: errors are a return code + the thrown value in the result slot.
+// arrive as slots, the result is written into a slot (codec.ts).
+//
+// THE RULE OF THIS FILE: no function here may throw. A JavaScript exception
+// that leaves one of them would travel through the wasm frames of CPython,
+// which are not prepared for that (no cleanup runs, the interpreter is left
+// in an undefined state). So every function catches everything and reports
+// an error as return code + the thrown value in the result slot (`fail`).
+// A function without a result slot (bufferCopy) returns a return code only.
 import {
   PYPROXY,
   pyProxyJsFlags,
@@ -20,7 +26,7 @@ import {
   writeJsObject,
   writePythonError,
 } from "./codec";
-import { fromStream, toStream } from "./deep";
+import { TOO_DEEP, copyOfMemory, fromStream, toStream } from "./deep";
 import { canRunSync, jspi } from "./jspi";
 import { PythonError, destroyBorrowed } from "./pyproxy";
 import { StackState } from "./stack_state";
@@ -35,6 +41,7 @@ const enum Rc {
   STOP = 5,
   GENERIC = 6,
   UNSUPPORTED = 7, // the object cannot do this: a TypeError in python
+  TOO_DEEP = 9, // only toPy: nested too deeply, a RecursionError in python
 }
 
 /** operations of `op` (JsOp in src/js_proxy.cpp) */
@@ -87,22 +94,34 @@ function isGenerator(value: any): boolean {
   return tag === "[object Generator]" || tag === "[object AsyncGenerator]";
 }
 
-// destroys the argument proxies of a generator once it is garbage collected
-const generatorArguments = new FinalizationRegistry((proxies: any[]) => destroyBorrowed(proxies));
+/** a real promise (as an async function returns it), not just any object with a `then` */
+function isPromise(value: any): boolean {
+  return Object.prototype.toString.call(value) === "[object Promise]";
+}
+
+// destroys the argument proxies of a call once what it returned (a generator,
+// a thenable) is garbage collected
+const laterArguments = new FinalizationRegistry((proxies: any[]) => destroyBorrowed(proxies));
 
 /**
- * the proxies created for the arguments of a call are destroyed after it; if
- * it returned a promise: when that settles; a generator: with the generator
+ * The proxies created for the arguments of a call are destroyed after it.
+ * When that is depends on what the call returned:
+ *   - a promise (an async function was called: its body goes on later):
+ *     when the promise settles
+ *   - a generator, or another object with a `then` method: when the garbage
+ *     collector frees that object (its code may use the arguments any time
+ *     until then)
+ *   - anything else: now
  */
 function releaseBorrowed(proxies: any[], result: any): void {
-  if (isGenerator(result)) {
-    // A generator function was called: its body runs later, step by step,
-    // and uses the arguments then. They live as long as the generator
-    // (destroyed when the garbage collector frees it).
-    generatorArguments.register(result, proxies);
+  if (result !== null && typeof result === "object" && result[PYPROXY] !== undefined) {
+    // A Python object came back (e.g. `(x) => x`, also with a coroutine as
+    // x: a PyProxy of an awaitable has a `then`, and calling it would START
+    // the coroutine behind the caller's back). The call is over.
+    destroyBorrowed(proxies);
     return;
   }
-  if (isThenable(result)) {
+  if (isPromise(result)) {
     // Not right when the promise settles but one step later
     // (queueMicrotask). The promise may settle WITH one of the proxies
     // (`async (x) => x`): whoever awaits it (python) is notified in the
@@ -110,9 +129,20 @@ function releaseBorrowed(proxies: any[], result: any): void {
     // get the Python object out of it.
     const release = () => queueMicrotask(() => destroyBorrowed(proxies));
     result.then(release, release);
-  } else {
-    destroyBorrowed(proxies);
+    return;
   }
+  if (isGenerator(result) || isThenable(result)) {
+    // A generator function was called: its body runs later, step by step,
+    // and uses the arguments then. The same may be true for an object that
+    // merely has a `then` method. Its `then` must not be called to find
+    // out when it is done: some objects only start their work when `then`
+    // is called (the query builders of database libraries), and whoever
+    // awaits it later would start it a second time. So in both cases the
+    // arguments live as long as the returned object.
+    laterArguments.register(result, proxies);
+    return;
+  }
+  destroyBorrowed(proxies);
 }
 
 /**
@@ -179,7 +209,15 @@ export function call(
       if (nkw > 0) {
         const kwargs: Record<string, any> = {};
         for (let i = 0; i < nkw; i++) {
-          kwargs[decode(args + 16 * (npos + nkw + i), false)] = decode(args + 16 * (npos + i), false);
+          const name = decode(args + 16 * (npos + nkw + i), false);
+          const value = decode(args + 16 * (npos + i), false);
+          if (name === "__proto__") {
+            // (`kwargs["__proto__"] = x` would set the prototype of the
+            // object instead of creating a property of that name)
+            Object.defineProperty(kwargs, name, { value, enumerable: true, configurable: true, writable: true });
+          } else {
+            kwargs[name] = value;
+          }
         }
         values.push(kwargs);
       }
@@ -561,11 +599,15 @@ export function op(op: Op, h: number, arg: number, arg2: number, out: number): n
  * containers, -1: all) as one stream of slots, which the C side turns into
  * Python objects. deep.ts explains the stream and what is written to `out`.
  */
-export function toPy(h: number, depth: number, out: number): number {
+export function toPy(h: number, depth: number, limit: number, fresh: number, out: number): number {
   try {
-    toStream(h, depth, out);
+    toStream(h, depth, limit, fresh, out);
     return Rc.OK;
   } catch (error) {
+    if (error === TOO_DEEP) {
+      // nested deeper than `limit` levels: a RecursionError in Python
+      return Rc.TOO_DEEP;
+    }
     return fail(error, out);
   }
 }
@@ -629,6 +671,15 @@ export function jspiAwait(h: number, out: number): number | Promise<number> {
     (value) => {
       task.ok = true;
       task.value = value;
+      // The promise of an async JavaScript function may resolve to one of
+      // its Python arguments (`async (x) => x`). That is a borrowed proxy,
+      // destroyed one step after the promise settled, which is BEFORE the
+      // suspended task runs again and reads the value. So a proxy of our
+      // own is kept for that moment (released in jspiResume).
+      const state = value !== null && typeof value === "object" ? value[PYPROXY] : undefined;
+      if (state !== undefined && !state.owned && state.ptr !== 0) {
+        task.value = task.copy = value.copy();
+      }
       return token;
     },
     (error) => {
@@ -646,6 +697,8 @@ interface SuspendedTask {
   /** how the promise settled: value or error */
   ok: boolean;
   value: any;
+  /** an owned PyProxy made to keep `value` usable, destroyed by jspiResume */
+  copy?: any;
 }
 
 const suspendedTasks = new Map<number, SuspendedTask>();
@@ -672,6 +725,10 @@ export function jspiResume(token: number, out: number): number {
     return Rc.OK;
   } catch (error) {
     return fail(error, out);
+  } finally {
+    if (task.copy !== undefined) {
+      task.copy.destroy();
+    }
   }
 }
 
@@ -723,8 +780,10 @@ export function typedArray(ptr: number, nitems: number, format: number, view: nu
     if (cls === undefined) {
       return Rc.ERROR;
     }
-    const array = new cls(HEAPU8.buffer, ptr, nitems);
-    encode(view !== 0 ? array : array.slice(), out, false);
+    // (a copy also works when the items do not sit at a multiple of their
+    // size, see copyOfMemory; a view cannot: an error then)
+    const array = view !== 0 ? new cls(HEAPU8.buffer, ptr, nitems) : copyOfMemory(cls, ptr, nitems);
+    encode(array, out, false);
     return Rc.OK;
   } catch (error) {
     return fail(error, out);
@@ -738,22 +797,52 @@ function bytesOf(obj: any): Uint8Array {
 
 /** number of bytes (double) and struct format character (aux) of a buffer */
 export function bufferInfo(h: number, out: number): number {
-  const obj = hGet(h);
-  if (!ArrayBuffer.isView(obj) && !(obj instanceof ArrayBuffer)) {
+  try {
+    const obj = hGet(h);
+    if (!ArrayBuffer.isView(obj) && !(obj instanceof ArrayBuffer)) {
+      return Rc.ERROR;
+    }
+    let format = "B";
+    for (const code of "bBhHiIqQfd") {
+      if (obj instanceof TYPED_ARRAYS[code]) {
+        format = code;
+      }
+    }
+    // (two plain numbers for the C side, no value: the tag is not used)
+    writeAuxAndNum(out, format.charCodeAt(0), obj.byteLength);
+    return Rc.OK;
+  } catch {
+    // (nothing may throw into wasm, see `fail`)
     return Rc.ERROR;
   }
-  let format = "B";
-  for (const code of "bBhHiIqQfd") {
-    if (obj instanceof TYPED_ARRAYS[code]) {
-      format = code;
-    }
-  }
-  // (two plain numbers for the C side, no value: the tag is not used)
-  writeAuxAndNum(out, format.charCodeAt(0), obj.byteLength);
-  return Rc.OK;
 }
 
-/** copy the bytes of a buffer into the wasm memory at `ptr` */
-export function bufferCopy(h: number, ptr: number): void {
-  HEAPU8.set(bytesOf(hGet(h)), ptr);
+/**
+ * Copy the bytes of a buffer into the wasm memory at `ptr`, where the C side
+ * made room for `size` bytes (the size the buffer had when it was asked).
+ * Rc.OK, or Rc.ERROR if the buffer does not have that size any more.
+ *
+ * Two things can happen to a buffer between "how big are you" and this copy:
+ *   - it is detached (transferred away with postMessage / structuredClone;
+ *     also every view of the wasm memory itself once that memory grows).
+ *     A detached buffer has length 0, and JavaScript THROWS when a view of
+ *     it is created. Size 0 asked, nothing to copy: fine.
+ *   - it was resized (resizable ArrayBuffer). Copying more than `size` bytes
+ *     would write past the room the C side made.
+ * Never throws (a JavaScript exception must not travel into wasm).
+ */
+export function bufferCopy(h: number, ptr: number, size: number): number {
+  if (size === 0) {
+    return Rc.OK;
+  }
+  try {
+    const bytes = bytesOf(hGet(h));
+    if (bytes.length !== size) {
+      return Rc.ERROR;
+    }
+    HEAPU8.set(bytes, ptr);
+    return Rc.OK;
+  } catch {
+    return Rc.ERROR;
+  }
 }

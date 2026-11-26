@@ -7,6 +7,8 @@ same value does (pyodide compatible); it is also a RuntimeError.
 
 import asyncio
 
+import pytest
+
 import pyjs
 from pyjs import js
 
@@ -213,7 +215,7 @@ async def test_js_awaits_python_coroutine_result():
 async def test_run_sync_rejections():
     # with JSPI, run_sync raises like await
     if not pyjs.can_run_sync():
-        return
+        pytest.skip("needs JSPI")
     for js_expr, name in [
         ("new TypeError('sync t')", "TypeError"),
         ("new Error('sync e')", "Error"),
@@ -249,3 +251,69 @@ async def test_promise_rejection_is_not_unhandled():
         assert counter.n == 0, f"{counter.n} unhandled rejection(s)"
     finally:
         js.globalThis.removeEventListener("unhandledrejection", counter.listener)
+
+
+# A thenable that records the callbacks `await` gives it, so that the test
+# settles it by hand and sees whether the callback throws.
+_spy_thenable = js.Function(
+    """
+    return {
+        callbacks: null,
+        then(onFulfilled, onRejected) {
+            this.callbacks = [onFulfilled, onRejected];
+            // (a promise that never settles: the callbacks stay usable)
+            return new Promise(() => {});
+        },
+        // call the callback like a settling promise would: "ok", or the error
+        settle(index, value) {
+            try {
+                this.callbacks[index](value);
+                return "ok";
+            } catch (error) {
+                return String(error);
+            }
+        },
+    };
+    """
+)
+
+
+@pytest.mark.parametrize("index", [0, 1], ids=["fulfilled", "rejected"])
+async def test_promise_settles_after_its_await_was_cancelled(index):
+    """`await asyncio.wait_for(js_promise, timeout)`: the timeout cancels the
+    await, the promise settles later. Nobody waits for it any more: the late
+    result is dropped silently (not an InvalidStateError thrown into
+    JavaScript, which shows up as "unhandled rejection")."""
+    thenable = _spy_thenable()
+    try:
+        await asyncio.wait_for(thenable, 0.01)
+    except asyncio.TimeoutError:
+        pass
+    else:
+        raise AssertionError("expected a timeout")
+    assert thenable.settle(index, "late") == "ok"
+
+
+async def test_await_thenable_whose_then_returns_nothing():
+    """`await` works on any object with a `then` method. A hand-written one
+    often returns nothing from `then` (a promise's returns a promise) and
+    calls its callback later: the callback must still work then."""
+    thenable = js.Function(
+        """
+        return { then(resolve) { setTimeout(() => resolve("settled later"), 0); } };
+        """
+    )()
+    assert await asyncio.wait_for(thenable, 30) == "settled later"
+
+
+def test_jsexception_survives_pickling():
+    import pickle
+
+    try:
+        js.Function("null.f();")()
+    except pyjs.JSException as error:
+        original = error
+    copy = pickle.loads(pickle.dumps(original))
+    assert copy.name == original.name == "TypeError"
+    assert copy.message == original.message
+    assert str(copy) == str(original)

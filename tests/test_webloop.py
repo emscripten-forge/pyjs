@@ -474,3 +474,37 @@ async def test_webloop_scheduler_is_not_exposed():
     assert not any(
         "macrotask" in k.lower() or "channel" in k.lower() for k in global_keys
     )
+
+
+def test_webloop_module_imports_are_not_public_names():
+    """`pyjs` re-exports the event loop classes, not what the module that
+    defines them happens to import (`pyjs.os`, `pyjs.sys`, ...)"""
+    for name in ["os", "sys", "time", "asyncio", "traceback", "collections", "contextvars", "Callable", "Any"]:
+        assert not hasattr(pyjs, name), name
+    assert pyjs.WebLoop is not None
+    assert pyjs.WebLoopPolicy is not None
+
+
+async def test_webloop_cancelled_timer_is_released_at_once():
+    """`call_later(...).cancel()` stops the browser timer and releases the
+    callback right away, not when the delay is over (a cancelled
+    `asyncio.sleep(3600)` would hold both for an hour)."""
+    from helpers import pyproxy_count
+
+    loop = _loop()
+    called = []
+    before = pyproxy_count()
+    handle = loop.call_later(3600, called.append, 1)
+    assert isinstance(handle, asyncio.TimerHandle)
+    assert handle.when() > loop.time() + 3000
+    assert pyproxy_count() == before + 1
+    handle.cancel()
+    assert handle.cancelled()
+    assert pyproxy_count() == before
+    # cancelling again, and a handle whose timer fired, change nothing
+    handle.cancel()
+    fired = loop.call_later(0, called.append, 2)
+    await asyncio.sleep(0.01)
+    fired.cancel()
+    assert called == [2]
+    assert pyproxy_count() == before

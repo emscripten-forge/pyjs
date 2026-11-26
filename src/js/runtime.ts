@@ -9,12 +9,12 @@
 //      business (the npm package downloads conda packages, xeus-python has
 //      its own way)
 //   3. Module.startPython()   <- this file
-//   4. Module.exec("...") / Module.runPython("...") / Module.pyimport("...")
-import { PYPROXY } from "./codec";
+//   4. Module.runPython("...") / Module.runPythonAsync("...") / Module.pyimport("...")
+import { PYPROXY, alloc, handleCount } from "./codec";
 import { suspendedTaskCount } from "./jsops";
 import { canRunSync, jspi, jspiEnabled } from "./jspi";
 import { stackStateCount } from "./stack_state";
-import { PythonError, pyimport, pythonErrorFor, setPythonHelpers } from "./pyproxy";
+import { PythonError, ownedProxyCount, pyimport, pythonErrorFor, setPythonHelpers } from "./pyproxy";
 
 // from the emscripten runtime this code is embedded in
 declare const FS: any;
@@ -33,7 +33,7 @@ declare const specialHTMLTargets: any;
 /** copy a JS string into new wasm memory (NUL terminated); the caller frees it */
 function cstring(str: string): number {
   const capacity = 3 * str.length + 1; // worst case of utf8, see codec.ts
-  const ptr = _malloc(capacity);
+  const ptr = alloc(capacity);
   stringToUTF8Array(str, HEAPU8, ptr, capacity);
   return ptr;
 }
@@ -58,7 +58,7 @@ interface RunOptions {
 
 /**
  * Start the interpreter (synchronous). The file system must already hold the
- * python environment. Afterwards Module.exec / eval / runPython / pyimport /
+ * python environment. Afterwards Module.runPython / runPythonAsync / pyimport /
  * ... exist. Calling it again does nothing.
  *
  * options: {env: {NAME: value}} extra environment variables
@@ -260,6 +260,12 @@ export function installModuleApi(): void {
    */
   Module._jspi_suspended_count = suspendedTaskCount;
   Module._jspi_stack_state_count = stackStateCount;
+  /**
+   * for tests (leak checks): the number of JS objects Python holds (handles
+   * in use), and of owned PyProxies holding a Python reference
+   */
+  Module._handle_count = handleCount;
+  Module._pyproxy_count = ownedProxyCount;
 
   /**
    * make `canvas` (HTMLCanvasElement or OffscreenCanvas) the canvas

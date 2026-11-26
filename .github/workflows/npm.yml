@@ -7,8 +7,7 @@ name: CI
 #   test      the test suite on that package: every architecture x browser,
 #             with and without JSPI (nothing is compiled here)
 #   bundlers  apps built with vite / webpack / rollup / esbuild / parcel
-#             around the packed package: only on `main` and on release tags
-#             (it tests the packaging, not pyjs, and takes long)
+#             around the packed package
 #   publish   on release tags (e.g. `6.0.0`, must equal the version in
 #             CMakeLists.txt) or manually (workflow_dispatch with publish=true)
 #
@@ -121,7 +120,6 @@ jobs:
   bundlers:
     name: bundlers
     needs: build
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -147,15 +145,8 @@ jobs:
 
   publish:
     needs: [build, test, bundlers]
-    # Only after build and test passed. The bundlers job does not run on
-    # every ref (see its `if`): when it ran it must not have failed, when it
-    # was skipped that is fine. (`!cancelled()` is needed because a skipped
-    # dependency would otherwise skip this job too.)
+    # only after build, test and bundlers passed (`needs`)
     if: >-
-      !cancelled() &&
-      needs.build.result == 'success' &&
-      needs.test.result == 'success' &&
-      needs.bundlers.result != 'failure' &&
       ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
        (github.event_name == 'workflow_dispatch' && inputs.publish))
     runs-on: ubuntu-latest

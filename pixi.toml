@@ -268,8 +268,8 @@ python build_utils/check_lock.py build_root/npm/lock_test.json
 
 # The bundled app does not depend on the browser: chromium, main thread.
 # Needs the packed package (pixi run npm-package). Not part of test-npm: it
-# tests the packaging, not pyjs itself, and takes long (the CI runs it on
-# `main` and on release tags only).
+# tests the packaging, not pyjs itself, and takes long (the CI runs it as a
+# job of its own, next to the test jobs).
 [tasks.test-bundlers]
 description = "Apps built with vite / webpack / rollup / esbuild / parcel around the packed npm package"
 depends-on = [{ task = "browsers", args = ["chromium"] }]

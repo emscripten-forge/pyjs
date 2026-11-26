@@ -103,6 +103,8 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     packages:
       emscripten-wasm32:
+      - conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-3.1.0-pyh293190f_0.conda
+      - conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-global-3.1.0-pyh648e204_0.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/python_abi-3.14-9_cp314.conda
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/libbzip2-static-1.0.8-ha5b1db9_0.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/libffi-static-3.8.0-h7306392_1.tar.bz2
@@ -112,6 +114,8 @@ environments:
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/libsqlite-static-3.47.2-hfa9835b_4.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/libuuid-static-2.38.1-hbf2ed24_0.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/libzlib-static-1.3.2-ha5b1db9_1.tar.bz2
+      - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/numpy-2.5.5-py314h0c79168_0.tar.bz2
+      - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/openblas-0.3.34-heac283a_0.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/python-3.14.3-h_5161e14_8_cp314.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/zlib-static-1.3.2-h756b434_1.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/zstd-static-1.5.7-h7306392_3.tar.bz2
@@ -122,6 +126,8 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     packages:
       emscripten-wasm64:
+      - conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-3.1.0-pyh293190f_0.conda
+      - conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-global-3.1.0-pyh648e204_0.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/python_abi-3.14-9_cp314.conda
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/libbzip2-static-1.0.8-h9079301_0.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/libffi-static-3.8.0-h3ceddcd_1.tar.bz2
@@ -131,6 +137,8 @@ environments:
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/libsqlite-static-3.47.2-ha2fe936_4.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/libuuid-static-2.38.1-hdce4d07_0.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/libzlib-static-1.3.2-h9079301_1.tar.bz2
+      - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/numpy-2.5.5-py314h52ed802_0.tar.bz2
+      - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/openblas-0.3.34-h13c7b7f_0.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/python-3.14.3-h_4b70090_8_cp314.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/zlib-static-1.3.2-h53add13_1.tar.bz2
       - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/zstd-static-1.5.7-h3ceddcd_3.tar.bz2
@@ -1082,6 +1090,34 @@ packages:
     - zstd >=1.6.0,<1.7.0a0
   size: 388749
   timestamp: 1795494333013
+- conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-3.1.0-pyh293190f_0.conda
+  sha256: 54ea7a186ccf7ef2c98d3cc29c1c68ddffff0d74bc3321ebb22a56e91e1c3aa9
+  md5: 5aa0ad32112cbfc1cf0f2b3c600be4a5
+  depends:
+  - python >=3.9
+  - pybind11-global ==3.1.0 *_0
+  - python
+  constrains:
+  - pybind11-abi ==12
+  license: BSD-3-Clause
+  license_family: BSD
+  run_exports: {}
+  size: 254992
+  timestamp: 1786200320545
+- conda: https://repo.prefix.dev/conda-forge/noarch/pybind11-global-3.1.0-pyh648e204_0.conda
+  sha256: 684d30c86f505916b44f205b8f5a153b1779df462233ce380b39f777d82126aa
+  md5: 534548c7e6102ae9a408957380937b52
+  depends:
+  - python >=3.9
+  - __unix
+  - python
+  constrains:
+  - pybind11-abi ==12
+  license: BSD-3-Clause
+  license_family: BSD
+  run_exports: {}
+  size: 247376
+  timestamp: 1786200320545
 - conda: https://repo.prefix.dev/conda-forge/noarch/python_abi-3.14-9_cp314.conda
   build_number: 9
   sha256: e7f8e965bbfb98e08feb2365cacdad8bb218fa5b5a0a2752f747287f425f213c
@@ -1183,6 +1219,33 @@ packages:
   run_exports: {}
   size: 861846
   timestamp: 1788369596843
+- conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/numpy-2.5.5-py314h0c79168_0.tar.bz2
+  sha256: d8a6211e3650928b72af53dadc67580a029eaefd4baeebfc9a6278f72cc2fd34
+  md5: 147f5e16c55060873fff73a1bb0fa3b1
+  attestations_sha256: 7d1ca3e8e21e8dd6dc786b42621effcffd2ac82adcea6e9444db0130e13bb727
+  depends:
+  - python
+  - emscripten-abi >=6,<7.0a0
+  - emscripten-abi ==6.0.8
+  - openblas >=0.3.34,<0.4.0a0
+  - python_abi 3.14.* *_cp314
+  license: BSD-3-Clause
+  run_exports:
+    weak:
+    - numpy >=2.2,<3
+  size: 2355249
+  timestamp: 1795002180543
+- conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/openblas-0.3.34-heac283a_0.tar.bz2
+  sha256: 8371d9109001d27fab92a2c9812a43c452eaaec3939a22eb297fdd72f1144650
+  md5: 98810e80cfce6ea9aebcb5b4ae888484
+  depends:
+  - emscripten-abi ==6.0.8
+  license: BSD-3-Clause
+  run_exports:
+    weak:
+    - openblas >=0.3.34,<0.4.0a0
+  size: 2458562
+  timestamp: 1792504278289
 - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm32/python-3.14.3-h_5161e14_8_cp314.tar.bz2
   build_number: 8
   sha256: b03cd457e27a5aec2dfe5c67e45b923b5bdf7e9cbd8e6f96d98005fbc0a486e3
@@ -1306,6 +1369,33 @@ packages:
   run_exports: {}
   size: 865362
   timestamp: 1788369596492
+- conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/numpy-2.5.5-py314h52ed802_0.tar.bz2
+  sha256: d03c75321fc4cf672b5f973ca6ce343c1c52b56bcfe8fd4537f91e16f633bba5
+  md5: 85ac069aa806fde4d663c89a46bcacd5
+  attestations_sha256: a5022a54a0e340b285f0ef7c2d75152b5b8a811bb5b9f6ea5433315bcc549653
+  depends:
+  - python
+  - emscripten-abi >=6,<7.0a0
+  - emscripten-abi ==6.0.8
+  - openblas >=0.3.34,<0.4.0a0
+  - python_abi 3.14.* *_cp314
+  license: BSD-3-Clause
+  run_exports:
+    weak:
+    - numpy >=2.2,<3
+  size: 2381275
+  timestamp: 1795002179143
+- conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/openblas-0.3.34-h13c7b7f_0.tar.bz2
+  sha256: 78840dc9efe45855098bf4d06d40490fe9f79c718e7ad07c96ec5ec92fcb5110
+  md5: 54fb8ed81ad8f1b5d9f7e5b8bf59bcd7
+  depends:
+  - emscripten-abi ==6.0.8
+  license: BSD-3-Clause
+  run_exports:
+    weak:
+    - openblas >=0.3.34,<0.4.0a0
+  size: 2513659
+  timestamp: 1792504279156
 - conda: https://repo.prefix.dev/emscripten-forge/6x/emscripten-wasm64/python-3.14.3-h_4b70090_8_cp314.tar.bz2
   build_number: 8
   sha256: d5b0df4c47cb728c8199d0cd71fedd2b25804eaf2a3d7d600fb9bfa7f622d443

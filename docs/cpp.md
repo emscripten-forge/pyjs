@@ -146,15 +146,48 @@ Not only can `pyjs` be used as a standalone Python interpreter, but it can also 
 Pyjs is compiled as a static library that can be linked to a C++ program (when compiled with emscripten).
 
 
-No C++ code is needed for that: linking the static library `libpyjs` is
-enough. It contains the core module `pyjs_core` (registered as builtin module
-when Python starts) and the JavaScript part of pyjs (embedded in the library:
-no `--pre-js` / `--post-js` files). Your program starts Python through
-`Module.startPython()` like the runtime does, or uses Python's C API itself
-afterwards.
+The static library `libpyjs` contains the core module `pyjs_core` and the
+JavaScript part of pyjs (embedded in the library: no `--pre-js` / `--post-js`
+files). A C / C++ program starts Python with pyjs in it with one function of
+`pyjs/pyjs.h`, and runs Python code with the C API or e.g. pybind11:
 
-A complete, minimal example (its own pixi project, the standard library put
-into the file system with emscripten's file packager, run in node):
+```cpp
+#include <pybind11/eval.h>
+#include <pyjs/pyjs.h>
+
+int main()
+{
+    pyjs_initialize("/");                // python (prefix "/") with pyjs in it
+    pybind11::exec("import pyjs\n"
+                   "pyjs.js.console.log('hello from python')");
+}
+```
+
+`pyjs_initialize(python_home)` is what `Module.startPython()` does from
+JavaScript. `python_home` is Python's prefix in the file system, any
+directory (the standard library at `<python_home>/lib/pythonX.Y`), it sets
+`PYTHONHOME`; `NULL`: `PYTHONHOME` if set, else `/`. Then defaults for
+`PYTHONPATH` / `LANG` / `LD_LIBRARY_PATH` (`<python_home>/lib`, where the
+dynamic linker finds the shared libraries of packages, e.g. numpy's
+`libopenblas.so`) unless the program set them, Python started, `pyjs` imported, the JavaScript API created on the
+Module (`runPython`, `runPythonAsync`, `pyimport`, `globals`, `toPy`) and the
+runtime kept alive (JavaScript events call into Python later). pybind11 works
+in an interpreter it did not start; it must not finalize it (no
+`pybind11::scoped_interpreter`).
+
+A program that starts Python itself (its own `PyConfig`,
+`pybind11::initialize_interpreter(...)`, ...) calls two functions around
+that instead:
+
+```cpp
+pyjs_init();                          // before: registers pyjs_core as builtin module
+pybind11::initialize_interpreter();
+pyjs_bind();                          // after: imports pyjs, the JavaScript API
+```
+
+A complete example (its own pixi project, pybind11, numpy, Python under the
+prefix `/python`, the file system filled with emscripten's file packager, run
+in node):
 [`examples/embed`](https://github.com/emscripten-forge/pyjs/tree/main/examples/embed).
 The program must be a main module (`-s MAIN_MODULE=1`).
 
@@ -180,10 +213,10 @@ target_link_options(my_target PRIVATE
 (`-fwasm-exceptions`, and `-m64` for wasm64, come with the `pyjs` target.)
 Such a program fills the file system itself (the archive extractor is part of
 pyjs' own runtime only, not of the static library), e.g. with
-[mambajs](https://github.com/emscripten-forge/mambajs) or `FS.writeFile`, and
-then calls `Module.startPython()`. Shared libraries are not preloaded by
-pyjs: in the main thread, load them after `startPython()` and before importing
-them (see above).
+[mambajs](https://github.com/emscripten-forge/mambajs), `FS.writeFile` or
+emscripten's file packager, before Python starts. Shared libraries are not
+preloaded by pyjs: in the main thread, load them after Python started and
+before importing them (see above).
 
 ```{note}
 pyjs 6 replaced the pybind11 / embind based core: no
@@ -191,5 +224,6 @@ pyjs 6 replaced the pybind11 / embind based core: no
 `pyjs_PRE_JS_PATH` / `pyjs_POST_JS_PATH` in your program any more.
 pyjs 5 removed the classic initialization API
 (`bootstrap_from_empack_packed_environment`, `init_phase_1` / `init_phase_2`,
-`_untar`, `_install_conda_file`): fill the file system, then `startPython()`.
+`_untar`, `_install_conda_file`): fill the file system, then `startPython()`
+(or, from C / C++, `pyjs_initialize()`).
 ```

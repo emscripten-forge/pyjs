@@ -61,16 +61,21 @@ interface RunOptions {
  * python environment. Afterwards Module.runPython / runPythonAsync / pyimport /
  * ... exist. Calling it again does nothing.
  *
- * options: {env: {NAME: value}} extra environment variables
+ * options: {env: {NAME: value}} extra environment variables. Python's prefix
+ * is "/" unless env.PYTHONHOME says otherwise (the standard library then is
+ * at <PYTHONHOME>/lib/pythonX.Y). The same as pyjs_initialize() in C.
  */
 function startPython(options: { env?: Record<string, any> } = {}): void {
-  if (started) {
+  // (bound: a C / C++ program already started python and called pyjs_bind)
+  if (started || bound) {
     return;
   }
   // which python this runtime was linked with, e.g. 314 -> "3.14"
   const number = wasmExports.pyjs_python_version();
   const version = `${Math.floor(number / 100)}.${number % 100}`;
-  const stdlib = `/lib/python${version}`;
+  // ("/" -> "", "/opt/python/" -> "/opt/python")
+  const home = String(options.env?.PYTHONHOME ?? "/").replace(/\/+$/, "");
+  const stdlib = `${home}/lib/python${version}`;
   if (!FS.analyzePath(stdlib).exists) {
     throw new Error(
       `pyjs: the file system has no ${stdlib} (the python standard library): ` +
@@ -81,9 +86,13 @@ function startPython(options: { env?: Record<string, any> } = {}): void {
   // where python finds itself and its packages
   const sitePackages = `${stdlib}/site-packages`;
   setenv("LANG", "en_US.UTF-8");
-  setenv("PYTHONHOME", "/");
+  setenv("PYTHONHOME", home || "/");
   setenv("PYTHONPATH", `${sitePackages}:/usr/lib/python${version}/site-packages`);
+  // where the dynamic linker finds the shared libraries extension modules
+  // need: <prefix>/lib, as in a conda environment
+  setenv("LD_LIBRARY_PATH", `${home}/lib`);
   FS.mkdirTree(sitePackages);
+  // (after the defaults: the options win)
   for (const [name, value] of Object.entries(options.env ?? {})) {
     setenv(name, value);
   }
@@ -92,12 +101,10 @@ function startPython(options: { env?: Record<string, any> } = {}): void {
     throw new Error("pyjs: the python interpreter did not start");
   }
   bindPython();
-  // Python is entered from JS events (timers, promises, ...) from now on.
-  // Without this emscripten would shut the runtime down when it thinks the
-  // program is over.
-  runtimeKeepalivePush();
   started = true;
 }
+
+let bound = false;
 
 /**
  * Right after python started: import the python package `pyjs` and build
@@ -115,8 +122,14 @@ function startPython(options: { env?: Record<string, any> } = {}): void {
  * (setPythonHelpers: `then` of awaitables, PyProxy.toJs, generator steps).
  * Each of these functions is a thin wrapper: the work is done by Python
  * functions (mostly module/pyjs/code.py), called through PyProxies.
+ *
+ * Called by startPython, or from C by pyjs_bind() (include/pyjs/pyjs.h) in a
+ * program that started python itself. Calling it again does nothing.
  */
-function bindPython(): void {
+export function bindPython(): void {
+  if (bound) {
+    return;
+  }
   // (importing it also sets up the python side of the core, see
   // module/pyjs/__init__.py)
   const pyjs = pyimport("pyjs");
@@ -212,6 +225,12 @@ function bindPython(): void {
    * part is no module gives that attribute (`pyimport("os.path.join")`).
    */
   Module.pyimport = (name: string) => code._pyimport(name);
+
+  // Python is entered from JS events (timers, promises, ...) from now on.
+  // Without this emscripten would shut the runtime down when it thinks the
+  // program is over (e.g. when main returns).
+  runtimeKeepalivePush();
+  bound = true;
 }
 
 /** what exists on Module before python is started */

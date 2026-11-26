@@ -50,7 +50,7 @@ import {
 } from "./jsops";
 import { syncEnter, syncLeave } from "./jspi";
 import { initPyProxy, taskDone } from "./pyproxy";
-import { installModuleApi } from "./runtime";
+import { bindPython, installModuleApi } from "./runtime";
 
 let initialized = false;
 
@@ -84,6 +84,8 @@ pyjsCore = {
   taskDone,
   syncEnter,
   syncLeave,
+  // pyjs_bind() of the C API (src/py_entry.cpp)
+  bind: bindPython,
 };
 
 // runs right away, while the runtime script loads: Module.startPython etc.

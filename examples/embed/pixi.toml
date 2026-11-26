@@ -37,6 +37,11 @@ nodejs = "*"
 # pyjs-dev = "*"
 python = "3.14.*"
 libpython-static = "*"
+# the program runs python code with pybind11 (header only)
+pybind11 = "*"
+# a package with shared libraries (python extension modules = side modules),
+# put into the file system and loaded at `import numpy`
+numpy = "*"
 emscripten-abi = "==6.0.8"
 zlib-static = "*"
 libbzip2-static = "*"
@@ -77,5 +82,5 @@ EMCC_CFLAGS="$EMCC_CFLAGS{% if arch == 'wasm64' %} -m64{% endif %}" emcmake cmak
     {% if pyjs_dir %}-Dpyjs_DIR={{ pyjs_dir }}{% endif %} \
     {% if arch == 'wasm64' %}-DCMAKE_C_FLAGS=-m64 -DCMAKE_CXX_FLAGS=-m64{% endif %}
 EMCC_CFLAGS="$EMCC_CFLAGS{% if arch == 'wasm64' %} -m64{% endif %}" cmake --build build/{{ arch }}
-node run.js build/{{ arch }}/embed.js
+node build/{{ arch }}/embed.js
 '''

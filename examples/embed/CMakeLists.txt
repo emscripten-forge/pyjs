@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(pyjs_embed_example CXX)
 
-# A program embedding pyjs: libpyjs + libpython linked into one executable,
-# the python standard library put into its file system by emscripten's file
-# packager. run.js starts python and runs code.
+# A C++ program embedding python (pybind11) and pyjs: libpyjs + libpython
+# linked into one executable, the python standard library put into its file
+# system by emscripten's file packager. main.cpp sets up everything (no
+# JavaScript of its own): `node build/<arch>/embed.js`.
 #
 #   HOST_PREFIX   the emscripten environment (python + static libraries)
 #   PY_VERSION    its python version, e.g. 3.14
@@ -27,6 +28,17 @@ endif()
 find_package(pyjs REQUIRED)
 
 add_executable(embed main.cpp)
+
+# Where python lives in the program's file system (its prefix, the argument
+# of pyjs_initialize in main.cpp): any directory works, here not "/" (the
+# default) on purpose, to show and test that
+set(EMBED_PYTHON_HOME "/python")
+target_compile_definitions(embed PRIVATE EMBED_PYTHON_HOME="${EMBED_PYTHON_HOME}")
+# python's headers and pybind11's (header only), both in the host environment
+target_include_directories(embed PRIVATE
+    ${HOST_PREFIX}/include
+    ${HOST_PREFIX}/include/python${PY_VERSION}
+)
 
 # libpython and what it needs. The C libraries of _sqlite3 / _ssl / _lzma only
 # if the host environment has them: a python with these modules built in
@@ -58,37 +70,32 @@ target_link_libraries(embed PRIVATE
 
 # (-fwasm-exceptions, and -m64 for wasm64, come with the pyjs target)
 target_link_options(embed PRIVATE
-    # pyjs requires a main module: it keeps all of libpyjs (nothing in the
-    # program itself calls into it, python is started from JavaScript) and the
-    # parts of the emscripten runtime pyjs' JavaScript uses; and python
-    # extension modules are loaded as side modules
+    # pyjs requires a main module: it keeps all of libpyjs and the parts of
+    # the emscripten runtime pyjs' JavaScript uses; and python extension
+    # modules are loaded as side modules
     "SHELL: -s MAIN_MODULE=1"
-    # run.js creates the program with createModule(...)
-    "SHELL: -s MODULARIZE=1"
-    "SHELL: -s EXPORT_NAME=createModule"
+    # a plain node program: `node embed.js` runs main (a web page would
+    # rather use MODULARIZE + createModule())
     "SHELL: -s ENVIRONMENT=node"
     "SHELL: -s ALLOW_MEMORY_GROWTH=1"
     "SHELL: -s STACK_SIZE=32mb"
     "SHELL: -s FORCE_FILESYSTEM"
     "SHELL: -s SUPPORT_LONGJMP"
-    # The file system: the standard library to /lib/pythonX.Y (where
-    # startPython() expects it), the python package of pyjs to its
-    # site-packages (python imports it when it starts; here from the
-    # repository, normally it is in the host environment's site-packages
-    # already, which would then not be excluded below). Packed into
-    # embed.data, loaded before createModule() resolves. Not packed: the
-    # bytecode caches, CPython's test suite (most of the size), the packages
-    # of the host environment, and lib-dynload (the shared libraries of the
-    # optional stdlib modules: a program needing them loads them itself, see
-    # docs/cpp.md).
-    "SHELL: --preload-file ${PYTHON_LIB_DIR}@/lib/python${PY_VERSION}"
-    # (outside of the pyjs repository: drop this line and the exclusion of
-    # site-packages below, pyjs-dev put the module into the host environment's
-    # site-packages)
-    "SHELL: --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/../../module/pyjs@/lib/python${PY_VERSION}/site-packages/pyjs"
+    # The file system, under python's prefix EMBED_PYTHON_HOME: the standard
+    # library + site-packages (numpy, ...) to <prefix>/lib/pythonX.Y, the
+    # shared libraries of the packages (libopenblas.so, which numpy's
+    # extension modules need) to <prefix>/lib. --embed-file: packed into the
+    # wasm itself (no separate .data file to locate; --preload-file would
+    # load an embed.data, which node looks for in the current directory), in
+    # the file system before main runs. Not packed: the bytecode caches,
+    # CPython's test suite (most of the size), the static libraries.
+    "SHELL: --embed-file ${PYTHON_LIB_DIR}@${EMBED_PYTHON_HOME}/lib/python${PY_VERSION}"
+    "SHELL: --embed-file ${HOST_PREFIX}/lib/libopenblas.so@${EMBED_PYTHON_HOME}/lib/libopenblas.so"
+    # the python package pyjs, from the repository (outside of the pyjs
+    # repository: drop this line, pyjs-dev put the module into the host
+    # environment's site-packages, packed with it above)
+    "SHELL: --embed-file ${CMAKE_CURRENT_SOURCE_DIR}/../../module/pyjs@${EMBED_PYTHON_HOME}/lib/python${PY_VERSION}/site-packages/pyjs"
     "SHELL: --exclude-file */__pycache__"
     "SHELL: --exclude-file ${PYTHON_LIB_DIR}/test"
-    "SHELL: --exclude-file ${PYTHON_LIB_DIR}/site-packages"
-    "SHELL: --exclude-file ${PYTHON_LIB_DIR}/lib-dynload"
     "SHELL: --exclude-file ${PYTHON_LIB_DIR}/static"
 )

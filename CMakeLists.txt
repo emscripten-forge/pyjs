@@ -85,6 +85,12 @@ add_library(pyjs STATIC
     ${CMAKE_CURRENT_BINARY_DIR}/pyjs_js.cpp
     ${NANOBIND_DIR}/src/nb_combined.cpp
 )
+# the C API (pyjs/pyjs.h: pyjs_init / pyjs_bind) for programs that start
+# python themselves
+target_include_directories(pyjs PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_include_directories(pyjs PRIVATE
     ${PYTHON_INCLUDE_DIR}
     ${NANOBIND_DIR}/include
@@ -218,8 +224,9 @@ install(TARGETS pyjs_runtime_browser DESTINATION ${HOST_PREFIX}/lib_js/pyjs)
 install(FILES "$<TARGET_FILE_DIR:pyjs_runtime_browser>/pyjs_runtime_browser.wasm"
         DESTINATION ${HOST_PREFIX}/lib_js/pyjs)
 
-# libpyjs + `find_package(pyjs)`: target pyjs
+# libpyjs + its header + `find_package(pyjs)`: target pyjs
 install(TARGETS pyjs EXPORT pyjs-targets ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/pyjs DESTINATION include)
 install(EXPORT pyjs-targets FILE pyjsTargets.cmake DESTINATION ${PYJS_CMAKECONFIG_INSTALL_DIR})
 # (also usable from the build tree)
 export(EXPORT pyjs-targets FILE "${CMAKE_CURRENT_BINARY_DIR}/pyjsTargets.cmake")

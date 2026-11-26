@@ -30,14 +30,32 @@ pixi run docs-serve [port]                   # sphinx-autobuild: rebuild + live 
 pixi run npm-package [archs]                 # npm package (default wasm32 + wasm64)
 pixi run test-npm [browsers]                 # npm package + both archs, lock CLI, bundlers
 pixi run clean                               # rm -rf build_root (envs stay)
-pixi run example-embed [archs]               # examples/embed (own pixi project): libpyjs of the build tree in a MAIN_MODULE, node
+pixi run example-embed [archs]               # examples/embed (own pixi project): pybind11 + libpyjs of the build tree in a MAIN_MODULE, node
 pixi run example-npm-page                    # examples/npm-page: plain page + packed package, chromium
 ```
 
 `examples/` are small projects as a user has them, run with the pyjs of the
 repository (CI: `example-embed` in the build job, `example-npm-page` in the
 bundlers job). An embedder must link a `MAIN_MODULE` (otherwise libpyjs, with
-its embedded JS, is dropped by the linker: nothing in the program calls it).
+its embedded JS, is dropped by the linker).
+
+C API (`include/pyjs/pyjs.h`, installed, PUBLIC include of the `pyjs`
+target, `src/py_entry.cpp`): `pyjs_initialize(python_home)` = PYTHONHOME
+(argument; NULL: env, else "/"; any prefix) + env defaults derived from it
+(overwrite 0; incl. `LD_LIBRARY_PATH=<home>/lib`: emscripten's dlopen finds
+needed libs like libopenblas.so via C getenv, "/lib" only by default) +
+stdlib check `<home>/lib/pythonX.Y` + `pyjs_start_python` +
+`pyjs_bind` (the C twin of `Module.startPython()`, which takes the prefix
+from `options.env.PYTHONHOME`). For programs that start python themselves:
+`pyjs_init()` before (inittab `pyjs_core` + JS prelude), `pyjs_bind()` after
+(`bindPython` in `src/js/runtime.ts` via EM_JS `pyjs_js_bind`: imports pyjs,
+`Module.runPython` etc., `runtimeKeepalivePush`; idempotent).
+`Module.startPython()` = env + `pyjs_start_python` (`pyjs_init` +
+`Py_InitializeFromConfig`) + `bindPython`. `examples/embed`:
+`pyjs_initialize("/python")` (prefix != "/" on purpose) + numpy (side
+modules + libopenblas.so, `--embed-file`) + pybind11 (`pybind11/eval.h`; pybind11 works in an
+interpreter it did not start; never `scoped_interpreter`: python outlives
+main).
 
 Task chain (tasks with args loop over `archs` via MiniJinja `| split`):
 `envs` (`pixi install -e host-<arch> / npm-env-<arch> --platform

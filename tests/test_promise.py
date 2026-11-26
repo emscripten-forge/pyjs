@@ -18,6 +18,19 @@ def _rejected(js_expr):
     return js.Function(f"return Promise.reject({js_expr});")()
 
 
+def _rejected_handled(js_expr):
+    """Like `_rejected`, but marked as handled in JavaScript (`.catch` on it;
+    the promise itself still rejects when awaited).
+
+    For promises created *before* python awaits them in a later step of the
+    event loop, e.g. passed to asyncio.gather (which wraps each in a task):
+    without a handler at the end of the current JavaScript task the browser
+    reports them as unhandled rejections (the test run fails on those, see
+    pyjs_test_driver/driver.py), although python handles them a moment
+    later. That is how asyncio schedules, not something pyjs can change."""
+    return js.Function(f"const p = Promise.reject({js_expr}); p.catch(() => {{}}); return p;")()
+
+
 async def _await_exception(promise):
     """the exception awaiting `promise` raises"""
     try:
@@ -152,7 +165,7 @@ async def test_promise_delayed_rejection():
 
 async def test_promise_rejection_in_gather():
     ok = js.Promise.resolve(1)
-    bad = _rejected("new TypeError('in gather')")
+    bad = _rejected_handled("new TypeError('in gather')")
     try:
         await asyncio.gather(ok, bad)
     except pyjs.JSException as e:
@@ -162,7 +175,7 @@ async def test_promise_rejection_in_gather():
         raise AssertionError("expected a JSException")
 
     results = await asyncio.gather(
-        js.Promise.resolve(1), _rejected("new Error('kept')"), return_exceptions=True
+        js.Promise.resolve(1), _rejected_handled("new Error('kept')"), return_exceptions=True
     )
     assert results[0] == 1
     assert isinstance(results[1], pyjs.JSException) and "kept" in str(results[1])
@@ -180,7 +193,7 @@ async def test_promise_wait_for_timeout():
 
 async def test_promise_many_rejections():
     # every rejection is delivered once, to the right awaiter
-    promises = [_rejected(f"new Error('n{i}')") for i in range(50)]
+    promises = [_rejected_handled(f"new Error('n{i}')") for i in range(50)]
     results = await asyncio.gather(*promises, return_exceptions=True)
     for i, e in enumerate(results):
         assert isinstance(e, pyjs.JSException), (i, type(e))

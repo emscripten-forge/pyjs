@@ -203,6 +203,14 @@ passes a pointer above that to JS (on wasm32 one object must be < 2 GiB:
   `tests/helpers.py` (`handle_count`, `pyproxy_count`, `require_js_gc`:
   chromium runs with `--expose-gc`), `requires_jspi`. JSPI tests must
   `pytest.skip`, never `return`.
+- A run fails on page errors (playwright `pageerror`: uncaught JS exceptions,
+  unhandled promise rejections; also those of the module worker) even if all
+  tests passed (`run_page` in `pyjs_test_driver/driver.py`, result
+  `page_errors`). Typical cause: a rejected promise python only awaits in a
+  later event loop step (e.g. via an asyncio task): attach the handler at
+  once (`_to_future`, see `_async_step` in `_proxy_types.py`); tests that
+  create rejected promises for `asyncio.gather` mark them handled
+  (`_rejected_handled` in `tests/test_promise.py`).
 - The test runner itself is tested: `tests/test_pytest_async.py` (XPASS,
   xfail arguments, skip, per-test timeout).
 - Tests must pass in the main thread *and* in a worker, and in chromium,

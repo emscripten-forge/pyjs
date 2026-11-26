@@ -59,8 +59,11 @@ over `tests/`:
 | `tests/js/test_*.js` | JavaScript tests (ES modules, every exported `test_*(pyjs)` function), run as pytest tests by `tests/test_js.py` |
 | `tests/pyodide/` | pyodide's test suite (release 314.0.8, MPL-2.0), adapted to pyjs: the API follows pyodide / PEP 818. What pyjs does not have is kept as `xfail` with the reason, see `tests/pyodide/README.md` |
 
-Tests of the npm package (`test_install.py`, `test_channel.py`, ...) skip
-themselves on pages without it. Shared helpers: `tests/helpers.py`. No test
+A run also fails on page errors (uncaught JavaScript exceptions, unhandled
+promise rejections; main thread and worker), even when every test passed: a
+promise Python awaits too late shows up as "Uncaught (in promise)" in a
+user's console. Tests of the npm package (`test_install.py`,
+`test_channel.py`, ...) skip themselves on pages without it. Shared helpers: `tests/helpers.py`. No test
 depends on timing (CI runners are slow): the order is made explicit, e.g. with
 a promise the test resolves itself (`tests/test_stack_switching.py`); speed
 belongs in the benchmarks.

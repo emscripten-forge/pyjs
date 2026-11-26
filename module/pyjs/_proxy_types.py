@@ -603,10 +603,20 @@ def _async_step(promise):
 
     Python's `async for` and ``await anext(gen)`` need something awaitable.
     The coroutine `_await_step(promise)` would do, but it is wrapped in an
-    asyncio task (``ensure_future`` starts it right away): pyodide returns a
-    future here, and a future can also be inspected without awaiting it
-    (``done()``, ``result()``, ``exception()``), which some code does."""
-    return asyncio.ensure_future(_await_step(promise))
+    asyncio task (``ensure_future``): pyodide returns a future here, and a
+    future can also be inspected without awaiting it (``done()``,
+    ``result()``, ``exception()``), which some code does.
+
+    The task only starts in a later step of the event loop. The promise gets
+    its handlers *now* (`_to_future`), not when the task awaits it: a
+    rejected promise (e.g. athrow() of an exception the generator does not
+    catch) without a handler at the end of the current JavaScript task is
+    reported by the browser as unhandled rejection, although python handles
+    it a moment later."""
+    # (imported here: core imports this module, via ffi)
+    from .core import _to_future
+
+    return asyncio.ensure_future(_await_step(_to_future(promise)))
 
 
 def _exception(exc, value):

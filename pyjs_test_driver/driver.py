@@ -34,6 +34,14 @@ TIMEOUT_S = 30 * 60
 # above the longest single test (installs from the network, the big
 # allocations of test_memory.py).
 SILENCE_S = 5 * 60
+# Page errors (see run_page) that do not fail a run: messages a browser
+# reports as page error although nothing was thrown and nothing went wrong.
+#   WebKit, XMLHttpRequest.setRequestHeader with a header scripts may not set
+#   (Accept-Encoding, Connection, ...): the browser ignores the header and
+#   logs this (chromium / firefox ignore it silently). The HTTP tests without
+#   JSPI hit it: `requests` sets these headers by default, urllib3's
+#   emscripten backend / pyodide-http hand them to XHR.
+HARMLESS_PAGE_ERRORS = ('Refused to set unsafe header "',)
 # generated test data (no binary files in the repository): the download tests
 # (tests/test_http.py, tests/test_jspi.py) fetch these
 TEST_DATA = {"/test-data/all_bytes.bin": bytes(range(256)) * 256}
@@ -132,16 +140,27 @@ async def run_page(page_dir, browser_name="chromium", options=None, headless=Tru
             try:
                 page = await browser.new_page()
                 # when the page last showed a sign of life, what it said last,
-                # and whether the browser reported it as crashed
-                state = {"heard": time.monotonic(), "last": "", "crashed": False}
+                # whether the browser reported it as crashed, and the page
+                # errors (see below)
+                state = {"heard": time.monotonic(), "last": "", "crashed": False, "page_errors": []}
 
                 def heard(text):
                     state["heard"] = time.monotonic()
                     state["last"] = text
                     print(text, flush=True)
 
+                def page_error(err):
+                    heard(f"[page error] {err}")
+                    if not any(str(err).startswith(harmless) for harmless in HARMLESS_PAGE_ERRORS):
+                        state["page_errors"].append(str(err))
+
                 page.on("console", lambda msg: heard(msg.text))
-                page.on("pageerror", lambda err: heard(f"[page error] {err}"))
+                # Uncaught JS exceptions and unhandled promise rejections (main
+                # thread and the test worker). A passing run has none: they
+                # are bugs even when every test passes, e.g. a rejected promise
+                # python awaits too late, which the user's console shows as
+                # "Uncaught (in promise)".
+                page.on("pageerror", page_error)
                 page.on("crash", lambda _page: state.update(crashed=True))
                 query = urllib.parse.urlencode(options)
                 await page.goto(f"{base_url}/index.html?{query}")
@@ -163,7 +182,17 @@ async def run_page(page_dir, browser_name="chromium", options=None, headless=Tru
                             }
                         if time.monotonic() - start > TIMEOUT_S:
                             return {"ok": False, "crashed": True, "error": f"no result within {TIMEOUT_S}s: {e}"}
-                return await page.evaluate("() => window.__pyjs_result")
+                result = await page.evaluate("() => window.__pyjs_result")
+                # (a setup error is reported as such, see `run`: retried)
+                if state["page_errors"] and isinstance(result, dict) and "error" not in result:
+                    result["ok"] = False
+                    result["page_errors"] = state["page_errors"]
+                    print(
+                        f"\nFAILED: {len(state['page_errors'])} page error(s) (uncaught exceptions / "
+                        "unhandled promise rejections), see the [page error] lines",
+                        flush=True,
+                    )
+                return result
             finally:
                 await browser.close()
     finally:

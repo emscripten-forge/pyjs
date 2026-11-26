@@ -11,6 +11,8 @@
 #   pixi run test-bundlers                      # apps bundled around the package
 #   pixi run docs                               # npm package + sphinx docs
 #   pixi run docs-serve                         # docs: rebuild on change + live reload
+#   pixi run example-embed                      # examples/embed: libpyjs in a program of its own
+#   pixi run example-npm-page                   # examples/npm-page: a plain page with the package
 #   pixi task list                              # all tasks
 #
 # Environments (in .pixi/envs/): `default` = the native tools (emscripten,
@@ -281,6 +283,29 @@ python -m pyjs_test_driver build-page {{ bundler }} --tgz build_root/npm/tgz \
     --work-dir build_root/pages/bundler_projects --out build_root/pages/{{ bundler }}
 python -m pyjs_test_driver run build_root/pages/{{ bundler }} --browser chromium --mode main --retries 5
 {% endfor %}
+'''
+
+# examples/: each a small, separate project as a user of pyjs would have one,
+# run with the pyjs of this repository
+[tasks.example-embed]
+description = "examples/embed: a program embedding libpyjs (build tree), run in node: example-embed [archs]"
+args = [{ arg = "archs", default = "wasm32 wasm64" }]
+depends-on = [{ task = "build", args = ["{{ archs }}"] }]
+cmd = '''
+set -e
+{% for arch in archs | split %}
+pixi run --manifest-path examples/embed/pixi.toml run {{ arch }}
+{% endfor %}
+'''
+
+# needs the packed package (pixi run npm-package)
+[tasks.example-npm-page]
+description = "examples/npm-page: a plain page with the packed npm package, checked in chromium"
+depends-on = [{ task = "browsers", args = ["chromium"] }]
+cmd = '''
+set -e
+npm install --no-save --no-audit --no-fund --prefix examples/npm-page build_root/npm/tgz/*.tgz
+python examples/npm-page/check.py
 '''
 
 [tasks.test-npm]

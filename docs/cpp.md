@@ -153,6 +153,11 @@ no `--pre-js` / `--post-js` files). Your program starts Python through
 `Module.startPython()` like the runtime does, or uses Python's C API itself
 afterwards.
 
+A complete, minimal example (its own pixi project, the standard library put
+into the file system with emscripten's file packager, run in node):
+[`examples/embed`](https://github.com/emscripten-forge/pyjs/tree/main/examples/embed).
+The program must be a main module (`-s MAIN_MODULE=1`).
+
 In the CMakeLists.txt file:
 
 ```CMake

@@ -1,0 +1,81 @@
+# Minimal embedder of pyjs: a program of its own that links libpyjs + python,
+# puts the python standard library into its file system with emscripten's file
+# packager (--preload-file) and prints "hello world" from python, in node.
+#
+#   pixi run run wasm32        # (or wasm64) configure + build + run + check
+#
+# From the root of the pyjs repository: `pixi run example-embed` (builds pyjs
+# first). Its own pixi project, as an embedder (xeus-python, ...) has.
+# Normally pyjs comes from emscripten-forge too (`pyjs-dev` in the host
+# dependencies below, commented out); this example tests the pyjs of this
+# repository, so it takes it from the build tree instead (see README.md).
+[workspace]
+name = "pyjs-embed-example"
+channels = ["https://repo.prefix.dev/emscripten-forge/6x", "conda-forge"]
+platforms = ["osx-arm64", "linux-64", "emscripten-wasm32", "emscripten-wasm64"]
+requires-pixi = ">=0.84"
+
+# the native tools
+[feature.dev]
+platforms = ["osx-arm64", "linux-64"]
+channels = ["conda-forge", "https://repo.prefix.dev/emscripten-forge/6x"]
+
+[feature.dev.dependencies]
+cmake = "*"
+emscripten-core = "==6.0.8"
+nodejs = "*"
+
+# what the program is built against: python (its static library + the
+# standard library, which goes into the file system) and the static libraries
+# libpython needs.
+[feature.host.dependencies]
+# Outside of the pyjs repository, use this: pyjs from emscripten-forge.
+# pyjs-dev = libpyjs-static (libpyjs.a, its cmake config, the runtime js /
+# wasm) + pyjs (the python module, in site-packages). This example instead
+# tests the pyjs of the repository it lives in: libpyjs from the build tree,
+# the python module from module/pyjs (see CMakeLists.txt).
+# pyjs-dev = "*"
+python = "3.14.*"
+libpython-static = "*"
+emscripten-abi = "==6.0.8"
+zlib-static = "*"
+libbzip2-static = "*"
+zstd-static = "*"
+# (only while python has _sqlite3 built in, see CMakeLists.txt)
+libsqlite-static = "*"
+
+[feature.wasm32]
+platforms = ["emscripten-wasm32"]
+
+[feature.wasm64]
+platforms = ["emscripten-wasm64"]
+
+[environments]
+default = ["dev"]
+host-wasm32 = { features = ["host", "wasm32"], no-default-feature = true }
+host-wasm64 = { features = ["host", "wasm64"], no-default-feature = true }
+
+# The emscripten environment cannot be installed by `pixi run`, only with
+# `pixi install --platform` (as in the root pixi.toml).
+# `-m64` for wasm64: in CMAKE_C_FLAGS on the command line (the toolchain file
+# decides 32 / 64 bit from it) and in EMCC_CFLAGS (every emcc call).
+# pyjs_dir: the build tree of pyjs (`pixi run build <arch>` in the root).
+[tasks.run]
+description = "Build the example and run it in node: run <arch> [pyjs build dir]"
+args = [
+  { arg = "arch", choices = ["wasm32", "wasm64"] },
+  { arg = "pyjs_dir", default = "" },
+]
+cmd = '''
+set -e
+pixi install -e host-{{ arch }} --platform emscripten-{{ arch }}
+EMCC_CFLAGS="$EMCC_CFLAGS{% if arch == 'wasm64' %} -m64{% endif %}" emcmake cmake -S . -B build/{{ arch }} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DHOST_PREFIX=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }} \
+    -DPY_VERSION=3.14 \
+    -DWASM_ARCH={{ arch }} \
+    {% if pyjs_dir %}-Dpyjs_DIR={{ pyjs_dir }}{% endif %} \
+    {% if arch == 'wasm64' %}-DCMAKE_C_FLAGS=-m64 -DCMAKE_CXX_FLAGS=-m64{% endif %}
+EMCC_CFLAGS="$EMCC_CFLAGS{% if arch == 'wasm64' %} -m64{% endif %}" cmake --build build/{{ arch }}
+node run.js build/{{ arch }}/embed.js
+'''

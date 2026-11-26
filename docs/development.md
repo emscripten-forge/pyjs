@@ -93,6 +93,20 @@ from the url, brings up pyjs, runs the suite with the shared
 `pyjs_test_driver/web/harness.js` and sets `window.__pyjs_result`. `run` serves
 the page dir together with `tests/` and drives the browser (playwright).
 
+## Examples
+
+`examples/` holds small projects as a user of pyjs has them, run with the
+pyjs of the repository (the CI runs both):
+
+```bash
+pixi run example-embed         # examples/embed: libpyjs in a program of its own (node)
+pixi run example-npm-page      # examples/npm-page: a plain page with the packed package (chromium)
+```
+
+`examples/embed` is a pixi project of its own (its own environments), only
+`libpyjs` comes from the build tree. `example-npm-page` needs the packed
+package (`pixi run npm-package`).
+
 ## Benchmarks
 
 ```bash

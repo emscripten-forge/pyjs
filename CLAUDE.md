@@ -30,7 +30,14 @@ pixi run docs-serve [port]                   # sphinx-autobuild: rebuild + live 
 pixi run npm-package [archs]                 # npm package (default wasm32 + wasm64)
 pixi run test-npm [browsers]                 # npm package + both archs, lock CLI, bundlers
 pixi run clean                               # rm -rf build_root (envs stay)
+pixi run example-embed [archs]               # examples/embed (own pixi project): libpyjs of the build tree in a MAIN_MODULE, node
+pixi run example-npm-page                    # examples/npm-page: plain page + packed package, chromium
 ```
+
+`examples/` are small projects as a user has them, run with the pyjs of the
+repository (CI: `example-embed` in the build job, `example-npm-page` in the
+bundlers job). An embedder must link a `MAIN_MODULE` (otherwise libpyjs, with
+its embedded JS, is dropped by the linker: nothing in the program calls it).
 
 Task chain (tasks with args loop over `archs` via MiniJinja `| split`):
 `envs` (`pixi install -e host-<arch> / npm-env-<arch> --platform

@@ -4,10 +4,11 @@ name: CI
 #
 #   build     compiles pyjs for wasm32 + wasm64 and builds the npm package,
 #             ONCE. Everything else downloads what this job uploads.
+#             (+ examples/embed: a program embedding libpyjs, in node)
 #   test      the test suite on that package: every architecture x browser,
 #             with and without JSPI (nothing is compiled here)
 #   bundlers  apps built with vite / webpack / rollup / esbuild / parcel
-#             around the packed package
+#             around the packed package (+ examples/npm-page)
 #   publish   on release tags (e.g. `6.0.0`, must equal the version in
 #             CMakeLists.txt) or manually (workflow_dispatch with publish=true)
 #
@@ -59,6 +60,11 @@ jobs:
 
       - name: Test the lock CLI of the package
         run: pixi run test-lock
+
+      # a program embedding libpyjs (its own pixi project, examples/embed),
+      # linked against the build tree of the step above, run in node
+      - name: Example embedder (wasm32 + wasm64)
+        run: pixi run example-embed
 
       # what the test jobs run on: the package as directory
       - name: Upload the package directory
@@ -142,6 +148,10 @@ jobs:
 
       - name: Test the apps built with the bundlers
         run: pixi run test-bundlers
+
+      # the plain page of examples/npm-page (no bundler) with the packed package
+      - name: Example page with the npm package
+        run: pixi run example-npm-page
 
   publish:
     needs: [build, test, bundlers]

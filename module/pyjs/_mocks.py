@@ -74,8 +74,12 @@ def _mock_time_sleep():
         if can_run_sync():
             run_sync(asyncio.sleep(seconds))
             return
-        end = time.monotonic() + seconds
-        while time.monotonic() < end:
+        # (elapsed time, not an end time `start + seconds`: with a coarse
+        # clock `(start + seconds) - start` can round to a bit less than
+        # `seconds`, so a caller measuring `monotonic() - its_start` would see
+        # a too short sleep)
+        start = time.monotonic()
+        while time.monotonic() - start < seconds:
             pass
 
     time.sleep = sleep

@@ -1,5 +1,5 @@
 # pyjs
-[![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml)
+[![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/npm.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/npm.yml)
 [![docs](https://img.shields.io/badge/pyjs-docs-yellow)](https://emscripten-forge.github.io/pyjs/)
 
 pyjs is a Python <-> JavaScript foreign function interface (FFI) for

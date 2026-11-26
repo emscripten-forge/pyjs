@@ -22,9 +22,8 @@ The CI runs the same tasks, so local == CI. Only pixi >= 0.84 is needed
 pixi run build wasm32                        # build pyjs (archs: wasm32 | wasm64 | "wasm32 wasm64")
 pixi run test wasm32                         # npm package of the arch + browser tests (main + worker)
 pixi run test wasm64 "chromium firefox webkit"
-# test <arch> [browsers] [modes] [numpy|no-numpy] [jspi|no-jspi]
-pixi run test wasm32 chromium "main worker" numpy no-jspi  # JSPI switched off at runtime
-pixi run test wasm32 chromium main no-numpy
+# test <arch> [browsers] [modes] [jspi|no-jspi]
+pixi run test wasm32 chromium "main worker" no-jspi  # JSPI switched off at runtime
 pixi run bench wasm32 [browsers] [modes] [filter]          # benchmarks
 pixi run docs [out dir]                      # npm package + sphinx docs
 pixi run docs-serve [port]                   # sphinx-autobuild: rebuild + live reload (no npm build)
@@ -295,7 +294,7 @@ Other names of the package: `js`, `jstypes.*`, `pyodide.ffi` / `pyodide.code`
   test resolves the promises), `tests/pyodide/test_pyodide_stack_switching.py`;
   `Module._jspi_suspended_count()` / `_jspi_stack_state_count()` for checks.
   Open: `run_sync` inside `to_js` / `to_py` converters is not blocked.
-- Tests: `pixi run test <wasm> <browsers> "main worker" numpy no-jspi` switches JSPI off at
+- Tests: `pixi run test <wasm> <browsers> "main worker" no-jspi` switches JSPI off at
   runtime (`run --disable-jspi` -> option `disable_jspi` ->
   `pyjs.core._disable_jspi()` in `tests/main.py`), CI runs both. A browser without the APIs at all can be
   simulated with playwright: `delete WebAssembly.Suspending` in an init script.
@@ -488,11 +487,11 @@ pure-JS benchmarks (`raw_js_*`) show the run-to-run noise.
 - All use `prefix-dev/setup-pixi` (pixi version pinned, `pixi.lock`, default
   env cached; the emscripten envs come from the task `envs`) and
   `pixi run playwright install --with-deps <browsers>` first.
-- `.github/workflows/main.yml`: matrix wasm32/wasm64 x chromium/firefox/webkit,
-  `pixi run test <wasm> <browser>`, again with JSPI off, plus a no-numpy
-  run (main thread). Jobs have a timeout (a failed suspension hangs).
-- `.github/workflows/npm.yml`: `pixi run test-npm`, uploads
-  `build_root/npm/tgz/*.tgz`, publishes it on release tags.
+- `.github/workflows/npm.yml`: job `build` (`pixi run npm-package`,
+  `test-lock`), then a matrix wasm32/wasm64 x chromium/firefox/webkit:
+  `pixi run run-tests <wasm> <browser>`, again with `no-jspi`; job
+  `bundlers` (`test-bundlers`). Jobs have a timeout (a failed suspension
+  hangs). Publishes the package on release tags.
 - `.github/workflows/bench.yml`: `pixi run bench <wasm> <browser>` for wasm32 /
   wasm64 x chromium / firefox / webkit (main thread + worker), manual only
   (workflow_dispatch); `benchmarks/report.py` writes the results as

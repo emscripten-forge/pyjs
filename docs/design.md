@@ -57,7 +57,12 @@ sequenceDiagram
 ## JavaScript calls a Python function
 
 `proxy(1, "a")` in JavaScript, where `proxy` is a PyProxy of a Python
-function:
+function.
+
+### A normal function (`def`)
+
+The function runs right away, inside the call. Its result (or exception)
+comes back as the return value (or exception) of `proxy(1, "a")`:
 
 ```{mermaid}
 sequenceDiagram
@@ -67,21 +72,58 @@ sequenceDiagram
     participant F as Python<br/>function
 
     JS->>P: proxy(1, "a")<br/>(handler.apply)
-    Note over P: encode the<br/>arguments into<br/>scratch slots<br/>(strings as utf8,<br/>too large: malloc)
+    Note over P: encode the<br/>arguments into<br/>scratch slots
     P->>E: pyjs_call<br/>(fn, slots)<br/>ONE hop
-    Note over E: from_slot each arg:<br/>JS values<br/>→ Python objects<br/>JS objects<br/>→ JSProxies
+    Note over E: from_slot each<br/>arg: JS values<br/>→ Python objects<br/>JS objects<br/>→ JSProxies
     E->>F: PyObject_<br/>Vectorcall
     F-->>E: returns<br/>(or raises)
     alt returned
-        Note over E: async def: start<br/>the coroutine as<br/>asyncio task<br/>to_slot(result)<br/>→ out slot
+        Note over E: to_slot(result)<br/>→ out slot
         E-->>P: OK
-        Note over P: decode(out):<br/>a JS value, or an<br/>OWNED PyProxy
+        Note over P: decode(out):<br/>JS value or<br/>owned PyProxy
         P-->>JS: result
     else raised
-        Note over E: write_error:<br/>3 slots<br/>(exception,<br/>traceback,<br/>type name)
+        Note over E: write_error:<br/>3 slots
         E-->>P: ERROR
         P-->>JS: throws PythonError
     end
+```
+
+### An `async def` function
+
+Calling an `async def` function does not run its body: Python gives back a
+coroutine. JavaScript expects a called function to run, so pyjs starts the
+coroutine as asyncio task (`_schedule_coroutine` in `module/pyjs/core.py`)
+and returns that task. The call itself is the same as above and returns at
+once; the body runs later, in steps driven by the event loop
+(`module/pyjs/webloop.py`). `await proxy(1, "a")` waits for the end:
+
+```{mermaid}
+sequenceDiagram
+    participant JS as JavaScript<br/>code
+    participant P as PyProxy<br/>pyproxy.ts
+    participant E as wasm export<br/>py_entry.cpp
+    participant L as asyncio<br/>WebLoop
+    participant F as async def<br/>function
+
+    JS->>P: proxy(1, "a")
+    P->>E: pyjs_call
+    E->>F: call
+    F-->>E: coroutine<br/>(body not run)
+    E->>L: ensure_future<br/>(coroutine)
+    Note over L: task created,<br/>first step<br/>scheduled
+    E-->>P: OK: the task
+    P-->>JS: PyProxy<br/>of the task
+    JS->>P: await (then)
+    P->>L: _then(task,<br/>settle)
+    Note over L: done callback<br/>on the task
+    Note over JS: JS goes on,<br/>other events run
+    loop each step (a macrotask)
+        L->>F: task step:<br/>run until the<br/>next await
+        F-->>L: awaits a future<br/>(or finishes)
+    end
+    L->>JS: done callback:<br/>settle(result)
+    Note over JS: the promise<br/>resolves (or<br/>rejects with<br/>PythonError)
 ```
 
 With JSPI, entries that may suspend (`run_sync`) go through

@@ -66,7 +66,9 @@ mermaid_config = {
     "sequence": {
         "useMaxWidth": False,
         "actorMargin": 16,
-        "width": 110,
+        # column width (px): a note line has room for ~17 characters at
+        # font size 15 (110 cut lines like "→ Python objects")
+        "width": 150,
         "noteMargin": 6,
         "boxMargin": 6,
         "messageMargin": 30,

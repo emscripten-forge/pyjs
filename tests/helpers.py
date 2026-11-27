@@ -1,12 +1,42 @@
-import pyjs
+"""Small helpers shared by the tests."""
+
 import json
-try:
-    import numpy
-    has_numpy = True
-except ImportError:
-    has_numpy = False
+
+import pytest
+
+import pyjs
+from pyjs.core import _module
+
+#: for tests that need JSPI (`pyjs.run_sync`): skipped, not silently passed,
+#: in browsers without it and in the run with JSPI switched off
+requires_jspi = pytest.mark.skipif(not pyjs.jspi_enabled(), reason="needs JSPI")
 
 
+def handle_count():
+    """how many JavaScript objects Python holds right now (handles in use,
+    see src/js/codec.ts). A test compares it before / after: a difference is
+    a leaked (or wrongly freed) handle."""
+    return int(_module._handle_count())
+
+
+def pyproxy_count():
+    """how many owned PyProxies hold a Python reference right now"""
+    return int(_module._pyproxy_count())
+
+
+def js_gc():
+    """Run JavaScript's garbage collector now, if the browser lets us
+    (chromium started with --expose-gc by the test driver). Tests that depend
+    on it call `require_js_gc()` first."""
+    return bool(pyjs.js.Function("if (typeof gc !== 'function') return false; gc(); return true;")())
+
+
+def require_js_gc():
+    """skip the calling test where the garbage collector cannot be forced"""
+    if not js_gc():
+        pytest.skip("needs a browser with gc() (chromium --expose-gc)")
+
+# `a === b` in JavaScript, for two values passed from python
 js_assert_eq = pyjs.js.Function(
     "output",
     "expected_output",
@@ -21,45 +51,38 @@ js_assert_eq = pyjs.js.Function(
 
 
 def to_js_to_py(x):
+    """a python value converted to JavaScript and back"""
     return pyjs.to_py(pyjs.to_js(x))
 
 
-def nullary(body):
-    return pyjs.js.Function(body)()
-
-
 def eval_jsfunc(body):
+    """the value of a JavaScript expression"""
     return pyjs.js.Function("return " + body)()
 
 
 def ensure_js(val):
-    if not isinstance(val, pyjs.JsValue):
-        if not isinstance(val, str):
-            return pyjs.JsValue(val)
-        else:
-            return eval_jsfunc(val)
-    else:
-        return val
+    """The test input `val` as a JavaScript value.
 
-if has_numpy:
+    Parametrized tests (`@pytest.mark.parametrize`) list their inputs as
+    plain Python values, but many of them are about JavaScript objects (a
+    Map, a typed array, `null`), which cannot be written down in Python. So
+    such inputs are written as JavaScript source text, e.g.
+    ``"new Map([[1, 2]])"``, and the test calls ``ensure_js(input)``:
 
-    def converting_array_eq(x, should):
-        return array_eq(numpy.array(x), should)
+    - a str is evaluated as a JavaScript expression: its value (usually a
+      JSProxy)
+    - anything else (a number, a Python list, ...) is returned unchanged
 
-    def converting_array_feq(x, should):
-        return array_feq(numpy.array(x), should)
-
-    def array_eq(x, should):
-        return x.dtype == should.dtype and numpy.array_equal(x, should)
-
-
-    def array_feq(x, should):
-        return x.dtype == should.dtype and numpy.allclose(x, should)
+    (So a test input that is meant as a plain string must be quoted twice:
+    ``"'text'"``.)"""
+    if isinstance(val, str):
+        return eval_jsfunc(val)
+    return val
 
 
 def nested_eq(x, should):
-    # stupid low effort impls
-
+    """two nested structures of lists / dicts are equal (compared as JSON,
+    which ignores the order of dict keys)"""
     x_string = json.dumps(x, sort_keys=True, indent=2)
     should_string = json.dumps(should, sort_keys=True, indent=2)
     return x_string == should_string

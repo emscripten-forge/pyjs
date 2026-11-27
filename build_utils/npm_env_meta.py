@@ -11,11 +11,20 @@ needs two more keys, written into the same file:
   the exact build shipped with the package, so the solver never replaces the
   running interpreter
 
+and marks the extension-module packages of the split python recipe
+(python-ssl, python-sqlite3, ...: side modules in lib-dynload) `optional`:
+their tarballs are shipped, but only installed when asked for (option
+`stdlib`, `installPackages(["sqlite3"])`), see npm/src/runtime.ts. A python
+without them (built in) has no such packages: nothing is marked.
+
     python npm_env_meta.py <empack_env_meta.json> <channel> [<channel> ...]
 """
 
 import json
 import sys
+
+# the packages of the python recipe with optional extension modules
+OPTIONAL = {"python-ssl", "python-sqlite3", "python-lzma", "python-cjkcodecs", "python-test-modules"}
 
 
 def main(meta_path, channels):
@@ -27,9 +36,21 @@ def main(meta_path, channels):
     python = python[0]
     meta["channels"] = list(channels)
     meta["specs"] = [f"python {python['version']} {python['build']}"]
+    optional = []
+    for p in meta["packages"]:
+        if p["name"] in OPTIONAL:
+            p["optional"] = True
+            optional.append(p["name"])
+        # a locally built package (rattler-build output dir, file:// channel):
+        # unreachable from a browser, and mambajs rejects channels it does not
+        # know. It is installed already (never downloaded by the solver), so
+        # the first channel is only a label.
+        if p.get("channel", "").startswith("file://"):
+            print(f"{p['name']}: local channel {p['channel']} -> {channels[0]}")
+            p["channel"] = channels[0]
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
-    print(f"{meta_path}: channels={meta['channels']} specs={meta['specs']}")
+    print(f"{meta_path}: channels={meta['channels']} specs={meta['specs']} optional={optional}")
 
 
 if __name__ == "__main__":

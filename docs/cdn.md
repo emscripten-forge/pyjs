@@ -22,7 +22,7 @@ CDN too.
     onProgress: ({ item, phase, done, total }) => console.log(item, phase, done, total),
   });
 
-  pyjs.exec("import numpy as np; print(np.arange(10).sum())");
+  pyjs.runPython("import numpy as np; print(np.arange(10).sum())");
 </script>
 </body>
 </html>

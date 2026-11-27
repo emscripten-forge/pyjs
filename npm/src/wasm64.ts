@@ -10,7 +10,7 @@ export { DEFAULT_CHANNELS, DEFAULT_CDN_URL, PACKAGE_NAME, PACKAGE_VERSION } from
  *
  * ```js
  * const pyjs = await initializePyjsRuntime({ packages: ["numpy"] });
- * pyjs.exec("import numpy");
+ * pyjs.runPython("import numpy");
  * ```
  */
 export function initializePyjsRuntime(options?: IInitializeOptions): Promise<PyjsModule> {

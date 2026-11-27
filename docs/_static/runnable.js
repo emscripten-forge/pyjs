@@ -10,9 +10,15 @@
 const ROOT = new URL(document.documentElement.dataset.content_root ?? "./", location.href);
 const PACKAGE_URL = new URL("pyjs/dist/index.js", ROOT).href;
 
-// snippets about loading pyjs itself (npm / CDN imports, initialization)
-// cannot run inside a page that already has pyjs
-const NOT_RUNNABLE = [/^\s*import\s.*\sfrom\s/m, /initializePyjsRuntime\(/, /^\s*npm\s/m];
+// JavaScript snippets about loading pyjs itself (npm / CDN imports,
+// initialization) cannot run inside a page that already has pyjs. (Only
+// JavaScript: a python `import js` + `from pyjs import ...` must not match,
+// hence [^\n] instead of \s / . and the quoted module path.)
+const NOT_RUNNABLE_JS = [
+  /^[ \t]*import[ \t][^\n]*[ \t]from[ \t]+["']/m,
+  /initializePyjsRuntime\(/,
+  /^[ \t]*npm[ \t]/m,
+];
 
 let pyjsPromise;
 // the output element of the snippet that currently runs (python print goes there)
@@ -38,9 +44,10 @@ function getPyjs() {
   return pyjsPromise;
 }
 
-/** a readable message for JS errors and python errors ({has_err, ...}) */
+/** a readable message for JS errors and python errors (PythonError: the
+ * message is the python traceback) */
 function errorText(e) {
-  if (e && typeof e === "object" && "has_err" in e) return `${e.error ?? ""}\n${e.message ?? ""}`.trim();
+  if (e && e.name === "PythonError") return e.message;
   return String((e && e.stack) || e);
 }
 
@@ -72,7 +79,7 @@ async function run(language, code, output, button) {
     if (!pyjsPromise) write("loading pyjs ...", "pyjs-run-info");
     const pyjs = await getPyjs();
     if (language === "python") {
-      show(await pyjs.async_exec_eval(code));
+      show(await pyjs.runPythonAsync(code));
     } else {
       // top level await allowed, `pyjs` in scope
       const AsyncFunction = (async () => {}).constructor;
@@ -120,7 +127,7 @@ function addRunButtons() {
     const language = block.classList.contains("highlight-python") ? "python" : "javascript";
     const pre = block.querySelector("pre");
     const original = pre.innerHTML;  // with the syntax highlighting, for reset
-    if (NOT_RUNNABLE.some((pattern) => pattern.test(pre.textContent))) continue;
+    if (language === "javascript" && NOT_RUNNABLE_JS.some((pattern) => pattern.test(pre.textContent))) continue;
 
     const bar = document.createElement("div");
     bar.className = "pyjs-run-bar";

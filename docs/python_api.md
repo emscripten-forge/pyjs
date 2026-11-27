@@ -1,7 +1,10 @@
 # Python API
 
 Using JavaScript from Python, with the `pyjs` module: everything below is
-available as `pyjs.<name>`.
+available as `pyjs.<name>`. The API follows
+[PEP 818](https://peps.python.org/pep-0818/) and pyodide: the same names are
+also importable as `js`, `jstypes.ffi`, `pyodide.ffi` and `pyodide.code`, so
+code written for pyodide runs unchanged.
 
 ```python
 import pyjs
@@ -13,18 +16,80 @@ add(1, 2)  # 3
 
 ## Accessing JavaScript
 
-Every JavaScript value is a `pyjs.JsValue` in Python (defined in the C++ core
-`pyjs_core`): attributes, items and calls go to JavaScript.
+Numbers, strings, booleans, `undefined` (`None`) and `null` (`jsnull`) are
+converted when they cross over; every other JavaScript value is a `JSProxy` in
+Python: attributes, items, calls, iteration and `await` go to JavaScript.
 
 ```{eval-rst}
 .. autoapidata:: pyjs.js
 
-.. autoapiclass:: pyjs_core.JsValue
+.. autoapiclass:: pyjs_core.JSProxy
    :members:
 
-.. autoapifunction:: pyjs.new
+.. autoapidata:: pyjs.jsnull
 
-.. autoapifunction:: pyjs.async_import_javascript
+.. autoapiclass:: pyjs.JSNull
+
+.. autoapiclass:: pyjs.JSBigInt
+```
+
+### What a proxy can do
+
+A proxy gets the methods of the classes below that fit its JavaScript object
+(`isinstance(proxy, JSArray)` works too).
+
+```{eval-rst}
+.. autoapiclass:: pyjs.JSCallable
+   :members:
+
+.. autoapiclass:: pyjs.JSArray
+   :members:
+
+.. autoapiclass:: pyjs.JSTypedArray
+   :members:
+
+.. autoapiclass:: pyjs.JSBuffer
+   :members:
+
+.. autoapiclass:: pyjs.JSMap
+   :members:
+
+.. autoapiclass:: pyjs.JSMutableMap
+   :members:
+
+.. autoapiclass:: pyjs.JSPromise
+
+.. autoapiclass:: pyjs.JSIterable
+
+.. autoapiclass:: pyjs.JSIterator
+   :members:
+
+.. autoapiclass:: pyjs.JSGenerator
+   :members:
+
+.. autoapiclass:: pyjs.JSAsyncIterable
+
+.. autoapiclass:: pyjs.JSAsyncIterator
+
+.. autoapiclass:: pyjs.JSAsyncGenerator
+   :members:
+
+.. autoapiclass:: pyjs.JSDoubleProxy
+   :members:
+```
+
+## Python objects for JavaScript
+
+A Python object passed to a JavaScript function is only usable during that
+call. For JavaScript to keep it (an event handler, a callback stored for
+later), make a proxy that lasts.
+
+```{eval-rst}
+.. autoapifunction:: pyjs.create_proxy
+
+.. autoapifunction:: pyjs.create_once_callable
+
+.. autoapifunction:: pyjs.destroy_proxies
 ```
 
 ## Converting values
@@ -34,39 +99,35 @@ Every JavaScript value is a `pyjs.JsValue` in Python (defined in the C++ core
 
 .. autoapifunction:: pyjs.to_py
 
-.. autoapifunction:: pyjs.register_converter
-
 .. autoapifunction:: pyjs.buffer_to_js_typed_array
+
+.. autoapiclass:: pyjs.ConversionError
 ```
 
-## Python callables for JavaScript
+## Running JavaScript and Python code
 
 ```{eval-rst}
-.. autoapifunction:: pyjs.create_callable
+.. autoapifunction:: pyjs.run_js
 
-.. autoapifunction:: pyjs.callable_context
+.. autoapifunction:: pyjs.eval_code
 
-.. autoapifunction:: pyjs.create_once_callable
+.. autoapifunction:: pyjs.eval_code_async
 ```
 
-## Promises
+## Waiting for promises: `run_sync` (JSPI)
+
+`await` works on JavaScript promises in `async` code. Plain (synchronous)
+Python code can block on a promise with `run_sync`, where the browser supports
+JSPI (JavaScript Promise Integration). Any number of Python call stacks can
+wait in `run_sync` at the same time; they continue in whatever order their
+promises settle.
 
 ```{eval-rst}
-.. autoapifunction:: pyjs.promise
-
 .. autoapifunction:: pyjs.run_sync
 
 .. autoapifunction:: pyjs.can_run_sync
 
 .. autoapifunction:: pyjs.jspi_enabled
-```
-
-## Running Python code
-
-```{eval-rst}
-.. autoapifunction:: pyjs.exec_eval
-
-.. autoapifunction:: pyjs.async_exec_eval
 ```
 
 ## The asyncio event loop
@@ -96,19 +157,10 @@ browser. They render into the canvas set with `set_canvas`.
 
 ## JavaScript errors
 
-JavaScript errors (thrown or rejected promises) are raised as `JsException`
-subclasses, by the class of the JavaScript error.
+A value thrown by JavaScript (or a rejected promise that is awaited) is raised
+as `JSException`. Its `name` is the JavaScript error class (`"TypeError"`,
+`"AbortError"`, ...), `message` its message.
 
 ```{eval-rst}
-.. autoapiclass:: pyjs.JsException
-   :members:
-
-.. autoapiclass:: pyjs.JsError
-.. autoapiclass:: pyjs.JsTypeError
-.. autoapiclass:: pyjs.JsRangeError
-.. autoapiclass:: pyjs.JsReferenceError
-.. autoapiclass:: pyjs.JsSyntaxError
-.. autoapiclass:: pyjs.JsURIError
-.. autoapiclass:: pyjs.JsInternalError
-.. autoapiclass:: pyjs.JsGenericError
+.. autoapiclass:: pyjs.JSException
 ```

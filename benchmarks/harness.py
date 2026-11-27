@@ -32,7 +32,10 @@ class BenchmarkError(RuntimeError):
 
 
 class Benchmark:
-    def __init__(self, name, min_round_time=0.05, rounds=5, max_iterations=10_000_000):
+    # Many short rounds rather than a few long ones: every round is one
+    # sample of the time per operation, and the samples are kept (`samples`
+    # in the result) to show their distribution, not only the median.
+    def __init__(self, name, min_round_time=0.01, rounds=30, max_iterations=10_000_000):
         self.name = name
         self.min_round_time = min_round_time
         self.rounds = rounds
@@ -109,7 +112,10 @@ class Benchmark:
             mean=statistics.fmean(per_op),
             median=median,
             stddev=statistics.stdev(per_op) if len(per_op) > 1 else 0.0,
-            ops_per_sec=(1.0 / median) if median > 0 else float("inf"),
+            # None: below the timer resolution (inf is not valid JSON)
+            ops_per_sec=(1.0 / median) if median > 0 else None,
+            # the time per operation of every round (seconds)
+            samples=per_op,
         )
 
 
@@ -141,10 +147,11 @@ def format_table(results):
         if "error" in r:
             lines.append(f"{r['name']:<{name_w}}  ERROR: {r['error']}")
             continue
+        ops_per_sec = "-" if r["ops_per_sec"] is None else f"{r['ops_per_sec']:.1f}"
         lines.append(
             f"{r['name']:<{name_w}}  {format_time(r['median']):>11}  "
             f"{format_time(r['min']):>11}  {format_time(r['mean']):>11}  "
-            f"{format_time(r['stddev']):>11}  {r['ops_per_sec']:12.1f}  "
+            f"{format_time(r['stddev']):>11}  {ops_per_sec:>12}  "
             f"{r['iterations'] * r['ops_per_iteration']:>8} x {r['rounds']:<4}"
         )
     return "\n".join(lines)

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pyjs hello world</title>
+    <!--
+      No bundler: the browser resolves the package name with an import map
+      (`npm install @derthorsten/pyjs` puts the package into node_modules/).
+      The runtime and the python environment are found next to the package's
+      code (its assets/ directory), so serving this directory is all it takes.
+    -->
+    <script type="importmap">
+      { "imports": { "@derthorsten/pyjs": "./node_modules/@derthorsten/pyjs/dist/index.js" } }
+    </script>
+  </head>
+  <body>
+    <pre id="output">starting python…</pre>
+    <script type="module">
+      import { initializePyjsRuntime } from "@derthorsten/pyjs";
+
+      const output = document.getElementById("output");
+      // python's stdout goes to the page
+      const pyjs = await initializePyjsRuntime({ print: (line) => (output.textContent = line) });
+      pyjs.runPython('print("hello world")');
+    </script>
+  </body>
+</html>

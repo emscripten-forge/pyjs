@@ -22,7 +22,6 @@ import traceback
 BENCH_DIR = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, BENCH_DIR)
 
-import pyjs  # noqa: E402
 from harness import format_table, run_benchmark_function  # noqa: E402
 
 def discover(name_filter=None):
@@ -32,7 +31,12 @@ def discover(name_filter=None):
         if not (fname.startswith("bench_") and fname.endswith(".py")):
             continue
         mod_name = fname[:-3]
-        module = importlib.import_module(mod_name)
+        try:
+            module = importlib.import_module(mod_name)
+        except ImportError as e:
+            # (a module raises it when the runtime lacks what it measures)
+            print(f"SKIP: {mod_name}: {e}")
+            continue
         # keep definition order within a module
         for name, obj in vars(module).items():
             if name.startswith("bench_") and inspect.isfunction(obj):
@@ -44,14 +48,17 @@ def discover(name_filter=None):
 
 
 def environment_info():
-    """where the benchmarks ran (python, pointer size, browser)"""
+    """where the benchmarks ran (runtime, python, pointer size, browser)"""
+    import compat
+
     info = dict(
+        runtime=compat.RUNTIME,
         python=sys.version,
         platform=sys.platform,
         pointer_bits=64 if sys.maxsize > 2**32 else 32,
     )
     try:
-        info["user_agent"] = str(pyjs.js.navigator.userAgent)
+        info["user_agent"] = str(compat.js.navigator.userAgent)
     except Exception:
         pass
     return info

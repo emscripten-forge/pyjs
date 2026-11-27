@@ -1,17 +1,19 @@
 # pyjs
-[![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/main.yml)
+[![CI](https://github.com/emscripten-forge/pyjs/actions/workflows/npm.yml/badge.svg)](https://github.com/emscripten-forge/pyjs/actions/workflows/npm.yml)
 [![docs](https://img.shields.io/badge/pyjs-docs-yellow)](https://emscripten-forge.github.io/pyjs/)
 
-pyjs is a modern [pybind11](https://github.com/pybind/pybind11) + emscripten
-[embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html)
-based Python <-> JavaScript foreign function interface (FFI) for wasm/emscripten
-compiled Python. The API is loosely based on the FFI of
-[pyodide](https://pyodide.org/en/stable/usage/type-conversions.html).
+pyjs is a Python <-> JavaScript foreign function interface (FFI) for
+wasm/emscripten compiled Python (core: [nanobind](https://github.com/wjakob/nanobind)
++ TypeScript). The API follows [PEP 818](https://peps.python.org/pep-0818/)
+and the FFI of [pyodide](https://pyodide.org/en/stable/usage/type-conversions.html):
+code written for pyodide runs unchanged.
 
 * Python 3.14, emscripten 6, `wasm32` and `wasm64`
 * runs in the browser main thread and in web workers
 * asyncio support: `await` JavaScript promises from Python and Python
   coroutines from JavaScript
+* `run_sync` (JSPI): synchronous Python code waits for a promise, any number
+  of Python stacks at the same time
 * tested in Chromium, Firefox and WebKit (Safari)
 * distributed via [emscripten-forge](https://github.com/emscripten-forge/recipes)
 
@@ -47,13 +49,14 @@ Access Python from JavaScript:
 
 ```javascript
 // hello world
-pyjs.eval("print('Hello, World!')")
+pyjs.runPython("print('Hello, World!')");
 
-// eval a python expression and get the result
-const py_list = pyjs.eval("[i for i in range(10)]")
+// run python code and get the value of its last line
+const py_list = pyjs.runPython("[i * i for i in range(10)]");
 
 // access
-console.log(py_list.get(0)) // same as py_list[0] on the python side
+console.log(py_list.get(3)); // 9, same as py_list[3] on the python side
+py_list.destroy();
 ```
 
 ## Development

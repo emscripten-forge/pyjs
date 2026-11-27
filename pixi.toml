@@ -3,12 +3,16 @@
 #   pixi run build wasm32                       # build pyjs (wasm32 | wasm64 | "wasm32 wasm64")
 #   pixi run test wasm32                        # + npm package (this arch), tests in the browser
 #   pixi run test wasm64 "chromium firefox webkit"
-#   pixi run test wasm32 chromium main no-numpy               # without numpy
-#   pixi run test wasm32 chromium "main worker" numpy no-jspi # JSPI switched off
+#   pixi run test wasm32 chromium "main worker" no-jspi       # JSPI switched off
 #   pixi run bench wasm32                       # benchmarks (bench wasm32 chromium "main worker" async)
+#   pixi run bench-pyodide                      # the same benchmarks on pyodide (the reference)
 #   pixi run npm-package                        # the npm package (wasm32 + wasm64)
-#   pixi run test-npm                           # + its full test (both archs, bundlers, lock CLI)
+#   pixi run test-npm                           # + its test (both archs, lock CLI)
+#   pixi run test-bundlers                      # apps bundled around the package
 #   pixi run docs                               # npm package + sphinx docs
+#   pixi run docs-serve                         # docs: rebuild on change + live reload
+#   pixi run example-embed                      # examples/embed: libpyjs in a program of its own
+#   pixi run example-npm-page                   # examples/npm-page: a plain page with the package
 #   pixi task list                              # all tasks
 #
 # Environments (in .pixi/envs/): `default` = the native tools (emscripten,
@@ -43,6 +47,8 @@ emscripten-core = "==6.0.8"
 empack = ">=6.0.0"
 # npm package, bundler test pages
 nodejs = "*"
+# bundles the JavaScript side of libpyjs (src/js)
+esbuild = "*"
 # pyjs_test_driver: playwright (driver + browsers) + its python API
 playwright = "*"
 playwright-python = "*"
@@ -53,6 +59,10 @@ sphinx = "*"
 sphinx-autoapi = "*"
 myst-parser = "*"
 pydata-sphinx-theme = "*"
+# the diagrams of docs/design.md (```{mermaid} blocks)
+sphinxcontrib-mermaid = "*"
+# rebuild + live reload while writing docs (task docs-serve)
+sphinx-autobuild = "*"
 
 [feature.dev.activation.env]
 # = the python of the host environments (paths in the env, cmake)
@@ -62,7 +72,8 @@ PY_VER = "3.14"
 [feature.host.dependencies]
 python = "3.14.*"
 libpython-static = "*"
-pybind11 = "*"
+# headers + sources, compiled into libpyjs
+nanobind = "*"
 emscripten-abi = "==6.0.8"
 numpy = "*"
 zlib-static = "*"
@@ -77,6 +88,9 @@ libarchive-static = "*"
 # environments micromamba created before)
 [feature.npm-env.dependencies]
 python = "3.14.*"
+# with the split python recipe (python-core + python-ssl, ...) also
+# `python-test-modules = "3.14.*"`: the test pages ask for it (option
+# `stdlib`, shipped as optional; not a package of the unsplit python)
 emscripten-abi = "==6.0.8"
 pip = "*"
 ca-certificates = "*"
@@ -127,20 +141,7 @@ EMCC_CFLAGS="$EMCC_CFLAGS{% if arch == 'wasm64' %} -m64{% endif %}" emcmake cmak
     -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ON \
     -DCMAKE_INSTALL_PREFIX=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }} \
     {% if arch == 'wasm64' %}-DCMAKE_C_FLAGS=-m64 -DCMAKE_CXX_FLAGS=-m64 -DWASM64=TRUE{% else %}-DWASM64=FALSE{% endif %} \
-    -DBUILD_RUNTIME_BROWSER=ON \
-    -DBUILD_RUNTIME_NODE=OFF \
-    -DLINK_LIBLZMA=ON \
-    -DPY_VERSION=$PY_VER \
-    -DPYTHON_SITE_PACKAGES=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }}/lib/python$PY_VER/site-packages \
-    -DPython_INCLUDE_DIRS=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }}/include/python$PY_VER \
-    -DPython_LIBRARY=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }}/lib/libpython$PY_VER.a \
-    -DPython_LIBRARIES=$PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }}/lib/libpython$PY_VER.a \
-    -DPython_EXECUTABLE=$CONDA_PREFIX/bin/python \
-    -DPython_Interpreter_FOUND=TRUE \
-    -DPython_FOUND=TRUE \
-    -DPYTHON_MODULE_EXTENSION=.so \
-    -DPYTHON_MODULE_EXT_SUFFIX=.so \
-    -DPYTHON_MODULE_DEBUG_POSTFIX=
+    -DPY_VERSION=$PY_VER
 {% endfor %}
 '''
 
@@ -176,6 +177,9 @@ empack pack append --env-meta build_root/npm/stage/{{ arch }}/empack_env_meta.js
     --tarfile build_root/npm/stage/{{ arch }}/pyjs_module.tar.gz
 python build_utils/npm_env_meta.py build_root/npm/stage/{{ arch }}/empack_env_meta.json \
     https://repo.prefix.dev/emscripten-forge/6x conda-forge
+python build_utils/third_party_licenses.py build_root/npm/stage/{{ arch }}/THIRD_PARTY_LICENSES.md \
+    --linked $PIXI_PROJECT_ROOT/.pixi/envs/host-{{ arch }} --shipped $PIXI_PROJECT_ROOT/.pixi/envs/npm-env-{{ arch }} \
+    --emscripten $CONDA_PREFIX/opt/emsdk/upstream/emscripten
 {% endfor %}
 '''
 
@@ -200,37 +204,42 @@ npm pack ./build_root/npm/package --pack-destination build_root/npm/tgz
 echo "npm package: build_root/npm/package (publish: npm publish ./build_root/npm/tgz/*.tgz --access public)"
 '''
 
+[tasks.npm-js]
+description = "Only the JavaScript of the npm package (what the conda package ships in lib_js/pyjs/npm): build_root/npm/js/"
+depends-on = ["npm-ci"]
+cmd = "node npm/build.mjs --js-only --out build_root/npm/js"
+
 [tasks.browsers]
 description = "Install the playwright browsers (no-op if present)"
 args = [{ arg = "browsers", default = "chromium" }]
 cmd = "playwright install {{ browsers }}"
 
-# the packages the tests install at runtime (tests/sync/test_http.py: the http
-# stack of e.g. scipy.datasets); no-numpy: pyjs must work without numpy
+# the packages the tests install at runtime (pytest runs them; the others are
+# the http stack tests/test_http.py checks, as used by e.g. scipy.datasets)
 [tasks.test-page]
 description = "The test page of the npm package (build_root/pages/npm_<arch>)"
-args = [
-  { arg = "arch", choices = ["wasm32", "wasm64"] },
-  { arg = "test_env", default = "numpy", choices = ["numpy", "no-numpy"] },
-]
+args = [{ arg = "arch", choices = ["wasm32", "wasm64"] }]
 cmd = '''
 python -m pyjs_test_driver build-page npm --package build_root/npm/package --arch {{ arch }} \
-    --packages {% if test_env == "no-numpy" %}pytest{% else %}numpy pytest urllib3 requests pyodide-http pooch{% endif %} \
+    --packages numpy pytest urllib3 requests pyodide-http pooch \
     --out build_root/pages/npm_{{ arch }}
 '''
 
-# the npm pages need the network (test packages from prefix.dev): retry a
-# failed setup, never failed tests
-[tasks._run-tests]
+# Runs the tests on the npm package that is already in build_root/npm/package,
+# without building anything (`test` = build + this; the CI builds once and
+# runs this in every test job).
+# The npm pages need the network (test packages from prefix.dev): a failed
+# setup is retried, failed tests never are.
+[tasks.run-tests]
+description = "Run the test suite on the built npm package (no build): run-tests <arch> [browsers] [modes] [jspi|no-jspi]"
 args = [
   { arg = "arch", choices = ["wasm32", "wasm64"] },
   { arg = "browsers", default = "chromium" },
   { arg = "modes", default = "main worker" },
-  { arg = "test_env", default = "numpy", choices = ["numpy", "no-numpy"] },
   { arg = "jspi", default = "jspi", choices = ["jspi", "no-jspi"] },
 ]
 depends-on = [
-  { task = "test-page", args = ["{{ arch }}", "{{ test_env }}"] },
+  { task = "test-page", args = ["{{ arch }}"] },
   { task = "browsers", args = ["{{ browsers }}"] },
 ]
 cmd = '''
@@ -239,17 +248,16 @@ python -m pyjs_test_driver run build_root/pages/npm_{{ arch }} --label "npm {{ a
 '''
 
 [tasks.test]
-description = "Build the npm package of an arch, run the test suite on it: test <arch> [browsers] [modes] [numpy|no-numpy] [jspi|no-jspi]"
+description = "Build the npm package of an arch, run the test suite on it: test <arch> [browsers] [modes] [jspi|no-jspi]"
 args = [
   { arg = "arch", choices = ["wasm32", "wasm64"] },
   { arg = "browsers", default = "chromium" },
   { arg = "modes", default = "main worker" },
-  { arg = "test_env", default = "numpy", choices = ["numpy", "no-numpy"] },
   { arg = "jspi", default = "jspi", choices = ["jspi", "no-jspi"] },
 ]
 depends-on = [
   { task = "npm-package", args = ["{{ arch }}"] },
-  { task = "_run-tests", args = ["{{ arch }}", "{{ browsers }}", "{{ modes }}", "{{ test_env }}", "{{ jspi }}"] },
+  { task = "run-tests", args = ["{{ arch }}", "{{ browsers }}", "{{ modes }}", "{{ jspi }}"] },
 ]
 
 [tasks.test-lock]
@@ -260,7 +268,10 @@ node build_root/npm/package/bin/pyjs.mjs lock tabulate -o build_root/npm/lock_te
 python build_utils/check_lock.py build_root/npm/lock_test.json
 '''
 
-# the bundled app does not depend on the browser: chromium, main thread
+# The bundled app does not depend on the browser: chromium, main thread.
+# Needs the packed package (pixi run npm-package). Not part of test-npm: it
+# tests the packaging, not pyjs itself, and takes long (the CI runs it as a
+# job of its own, next to the test jobs).
 [tasks.test-bundlers]
 description = "Apps built with vite / webpack / rollup / esbuild / parcel around the packed npm package"
 depends-on = [{ task = "browsers", args = ["chromium"] }]
@@ -274,15 +285,37 @@ python -m pyjs_test_driver run build_root/pages/{{ bundler }} --browser chromium
 {% endfor %}
 '''
 
+# examples/: each a small, separate project as a user of pyjs would have one,
+# run with the pyjs of this repository
+[tasks.example-embed]
+description = "examples/embed: a program embedding libpyjs (build tree), run in node: example-embed [archs]"
+args = [{ arg = "archs", default = "wasm32 wasm64" }]
+depends-on = [{ task = "build", args = ["{{ archs }}"] }]
+cmd = '''
+set -e
+{% for arch in archs | split %}
+pixi run --manifest-path examples/embed/pixi.toml run {{ arch }}
+{% endfor %}
+'''
+
+# needs the packed package (pixi run npm-package)
+[tasks.example-npm-page]
+description = "examples/npm-page: a plain page with the packed npm package, checked in chromium"
+depends-on = [{ task = "browsers", args = ["chromium"] }]
+cmd = '''
+set -e
+npm install --no-save --no-audit --no-fund --prefix examples/npm-page build_root/npm/tgz/*.tgz
+python examples/npm-page/check.py
+'''
+
 [tasks.test-npm]
-description = "The npm package (wasm32 + wasm64) and its full test: both archs, the lock CLI, the bundlers"
+description = "The npm package (wasm32 + wasm64) and its test: both archs, the lock CLI (bundlers: test-bundlers)"
 args = [{ arg = "browsers", default = "chromium firefox webkit" }]
 depends-on = [
   { task = "npm-package", args = ["wasm32 wasm64"] },
-  { task = "_run-tests", args = ["wasm32", "{{ browsers }}"] },
-  { task = "_run-tests", args = ["wasm64", "{{ browsers }}"] },
+  { task = "run-tests", args = ["wasm32", "{{ browsers }}"] },
+  { task = "run-tests", args = ["wasm64", "{{ browsers }}"] },
   "test-lock",
-  "test-bundlers",
 ]
 
 # results: build_root/benchmarks/<arch>/<time>_<browser>_<mode>.json
@@ -306,6 +339,29 @@ python -m pyjs_test_driver run build_root/pages/npm_{{ arch }} --label "bench {{
     --meta wasm_type={{ arch }} --meta git_rev=$(git rev-parse --short HEAD) --meta timestamp=$(date +%Y%m%d-%H%M%S)
 '''
 
+# the reference: the same benchmarks on pyodide (wasm32 only). The pyodide
+# release is downloaded once into build_root/pyodide/<version>/ and served
+# from there.
+# results: build_root/benchmarks/pyodide/<time>_<browser>_<mode>.json
+[tasks.bench-pyodide]
+description = "The benchmarks on pyodide (the reference): bench-pyodide [browsers] [modes] [filter] [version]"
+args = [
+  { arg = "browsers", default = "chromium" },
+  { arg = "modes", default = "main worker" },
+  { arg = "filter", default = "" },
+  { arg = "version", default = "314.0.8" },
+]
+depends-on = [{ task = "browsers", args = ["{{ browsers }}"] }]
+cmd = '''
+set -e
+python -m pyjs_test_driver build-page pyodide --pyodide-version {{ version }} --packages numpy \
+    --cache-dir build_root/pyodide --out build_root/pages/pyodide
+python -m pyjs_test_driver run build_root/pages/pyodide --label "bench pyodide {{ version }}" --entry benchmarks \
+    --browser {{ browsers }} --mode {{ modes }} --option "filter={{ filter }}" \
+    --result-json build_root/benchmarks/pyodide/$(date +%Y%m%d-%H%M%S)_{browser}_{mode}.json \
+    --meta wasm_type=pyodide-{{ version }} --meta timestamp=$(date +%Y%m%d-%H%M%S)
+'''
+
 # the npm package next to the html (the playground loads it) + the
 # playground's packages pinned at build time (no solver in the browser)
 [tasks.docs]
@@ -322,6 +378,19 @@ node build_root/docs_extra/pyjs/bin/pyjs.mjs lock numpy -o build_root/docs_extra
 sphinx-build -b html docs {{ out }}
 echo "docs: {{ out }}/index.html"
 '''
+
+# Writing docs: rebuild on every change (docs/, docstrings in module/ and
+# stubs/) and serve with live reload at http://127.0.0.1:<port>. Only sphinx:
+# no npm package build. The playground and the run buttons use the package of
+# the last `pixi run docs` (build_root/docs_extra) if there is one.
+[tasks.docs-serve]
+description = "Sphinx docs with rebuild on change + live reload: docs-serve [port]"
+args = [{ arg = "port", default = "8000" }]
+env = { PYJS_DOCS_EXTRA_DIR = "$PIXI_PROJECT_ROOT/build_root/docs_extra" }
+# -E: every rebuild reads all pages again. Sphinx does not know that
+# python_api.md shows the docstrings of module/ (autoapi directives): without
+# it a docstring change triggers a build that rewrites nothing.
+cmd = "sphinx-autobuild -E docs build_root/docs_live --watch module --watch stubs --port {{ port }}"
 
 [tasks.clean]
 description = "Delete build_root/ (the environments in .pixi/ stay)"

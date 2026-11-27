@@ -14,11 +14,15 @@ import { initializePyjsRuntime } from "@PACKAGE_NAME@";          // wasm32
 
 const pyjs = await initializePyjsRuntime({ packages: ["numpy"] });
 
-pyjs.exec("import numpy as np");
-console.log(pyjs.eval("int(np.arange(10).sum())"));          // 45
-console.log(pyjs.exec_eval("x = 2\nx * 21"));                // 42
-console.log(await pyjs.async_exec_eval(
+pyjs.runPython("import numpy as np");
+console.log(pyjs.runPython("int(np.arange(10).sum())"));     // 45
+console.log(pyjs.runPython("x = 2\nx * 21"));                // 42 (the last line's value)
+console.log(await pyjs.runPythonAsync(
   "import asyncio\nawait asyncio.sleep(0)\n'done'"));        // done
+
+const math = pyjs.pyimport("math");                          // a python module ...
+console.log(math.sqrt(2));                                   // ... used from JS
+math.destroy();                                              // release it
 
 await pyjs.installPackages(["regex"]);                       // later installs
 await pyjs.installPackages(["scipy"], { verbose: true });    // + solver log (or { logger })
@@ -47,7 +51,7 @@ Directly from a CDN, no bundler:
 <script type="module">
   import { initializePyjsRuntime } from "https://cdn.jsdelivr.net/npm/@PACKAGE_NAME@@@PACKAGE_VERSION@/dist/index.js";
   const pyjs = await initializePyjsRuntime();
-  pyjs.exec("print('hello from python')");
+  pyjs.runPython("print('hello from python')");
 </script>
 ```
 
@@ -55,8 +59,9 @@ Import `dist/index.js` (or `dist/wasm64.js`) directly, not jsDelivr's `/+esm`
 variant: the runtime and the python environment are loaded relative to the
 module (`import.meta.url`).
 
-The returned object is the pyjs runtime (the emscripten `Module`): `exec`,
-`eval`, `exec_eval`, `async_exec_eval`, `eval_file`, `to_js`, `FS`, ... ; see the
+The returned object is the pyjs runtime (the emscripten `Module`):
+`runPython`, `runPythonAsync`, `pyimport`, `globals`, `FS`, ... The API
+follows pyodide's and PEP 818; see the
 [pyjs docs](https://emscripten-forge.github.io/pyjs).
 
 ## Options of `initializePyjsRuntime`
@@ -103,3 +108,9 @@ JavaScript modules, so bundlers do not copy them; two ways to deploy them:
 
   Re-run `copy-assets` after updating the package (the JS and the wasm must
   match).
+
+## License
+
+pyjs: see `LICENSE`. The runtime and the python environment contain
+third-party software (CPython, openssl, sqlite, zlib, emscripten's libc /
+libc++, ...): their licenses are in `assets/<arch>/THIRD_PARTY_LICENSES.md`.

@@ -2,9 +2,16 @@
 //
 //   node build.mjs --out <package dir> [--name <npm name>] [--version <version>]
 //                  --stage wasm32=<dir> [--stage wasm64=<dir>] [--no-minify]
+//   node build.mjs --out <dir> --js-only [--no-minify]
 //
 // <dir> of a stage: pyjs_runtime_browser.{js,wasm} + the empack packed env
 // (empack_env_meta.json + tarballs), see the pixi task `pack`.
+//
+// --js-only: only the JavaScript of the package (<dir>/dist, + a minimal
+// package.json): no runtime, no packed env, no CLI. That is what the pyjs
+// conda package ships next to its runtime (lib_js/pyjs/npm): whoever has a
+// conda env with pyjs (e.g. pyjs-code-runner) serves the runtime and the
+// packed env as `assetsUrl` and drives them with this JavaScript.
 // Defaults: the name from $NPM_PACKAGE_NAME (else @derthorsten/pyjs), the
 // version from `project(pyjs VERSION ...)` in CMakeLists.txt.
 import { build } from "esbuild";
@@ -34,13 +41,16 @@ function parseArgs(argv) {
       const [arch, dir] = argv[++i].split("=");
       args.stages[arch] = path.resolve(dir);
     } else if (a === "--no-minify") args.minify = false;
+    else if (a === "--js-only") args.jsOnly = true;
     else throw new Error(`unknown argument ${a}`);
   }
   if (!args.out) throw new Error("--out is required");
   args.name ??= process.env.NPM_PACKAGE_NAME || "@derthorsten/pyjs";
   args.version ??= cmakeVersion();
   // (a package of one architecture is fine, e.g. `pixi run test wasm64`)
-  if (Object.keys(args.stages).length === 0) throw new Error("--stage <arch>=<dir> is required");
+  if (!args.jsOnly && Object.keys(args.stages).length === 0) {
+    throw new Error("--stage <arch>=<dir> is required (or --js-only)");
+  }
   return args;
 }
 
@@ -89,6 +99,18 @@ await build({
   logLevel: "warning",
 });
 fs.copyFileSync(path.join(here, "src/load-runtime.js"), path.join(dist, "load-runtime.js"));
+
+if (args.jsOnly) {
+  // (a package.json that makes dist/*.js ES modules and names the version)
+  fs.writeFileSync(
+    path.join(args.out, "package.json"),
+    JSON.stringify({ name: args.name, version: args.version, type: "module", main: "./dist/index.js" }, null, 2) + "\n"
+  );
+  fs.copyFileSync(path.join(here, "../LICENSE"), path.join(args.out, "LICENSE"));
+  console.log(`pyjs javascript ${args.name}@${args.version}: ${dist}`);
+  process.exit(0);
+}
+
 // the `lock` command of the CLI (node): the solver bundled in (no chunks)
 await build({
   absWorkingDir: here,

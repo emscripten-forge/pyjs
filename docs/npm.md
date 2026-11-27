@@ -27,12 +27,12 @@ import { initializePyjsRuntime } from "@PYJS_NPM_PACKAGE@";
 
 const pyjs = await initializePyjsRuntime({ packages: ["numpy"] });
 
-pyjs.exec("import numpy as np");
-pyjs.eval("int(np.arange(10).sum())");  // 45
-pyjs.exec_eval("x = 2\nx * 21");        // 42
-await pyjs.async_exec_eval(
+pyjs.runPython("import numpy as np");
+pyjs.runPython("int(np.arange(10).sum())");  // 45
+pyjs.runPython("x = 2\nx * 21");             // 42
+await pyjs.runPythonAsync(
   "import asyncio\nawait asyncio.sleep(0)\n'done'"
-);
+);                                            // "done"
 
 // install more later (verbose: with the solver log)
 await pyjs.installPackages(["regex"]);
@@ -40,11 +40,29 @@ await pyjs.installPackages(["scipy"], { verbose: true });
 ```
 
 `initializePyjsRuntime` returns the pyjs runtime (the emscripten `Module`) with
-the API described in {doc}`JavaScript_API` (`exec`, `eval`, `exec_eval`,
-`async_exec_eval`, `eval_file`, `to_js`, `FS`, ...), plus `installPackages`,
-`unpackArchive` and `addFiles`.
+the API described in {doc}`JavaScript_API` (`runPython`, `runPythonAsync`,
+`pyimport`, `globals`, `toPy`, `FS`, ...), plus `installPackages`,
+`unpackArchive`, `addFiles` and `saveBytecode`.
 
 Without a bundler, the package can be imported directly from a CDN, see [CDN](cdn.md).
+
+### Optional parts of the stdlib
+
+The extension modules `_ssl`, `_sqlite3`, `_lzma` and the CJK codecs (with
+their C libraries: openssl, sqlite, xz) are shipped with the package, but not
+installed by default: most programs do not need them, and they are the
+largest part of the stdlib. Ask for them at the start or later (no download
+from a channel, they come from the package itself):
+
+```js
+const pyjs = await initializePyjsRuntime({ stdlib: ["sqlite3", "ssl"] }); // or "all"
+await pyjs.installPackages(["lzma"]);  // later ("python-lzma" works too)
+```
+
+Available: `ssl`, `sqlite3`, `lzma`, `cjkcodecs`, `test-modules` (CPython's
+`_testcapi`, ...). Without them `import sqlite3` raises
+`ModuleNotFoundError: No module named '_sqlite3'`. (With a python that has these
+modules built in, `stdlib` does nothing.)
 
 ### What happens at the start
 
@@ -105,7 +123,7 @@ accepts both, specs and pinned packages.
   `saveBytecode()` themselves).
 
   ```js
-  pyjs.exec("import numpy, scipy.linalg");
+  pyjs.runPython("import numpy, scipy.linalg");
   await pyjs.saveBytecode();
   ```
 
@@ -242,7 +260,7 @@ const pyjs = await initializePyjsRuntime({
 });
 await pyjs.unpackArchive({ url: "more_data.tar.bz2", path: "/data" });
 await pyjs.addFiles([{ path: "/data/extra.csv", url: "extra.csv" }]);
-pyjs.exec("import sys; sys.path.insert(0, '/examples')");
+pyjs.runPython("import sys; sys.path.insert(0, '/examples')");
 ```
 
 A filtered package (stripped of tests, headers, docs, ...) as an archive with
@@ -259,6 +277,21 @@ wasm32 is the default and works in all browsers. wasm64 (memory64) allows
 more than 4 GB of memory (pyjs is linked with up to 16 GB) but needs a
 browser with memory64 support. Extra packages are taken from the matching
 channel subdir (`emscripten-wasm32` / `emscripten-wasm64`).
+
+## Changes in 6.0
+
+* New FFI core (nanobind + TypeScript instead of pybind11 + embind), see
+  {doc}`design`.
+* The API follows PEP 818 and pyodide. JavaScript side: `runPython`,
+  `runPythonAsync`, `pyimport`, `globals`, `toPy` replace `exec`, `eval`,
+  `exec_eval`, `async_exec_eval`, `eval_file`; Python objects are `PyProxy`
+  objects (`proxy(...)`, `proxy.get(key)`, `destroy()`) instead of
+  `pyobject` (`py_call`, `delete()`). Python side: `JSProxy` replaces
+  `JsValue`, `JSException` the `Js*Error` classes, `create_proxy` /
+  `create_once_callable` the callable helpers; see {doc}`python_api`.
+* `run_sync` (JSPI): any number of Python stacks can wait at the same time;
+  `loop.run_until_complete` blocks where `can_run_sync()` is true.
+* Optional stdlib parts (`stdlib` option), see above.
 
 ## Changes in 5.2
 

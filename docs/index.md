@@ -1,10 +1,10 @@
 # pyjs
 
-pyjs is a Python ↔ JavaScript FFI for WebAssembly, built with
-[pybind11](https://github.com/pybind/pybind11) and emscripten's
-[embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html).
-It lets you run Python in the browser (main thread or web worker) and use
-JavaScript from Python, and Python from JavaScript.
+pyjs is a Python ↔ JavaScript FFI for WebAssembly (CPython compiled with
+emscripten, wasm32 and wasm64). It lets you run Python in the browser (main
+thread or web worker) and use JavaScript from Python, and Python from
+JavaScript. Its API follows [PEP 818](https://peps.python.org/pep-0818/) and
+pyodide, so code written for pyodide runs unchanged.
 
 ## Quickstart
 
@@ -30,13 +30,14 @@ Access Python from JavaScript:
 
 ```javascript
 // hello world
-pyjs.eval("print('Hello, World!')")
+pyjs.runPython("print('Hello, World!')");
 
-// eval a python expression and get the result
-const py_list = pyjs.eval("[i for i in range(10)]")
+// run python code and get the value of its last line
+const py_list = pyjs.runPython("[i * i for i in range(10)]");
 
 // access
-console.log(py_list.get(0)) // same as py_list[0] on the python side
+console.log(py_list.get(3)); // 9, same as py_list[3] on the python side
+py_list.destroy();
 ```
 
 ## Try it out

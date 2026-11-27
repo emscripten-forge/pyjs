@@ -1,361 +1,232 @@
-import contextlib
-import contextvars
-import json
-import sys
-import types
-from typing import Any
-import ast
-import inspect
-import pyjs_core
-from pyjs_core import JsValue, js_array, js_py_object
-import warnings
+"""What pyjs has beyond the foreign function interface (`pyjs.ffi`):
+awaiting across the two languages, the emscripten main loop / animation
+frames, and blocking on a promise (`run_sync`, JSPI)."""
+
+import asyncio
 import time
+import traceback
+import warnings
 
-def _install_submodules():
-    def _js_mod__getattr__(name: str) -> Any:
-        ret = pyjs_core.internal.global_property(name)
-        if ret is None:
-            raise AttributeError(f"has no attribute {name}")
-        return ret
+import pyjs_core
+from pyjs_core import JSProxy
 
-    js = sys.modules["pyjs.js"] = sys.modules["js"] = sys.modules["pyjs_core.js"] = types.ModuleType("js")
-    js.__getattr__ = _js_mod__getattr__
-    pyjs_core.js = js
+from .error_handling import JSException, error_to_py
+from .ffi import create_once_callable
 
-    def _module_mod__getattr__(name: str) -> Any:
-        ret = pyjs_core.internal.module_property(name)
-        if pyjs_core.internal.is_undefined_or_null(ret):
-            raise AttributeError(f"has no attribute {name}")
-        return ret
+__all__ = [
+    "set_main_loop_callback",
+    "cancel_main_loop",
+    "AnimationFrameLoop",
+    "request_animation_frame_loop",
+    "set_canvas",
+    "jspi_enabled",
+    "can_run_sync",
+    "run_sync",
+]
 
-    _module = sys.modules["pyjs_core._module"] = types.ModuleType("_module")
-    _module.__getattr__ = _module_mod__getattr__
-    pyjs_core._module = _module
-
-
-_install_submodules()
-del _install_submodules
+_js = pyjs_core.global_this()
+_module = pyjs_core.module()
 
 
+# ---------------------------------------------------------------------------
+# awaiting across the border
+# ---------------------------------------------------------------------------
+def _format_exception(exc):
+    """the traceback of an exception as text: the message of the error
+    JavaScript gets when Python code it called raised. The frames of pyjs'
+    own code running it (runPython -> pyjs/code.py) are left out at the
+    start: the traceback begins with the user's code."""
+    tb = exc.__traceback__
+    while tb is not None and tb.tb_next is not None and tb.tb_frame.f_code.co_filename.endswith("pyjs/code.py"):
+        tb = tb.tb_next
+    return "".join(traceback.format_exception(type(exc), exc, tb))
 
 
-def new(cls_, *args):
-    """ Create a new instance of a JavaScript class.
+def _then(awaitable, settle):
+    """Settle a JavaScript promise with the outcome of a Python awaitable.
 
-    This function is a wrapper around the `new` operator in JavaScript.
-    
-    Args:
-        cls_ (JsValue): The JavaScript class to create an instance of
-        *args (Any): The arguments to pass to the constructor of the JavaScript class
+    JavaScript calls this when it awaits a Python coroutine / future / task
+    (the `then` of its PyProxy, src/js/pyproxy.ts). When the awaitable is
+    done, `settle` (a JavaScript function) is called with the `result`
+    method of the finished future. JavaScript calls that method: it returns
+    the result or raises the exception, which JavaScript turns into a
+    resolved or rejected promise.
     """
-    return pyjs_core._module._new(cls_, *args)
-
-# todo deprecate
-def async_import_javascript(path):
-    return pyjs_core._module._async_import_javascript(path)
+    future = asyncio.ensure_future(awaitable)
+    future.add_done_callback(lambda finished: settle(finished.result))
 
 
-# TODO make private
-def type_str(x):
-    return pyjs_core.internal.type_str(x)
+def _schedule_coroutine(coroutine):
+    """Start a coroutine as asyncio task. The core calls this when a Python
+    function called from JavaScript returned a coroutine (an `async def`
+    function was called): JavaScript expects the function to run, and gets
+    the task to await."""
+    return asyncio.ensure_future(_run_to_the_end(coroutine))
 
 
-def create_callable(py_function):
-    '''Create a JavaScript callable from a Python function.
-
-    Args:
-        py_function (Callable): The Python function to create a JavaScript callable from.
-
-    Example:
-    ```python
-    def py_function(x, y):
-        return x + y
-
-    js_callable, js_py_object = pyjs.create_callable(py_function)
-    
-    # this function can be passed to JavaScript.
-    # lets create some JavaScript code to test it
-    higher_order_function = pyjs.js.Function("f", "x", "y", "z", """
-        return z * f(x, y);
-    """)
-    
-    # call the higher order JavaScript function
-    # with py_function wrapped as a JavaScript callable
-    result = higher_order_function(js_callable, 1, 2, 3)
-    assert result == 9
-
-    js_py_object.delete()
-    ```
-
-    Returns:
-        callable: The JavaScript callable
-        js_py_object: this object needs to be deleted after the callable is no longer needed
-    '''    
-    _js_py_object = js_py_object(py_function)
-    return _js_py_object["py_call"].bind(_js_py_object), _js_py_object
+async def _run_to_the_end(coroutine):
+    """the result of `coroutine`; if that is a coroutine again (an `async
+    def` function that returns `other()` without awaiting it), it runs too,
+    as JavaScript's async functions resolve returned promises (pyodide does
+    the same)"""
+    result = await coroutine
+    while asyncio.iscoroutine(result):
+        result = await result
+    return result
 
 
-@contextlib.contextmanager
-def callable_context(py_function):
-    ''' Create a JavaScript callable from a Python function and delete it when the context is exited.
-
-    See `create_callable` for more information.
-    
-    Args:
-        py_function (Callable): The Python function to create a JavaScript callable from.
-    
-    Example:
-
-    ```python
-    def py_function(x, y):
-        return x + y
-
-    with pyjs.callable_context(py_function) as js_function:
-        # js_function is a JavaScript callable and could be
-        # passed to and called from JavaScript,
-        # here we just call it from Python
-        print(js_function(1,2))
-    ```
-    '''
-
-    
-    cb, handle = create_callable(py_function)
-    yield cb
-    handle.delete()
+# a step of a JavaScript iterator
+_step_object = _js.Function("done", "value", "return {done: done, value: value};")
 
 
-# todo, deprecate
-class AsOnceCallableMixin(object):
-    def __init__(self):
-        self._once_callable = create_once_callable(self)
-
-    def as_once_callable(self):
-        return self._once_callable
-
-
-def promise(py_resolve_reject):
-    """ Create a new JavaScript promise with a python callback to resolve or reject the promise.
-    
-    Args:
-        py_resolve_reject (Callable): A Python function that takes two arguments, resolve and reject, which are both functions.
-            The resolve function should be called with the result of the promise and the reject function should be called with an error.
-    
-    Example:
-    ```python
-    import asyncio
-    import pyjs
-    def f(resolve, reject):
-        async def task():
-            try:
-                print("start task")
-                await asyncio.sleep(1)
-                print("end task")
-                # resolve when everything is done
-                resolve()
-            except:
-                # reject the promise in case of an error
-                reject()
-        asyncio.create_task(task())
-
-    js_promise = pyjs.promise(f)
-    print("await the js promise from python")
-    await js_promise
-    print("the wait has an end")
-    print(js_promise)
-    ```
-    """
-
-    return pyjs_core.js.Promise.new(create_once_callable(py_resolve_reject))
-
-
-def create_once_callable(py_function):
-    """Create a JavaScript callable from a Python function that can only be called once.
-    
-    Since this function can only be called once, it will be deleted after the first call.
-    Therefore no manual deletion is necessary.
-    See `create_callable` for more information.
-
-    Args:
-        py_function (Callable): The Python function to create a JavaScript callable from.
-
-    Returns:
-        callable: The JavaScript callable
-    
-    Example:
-    ```python
-
-    def py_function(x, y):
-        return x + y
-
-    js_function = pyjs.create_once_callable(py_function)
-    print(js_function(1,2)) # this will print 3
-
-    # the following will raise an error
+def _generator_step(generator, method, argument):
+    """The JavaScript generator methods of the proxy of a Python generator
+    (src/js/pyproxy.ts): `next(value)` is python's send, `throw(error)` its
+    throw, `return(value)` its close. The result is the step object
+    ``{done, value}`` JavaScript expects; the value of a finished generator
+    is its return value."""
     try:
-        print(js_function(1,2))
-    except pyjs.JsException as e:
-        print("error:", e.message)
-    ```
-    """
-    
-    js_py_function = JsValue(py_function)
-    once_callable = pyjs_core._module._create_once_callable(js_py_function)
-    return once_callable
-
-
-def _make_js_args(args):
-    js_array_args = js_array()
-    is_generated_proxy = js_array()
-    for arg in args:
-        js_arg, is_proxy = pyjs_core.internal.implicit_py_to_js(arg)
-        pyjs_core.internal.val_call(js_array_args, "push", js_arg)
-        pyjs_core.internal.val_call(is_generated_proxy, "push", JsValue(is_proxy))
-    return (js_array_args, is_generated_proxy)
-
-
-def apply(js_function, args):
-    '''Call a JavaScript function with the given arguments.
-
-    Args:
-        js_function (JsValue): The JavaScript function to call
-        args (List): The arguments to pass to the JavaScript function
-    
-    Returns:
-        Any: The result of the JavaScript function
-    
-    Example:
-    ```python
-
-    # create a JavaScript function on the fly
-    js_function = pyjs.js.Function("x", "y", """
-        return x + y;
-    """)
-    result = pyjs.apply(js_function, [1, 2])
-    assert result == 3
-    ```
-    '''
-    js_array_args, is_generated_proxy = _make_js_args(args)
-    ret, meta = pyjs_core.internal.apply_try_catch(js_function, js_array_args, is_generated_proxy)
-    return ret
-
-
-# deprecated
-def japply(js_function, args):
-    sargs = json.dumps(args)
-    ret, meta = pyjs_core.internal.japply_try_catch(js_function, sargs)
-    return ret
-
-# deprecated
-def gapply(js_function, args, jin=True, jout=True):
-    if jin:
-        args = json.dumps(args)
-        is_generated_proxy = [False] * len(args)
-    else:
-        args, is_generated_proxy = _make_js_args(args)
-    ret = pyjs_core.internal.gapply_try_catch(js_function, args, is_generated_proxy, jin, jout)
-    if jout:
-        if ret == "":
-            return None
+        if method == "next":
+            value = generator.send(argument)
+        elif method == "throw":
+            # (a JavaScript Error arrives as JSException; anything else
+            # thrown is wrapped in one)
+            if not isinstance(argument, BaseException):
+                argument = JSException(argument)
+            value = generator.throw(argument)
         else:
-            return json.loads(ret)
-    else:
-        return ret
+            generator.close()
+            return _step_object(True, _lasting(argument))
+    except StopIteration as stop:
+        return _step_object(True, _lasting(stop.value))
+    return _step_object(False, _lasting(value))
 
 
-# move to internal
-def exec_eval(script, globals=None, locals=None):
-    """Execute a script and return the value of the last expression"""
-    stmts = list(ast.iter_child_nodes(ast.parse(script)))
-    if not stmts:
-        return None
-    if isinstance(stmts[-1], ast.Expr):
-        # the last one is an expression and we will try to return the results
-        # so we first execute the previous statements
-        if len(stmts) > 1:
-            exec(
-                compile(
-                    ast.Module(body=stmts[:-1], type_ignores=[]),
-                    filename="<ast>",
-                    mode="exec",
-                ),
-                globals,
-                locals,
-            )
-        # then we eval the last one
-        return eval(
-            compile(
-                ast.Expression(body=stmts[-1].value), filename="<ast>", mode="eval"
-            ),
-            globals,
-            locals,
-        )
-    else:
-        # otherwise we just execute the entire code
-        return exec(script, globals, locals)
-
-async def async_exec_eval(stmts, globals=None, locals=None):
-    """Execute a script which may use top level `await`, return the value of
-    the last expression (like `exec_eval`).
-
-    The script runs with module level semantics (`PyCF_ALLOW_TOP_LEVEL_AWAIT`,
-    like the asyncio REPL / IPython): assignments go to `globals`, each
-    statement runs exactly once.
-    """
-    flags = ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
-
-    async def run(code):
-        result = eval(code, globals, locals)
-        if code.co_flags & inspect.CO_COROUTINE:
-            result = await result
-        return result
-
-    body = ast.parse(stmts).body
-    if not body:
-        return None
-    if isinstance(body[-1], ast.Expr):
-        if len(body) > 1:
-            module = ast.Module(body=body[:-1], type_ignores=[])
-            await run(compile(module, filename="<ast>", mode="exec", flags=flags))
-        expression = ast.Expression(body=body[-1].value)
-        return await run(compile(expression, filename="<ast>", mode="eval", flags=flags))
-    module = ast.Module(body=body, type_ignores=[])
-    await run(compile(module, filename="<ast>", mode="exec", flags=flags))
-    return None
+def _lasting(value):
+    """a value that is stored in a JavaScript object: a Python object needs a
+    lasting proxy (see create_proxy); converted values are returned as they
+    are"""
+    return pyjs_core.create_proxy(value, False)
 
 
+def _rejection_to_exception(err):
+    """The exception for a rejected JS promise: a JSException, like for
+    errors thrown by synchronous JS calls, also when the promise was rejected
+    with something that is no Error."""
+    if isinstance(err, (JSProxy, JSException)):
+        if _module._is_python_error(err):
+            # A Python exception that travelled through JavaScript (python
+            # awaits a promise that python code rejected, e.g. the promise
+            # of runPythonAsync): the original exception, not a JSException
+            # wrapping its JavaScript stand-in. Throwing the stand-in from
+            # JavaScript raises the exception inside it.
+            try:
+                _module._throw(err)
+            except BaseException as original:
+                return original
+        if isinstance(err, JSException):
+            # (a rejection with an Error object: it arrived as JSException)
+            return err
+        return error_to_py(err)
+    # e.g. reject("text"), reject(undefined): arrive as python values
+    return JSException(err, message=f"promise rejected with {err!r}")
+
+
+def _to_future(js_promise):
+    """An asyncio future that gets the outcome of a JavaScript promise."""
+    future = asyncio.Future()
+
+    # (`future.done()`: the await may have been cancelled meanwhile, e.g. by
+    # the timeout of `asyncio.wait_for`. The promise still settles later;
+    # nobody waits for the outcome any more, and setting it on a cancelled
+    # future would raise InvalidStateError into JavaScript.)
+    def on_fulfilled(value):
+        if not future.done():
+            future.set_result(value)
+
+    def on_rejected(err):
+        if not future.done():
+            future.set_exception(_rejection_to_exception(err))
+
+    # then(ok, err), not then(ok).catch(err): an exception in `on_fulfilled`
+    # must not end up in `on_rejected`.
+    if _is_promise(js_promise):
+        # The two Python functions are passed as plain arguments: their
+        # proxies live until the promise returned by `then` settles, which
+        # is after one of them ran. Nothing to destroy by hand.
+        js_promise.then(on_fulfilled, on_rejected)
+        return future
+
+    # Some other object with a `then` method. What its `then` returns says
+    # nothing about when the callbacks are called (often it returns nothing
+    # and calls them later), so they must not be tied to that call: they get
+    # proxies that last until one of them was called.
+    proxies = [_lasting(on_fulfilled), _lasting(on_rejected)]
+
+    def destroy_proxies(_future):
+        # (in a later step of the event loop: one of the proxies is being
+        # called right now)
+        asyncio.get_event_loop().call_soon(lambda: [proxy.destroy() for proxy in proxies])
+
+    future.add_done_callback(destroy_proxies)
+    js_promise.then(*proxies)
+    return future
+
+
+# a real promise, not just any object with a `then` method
+_is_promise = _js.Function("p", "return Object.prototype.toString.call(p) === '[object Promise]';")
+
+
+def _await_js(js_promise):
+    """`await js_promise`: what the core calls for the `__await__` of a
+    JSProxy of a promise (or any object with a `then` method)"""
+    # (the proxy type is chosen when the object first reaches python: its
+    # `then` may have been removed since)
+    if not callable(getattr(js_promise, "then", None)):
+        raise TypeError(f"object {js_promise!r} can't be used in 'await' expression")
+    return _to_future(js_promise).__await__()
+
+
+# ---------------------------------------------------------------------------
+# emscripten main loop / animation frames
+# ---------------------------------------------------------------------------
 class _CallbackEntryPoint:
+    """calls the user's main loop callback with the time since the last call"""
+
     def __init__(self, py_callback):
         self._py_callback = py_callback
         self._last_time = time.time()
+
     def __call__(self):
-        t =  time.time()
+        t = time.time()
         dt = t - self._last_time
         self._last_time = t
         self._py_callback(dt)
+
 
 _callback_entry_point = None
 
 
 def set_main_loop_callback(py_callback, fps=0):
-
-    global  _callback_entry_point
+    """Call ``py_callback(dt)`` repeatedly from the emscripten main loop
+    (`fps` 0: once per browser animation frame)."""
+    global _callback_entry_point
     if _callback_entry_point is not None:
         # show a warning if the callback is already set
-        warnings.warn(""" A main loop callback is already set. 
+        warnings.warn(
+            """ A main loop callback is already set.
             This will be replaced by the new callback,
             use cancel_main_loop before setting a new callback to avoid this warning
             """,
-            UserWarning)
-        
+            UserWarning,
+        )
+
         cancel_main_loop()
-    
+
     _callback_entry_point = _CallbackEntryPoint(py_callback)
 
-    pyjs_core._set_main_loop_callback(
-        _callback_entry_point,
-        int(fps)
-    )
-   
+    pyjs_core._set_main_loop_callback(_callback_entry_point, int(fps))
+
 
 def cancel_main_loop():
     """Cancel the main loop callback."""
@@ -366,6 +237,7 @@ def cancel_main_loop():
         _callback_entry_point = None
     else:
         warnings.warn("No main loop callback is set to cancel.", UserWarning)
+
 
 class AnimationFrameLoop:
     """Handle of a loop started by `request_animation_frame_loop`."""
@@ -427,20 +299,23 @@ def set_canvas(canvas) -> None:
     Args:
         canvas: a JS `HTMLCanvasElement` (main thread) or `OffscreenCanvas`.
     """
-    pyjs_core._module._set_canvas(canvas)
+    _module._set_canvas(canvas)
 
 
+# ---------------------------------------------------------------------------
+# JSPI: blocking on a promise
+# ---------------------------------------------------------------------------
 def jspi_enabled() -> bool:
     """Whether JSPI (JavaScript Promise Integration) is used: the browser supports
     it (``WebAssembly.Suspending`` / ``WebAssembly.promising``) and it was not
     switched off. Without JSPI, `run_sync` is not available."""
-    return bool(pyjs_core.internal.module_property("_jspi_enabled")())
+    return bool(_module._jspi_enabled())
 
 
 def _disable_jspi():
     """Switch JSPI off at runtime: pyjs then behaves like in a browser without
     JSPI (used by the tests to run the same build with and without JSPI)."""
-    pyjs_core.internal.module_property("_jspi_disable")()
+    _module._jspi_disable()
 
 
 def can_run_sync() -> bool:
@@ -448,48 +323,35 @@ def can_run_sync() -> bool:
 
     True if JSPI is used (see `jspi_enabled`) and the current Python code was
     entered from JavaScript in a way that allows suspending: e.g. a step of an
-    asyncio task (the event loop enters via ``py_apply_promising``), but not a
-    plain synchronous callback (event handler, `create_callable`, `pyjs.exec`, ...).
-    Only one Python call stack can be suspended at a time, so this is False
-    while another `run_sync` is waiting.
+    asyncio task (the event loop enters with a promising call), but not a
+    plain synchronous callback (an event handler, `runPython`, ...).
+    Any number of Python call stacks can be suspended in `run_sync` at the
+    same time; they resume in any order.
     """
-    if not jspi_enabled():
-        return False
-    return bool(pyjs_core.internal.module_property("_jspi_can_run_sync")())
+    return bool(_module._jspi_can_run_sync())
 
 
 def _run_sync_python_awaitable(awaitable):
-    # result / exception stay in python, the js promise only signals "done"
-    import asyncio
-
+    """`run_sync` for a Python awaitable. Only a JavaScript promise can
+    suspend the stack, so one is made that settles when the awaitable is
+    done. Result and exception stay in Python: the promise only says "done"."""
     future = asyncio.ensure_future(awaitable)
 
     def executor(resolve, reject):
         future.add_done_callback(lambda f: resolve(None))
 
-    _run_sync_js(promise(executor))
+    # (the executor is called once, by the Promise constructor)
+    _run_sync_js(_js.Promise.new(create_once_callable(executor)))
     return future.result()
 
 
 def _run_sync_js(js_promise):
-    # while this stack is suspended the event loop runs other tasks: asyncio
-    # only allows one "current task" (per thread), so leave / re-enter it
-    import asyncio
-    from asyncio import tasks as _tasks
-
-    loop = asyncio.events._get_running_loop()
-    task = asyncio.current_task(loop) if loop is not None else None
-    if task is not None:
-        _tasks._leave_task(loop, task)
-    try:
-        # suspend inside a copy of the current context: python code entered
-        # while this stack is suspended (e.g. a kernel handling the next
-        # message) would otherwise write its ContextVars into this task's context
-        ret, _ = contextvars.copy_context().run(pyjs_core.internal.run_sync, js_promise)
-    finally:
-        if task is not None:
-            _tasks._enter_task(loop, task)
-    return ret
+    # While this stack is suspended, other Python code runs (other asyncio
+    # tasks, event handlers, other suspended stacks that resume). The C side
+    # takes this stack's part of the thread state away meanwhile (frames,
+    # exception state, contextvars context, asyncio's current task) and puts
+    # it back when it resumes: see src/stack_switching.c.
+    return pyjs_core.run_sync(js_promise)
 
 
 def run_sync(awaitable):
@@ -498,16 +360,17 @@ def run_sync(awaitable):
     `awaitable` is a JavaScript promise (or thenable) or a Python awaitable.
     The WebAssembly stack is suspended (JavaScript Promise Integration) until it
     settles: the browser event loop keeps running in the meantime.
-    A rejected promise raises the corresponding `JsException`.
+    A rejected promise raises a `JSException`.
     Requires `can_run_sync()`, raises a ``RuntimeError`` otherwise.
 
     Example:
     ```python
+    import js
     import pyjs
 
     def page_status():
         # a plain (sync) function waiting for a JavaScript promise
-        response = pyjs.run_sync(pyjs.js.fetch(pyjs.js.location.href))
+        response = pyjs.run_sync(js.fetch(js.location.href))
         return response.status
 
     page_status()  # 200
@@ -521,9 +384,8 @@ def run_sync(awaitable):
     if not can_run_sync():
         raise RuntimeError(
             "run_sync cannot be used here: python was not entered via a "
-            "promising call (e.g. it runs in a synchronous JavaScript callback) "
-            "or another run_sync is already waiting"
+            "promising call (e.g. it runs in a synchronous JavaScript callback)"
         )
-    if not isinstance(awaitable, JsValue):
+    if not isinstance(awaitable, JSProxy):
         return _run_sync_python_awaitable(awaitable)
     return _run_sync_js(awaitable)

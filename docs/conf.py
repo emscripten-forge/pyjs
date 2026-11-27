@@ -18,6 +18,9 @@ extensions = [
     "myst_parser",
     "autoapi.extension",
     "sphinx.ext.napoleon",
+    # diagrams written as text (```{mermaid} blocks, docs/design.md), drawn
+    # in the browser by mermaid.js
+    "sphinxcontrib.mermaid",
 ]
 
 source_suffix = {
@@ -29,8 +32,14 @@ exclude_patterns = ["_build", "_extra", "Thumbs.db", ".DS_Store"]
 myst_enable_extensions = ["colon_fence"]
 # anchors for links like `development.md#tests`
 myst_heading_anchors = 4
-# pygments' cmake lexer stumbles over `\$` in the embedding example
-suppress_warnings = ["misc.highlighting_failure"]
+suppress_warnings = [
+    # pygments' cmake lexer stumbles over `\$` in the embedding example
+    "misc.highlighting_failure",
+    # `JSProxy` in `pyjs.ffi.__all__` is imported from the C++ module
+    # pyjs_core: autoapi cannot follow that re-export (it is documented as
+    # pyjs_core.JSProxy, from stubs/)
+    "autoapi.python_import_resolution",
+]
 
 # -- html -----------------------------------------------------------------------
 html_theme = "pydata_sphinx_theme"
@@ -44,6 +53,37 @@ html_theme_options = {
     "pygments_dark_style": "monokai",
 }
 html_context = {"default_mode": "dark"}
+
+# mermaid diagrams at their natural size (sphinxcontrib-mermaid's default
+# squeezes every svg into a 100% x 500px box: wide sequence diagrams became
+# unreadably small); still shrunk to the column width on narrow screens
+mermaid_width = "auto"
+mermaid_height = "auto"
+# put into every diagram as front matter (survives the re-render on a theme
+# switch, unlike `mermaid_init_config`)
+mermaid_config = {
+    "fontSize": 15,
+    "sequence": {
+        "useMaxWidth": False,
+        "actorMargin": 16,
+        # column width (px): a note line has room for ~17 characters at
+        # font size 15 (110 cut lines like "→ Python objects")
+        "width": 150,
+        "noteMargin": 6,
+        "boxMargin": 6,
+        "messageMargin": 30,
+        "messageFontSize": 15,
+        "noteFontSize": 15,
+        "actorFontSize": 15,
+    },
+    "flowchart": {"useMaxWidth": False},
+}
+# The diagrams sit on the dark monokai `pre` background in both page modes.
+# Dark page: pydata-sphinx-theme inverts mermaid svgs (css filter), so the
+# light mermaid theme turns dark (mermaid's dark theme inverted became grey
+# on grey). Light page: no filter, so mermaid's dark theme.
+mermaid_dark_theme = "default"
+mermaid_light_theme = "dark"
 # _templates/navbar-nav.html: + the playground link in the header
 templates_path = ["_templates"]
 html_static_path = ["_static"]
@@ -124,5 +164,6 @@ def _fill_in_npm_package(app, docname, source):
 # `pixi run docs`): the npm package built from this repository
 # (<html root>/pyjs/), which the playground loads
 html_extra_path = ["_extra"]
-if os.environ.get("PYJS_DOCS_EXTRA_DIR"):
+# (`pixi run docs-serve` sets it too, but builds no package: only if there)
+if os.path.isdir(os.environ.get("PYJS_DOCS_EXTRA_DIR", "")):
     html_extra_path.append(os.environ["PYJS_DOCS_EXTRA_DIR"])

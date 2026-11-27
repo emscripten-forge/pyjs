@@ -122,7 +122,7 @@ starts Python with `startPython()`.
           await promise;
         }
 
-        pyjs.eval("print('hello world')");
+        pyjs.runPython("print('hello world')");
       }
       runPyjs();
     </script>
@@ -136,8 +136,9 @@ starts Python with `startPython()`.
 `startPython()` is synchronous and starts the interpreter once (later calls
 do nothing): it needs the
 standard library at `/lib/pythonX.Y` (an error otherwise) and sets up
-`exec`, `eval`, `exec_eval`, `async_exec_eval`, `to_js`, ...;
-`startPython({env: {NAME: "value"}})` sets extra environment variables.
+`runPython`, `runPythonAsync`, `pyimport`, `globals`, `toPy` (see
+{doc}`JavaScript_API`); `startPython({env: {NAME: "value"}})` sets extra
+environment variables.
 
 ## Embedding pyjs in a C++ program
 
@@ -145,29 +146,52 @@ Not only can `pyjs` be used as a standalone Python interpreter, but it can also 
 Pyjs is compiled as a static library that can be linked to a C++ program (when compiled with emscripten).
 
 
-To include `pyjs` in a C++ program, the following code is needed:
+The static library `libpyjs` contains the core module `pyjs_core` and the
+JavaScript part of pyjs (embedded in the library: no `--pre-js` / `--post-js`
+files). A C / C++ program starts Python with pyjs in it with one function of
+`pyjs/pyjs.h`, and runs Python code with the C API or e.g. pybind11:
 
-```C++
+```cpp
+#include <pybind11/eval.h>
+#include <pyjs/pyjs.h>
 
-#include <emscripten/bind.h>
-#include <pybind11/embed.h>
-
-#include <pyjs/export_pyjs_module.hpp>
-#include <pyjs/export_js_module.hpp>
-
-// export the python core module of pyjs
-PYBIND11_EMBEDDED_MODULE(pyjs_core, m) {
-    pyjs::export_pyjs_module(m);
+int main()
+{
+    pyjs_initialize("/");                // python (prefix "/") with pyjs in it
+    pybind11::exec("import pyjs\n"
+                   "pyjs.js.console.log('hello from python')");
 }
-
-// export the javascript  module of pyjs
-EMSCRIPTEN_BINDINGS(my_module) {
-    pyjs::export_js_module();
-}
-
 ```
 
-In the CMakelists.txt file, the following lines are needed to link the `pyjs` library:
+`pyjs_initialize(python_home)` is what `Module.startPython()` does from
+JavaScript. `python_home` is Python's prefix in the file system, any
+directory (the standard library at `<python_home>/lib/pythonX.Y`), it sets
+`PYTHONHOME`; `NULL`: `PYTHONHOME` if set, else `/`. Then defaults for
+`PYTHONPATH` / `LANG` / `LD_LIBRARY_PATH` (`<python_home>/lib`, where the
+dynamic linker finds the shared libraries of packages, e.g. numpy's
+`libopenblas.so`) unless the program set them, Python started, `pyjs` imported, the JavaScript API created on the
+Module (`runPython`, `runPythonAsync`, `pyimport`, `globals`, `toPy`) and the
+runtime kept alive (JavaScript events call into Python later). pybind11 works
+in an interpreter it did not start; it must not finalize it (no
+`pybind11::scoped_interpreter`).
+
+A program that starts Python itself (its own `PyConfig`,
+`pybind11::initialize_interpreter(...)`, ...) calls two functions around
+that instead:
+
+```cpp
+pyjs_init();                          // before: registers pyjs_core as builtin module
+pybind11::initialize_interpreter();
+pyjs_bind();                          // after: imports pyjs, the JavaScript API
+```
+
+A complete example (its own pixi project, pybind11, numpy, Python under the
+prefix `/python`, the file system filled with emscripten's file packager, run
+in node):
+[`examples/embed`](https://github.com/emscripten-forge/pyjs/tree/main/examples/embed).
+The program must be a main module (`-s MAIN_MODULE=1`).
+
+In the CMakeLists.txt file:
 
 ```CMake
 find_package(pyjs ${pyjs_REQUIRED_VERSION} REQUIRED)
@@ -175,28 +199,31 @@ find_package(pyjs ${pyjs_REQUIRED_VERSION} REQUIRED)
 target_link_libraries(my_target PRIVATE pyjs)
 
 # the essential options of pyjs' own runtime (see its CMakeLists.txt)
-target_link_options(my_target
-    PUBLIC "SHELL: --pre-js ${pyjs_PRE_JS_PATH}"
-    PUBLIC "SHELL: --post-js ${pyjs_POST_JS_PATH}"
-    PUBLIC "SHELL: -s MAIN_MODULE=1"
-    PUBLIC "SHELL: -s MODULARIZE=1"
-    PUBLIC "SHELL: -s EXPORT_NAME=createModule"
-    PUBLIC "SHELL: -s FORCE_FILESYSTEM"
-    PUBLIC "SHELL: -s ALLOW_MEMORY_GROWTH=1"
-    PUBLIC "SHELL: -fwasm-exceptions"
-    PUBLIC "SHELL: -s SUPPORT_LONGJMP"
-    PUBLIC "SHELL: -lembind"
+target_link_options(my_target PRIVATE
+    "SHELL: -s MAIN_MODULE=1"
+    "SHELL: -s MODULARIZE=1"
+    "SHELL: -s EXPORT_NAME=createModule"
+    "SHELL: -s FORCE_FILESYSTEM"
+    "SHELL: -s ALLOW_MEMORY_GROWTH=1"
+    "SHELL: -s STACK_SIZE=32mb"
+    "SHELL: -s SUPPORT_LONGJMP"
 )
 ```
+
+(`-fwasm-exceptions`, and `-m64` for wasm64, come with the `pyjs` target.)
 Such a program fills the file system itself (the archive extractor is part of
 pyjs' own runtime only, not of the static library), e.g. with
-[mambajs](https://github.com/emscripten-forge/mambajs) or `FS.writeFile`, and
-then calls `Module.startPython()`. Shared libraries are not preloaded by
-pyjs: in the main thread, load them after `startPython()` and before importing
-them (see above).
+[mambajs](https://github.com/emscripten-forge/mambajs), `FS.writeFile` or
+emscripten's file packager, before Python starts. Shared libraries are not
+preloaded by pyjs: in the main thread, load them after Python started and
+before importing them (see above).
 
 ```{note}
+pyjs 6 replaced the pybind11 / embind based core: no
+`PYBIND11_EMBEDDED_MODULE(pyjs_core, ...)` / `EMSCRIPTEN_BINDINGS` and no
+`pyjs_PRE_JS_PATH` / `pyjs_POST_JS_PATH` in your program any more.
 pyjs 5 removed the classic initialization API
 (`bootstrap_from_empack_packed_environment`, `init_phase_1` / `init_phase_2`,
-`_untar`, `_install_conda_file`): fill the file system, then `startPython()`.
+`_untar`, `_install_conda_file`): fill the file system, then `startPython()`
+(or, from C / C++, `pyjs_initialize()`).
 ```

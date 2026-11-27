@@ -1,22 +1,106 @@
 /**
- * Types of the pyjs runtime (the emscripten `Module` with the functions added
- * by `include/pyjs/pre_js/*.js` / `post_js/*.js`) and of its initialization.
+ * Types of the pyjs runtime (the emscripten `Module` with the functions pyjs
+ * adds to it) and of its initialization.
  *
  * Only the public, stable part is typed; everything else on the Module is
  * still there (`[key: string]: any`).
  */
 
-/** A python object living in the wasm heap (embind class `pyobject`). */
-export interface PyObject {
-  /** call the python object, positional arguments only */
-  py_call(...args: unknown[]): any;
-  /** call the python object with positional and keyword arguments */
-  py_apply(args?: unknown[], kwargs?: Record<string, unknown>): any;
-  /** `obj[key]` / `obj[k1, k2]` */
+/**
+ * A Python object, seen from JavaScript.
+ *
+ * JavaScript gets one of these for every Python object that is not converted
+ * to a JavaScript value (numbers, strings, booleans and None are converted).
+ * The Python attributes of the object are its properties (`proxy.name`), and
+ * a callable Python object can be called like a function (`proxy(1, 2)`).
+ *
+ * A proxy keeps its Python object alive. Call `destroy()` when done with it.
+ * Otherwise the Python object is only released when JavaScript's garbage
+ * collector frees the proxy object itself (pyjs registers every proxy with
+ * a `FinalizationRegistry`, which then releases the Python object). That
+ * may be much later, or never if the page does not run short of memory:
+ * JavaScript's garbage collector knows nothing about the size of the Python
+ * object behind a small proxy.
+ */
+export interface PyProxy {
+  /** call the python object: `proxy(1, 2)` (only if it is callable) */
+  (...args: unknown[]): any;
+  /**
+   * call with keyword arguments: they are one object, as LAST argument;
+   * `f.callKwargs(1, { sep: "-" })` is python's `f(1, sep="-")`
+   */
+  callKwargs(...args: unknown[]): any;
+  /**
+   * Call the python object so that its code may wait for a promise with
+   * `pyjs.run_sync` (needs a browser with JSPI; without: a plain call).
+   * Returns a promise of the result. Called while other python code runs,
+   * the call starts after that code is done.
+   */
+  callPromising(...args: unknown[]): Promise<any>;
+  /** `new proxy(...)` of a python class creates an instance, like calling it */
+  new (...args: unknown[]): any;
+  /** `obj[key]`; several keys: `obj[k1, k2]` */
   get(...keys: unknown[]): any;
-  /** free the python reference held by this JS object */
-  delete(): void;
+  /** `obj[key] = value` */
+  set(key: unknown, value: unknown): void;
+  /** `key in obj` */
+  has(key: unknown): boolean;
+  /** `del obj[key]` */
+  delete(key: unknown): void;
+  /**
+   * `len(obj)` for python objects that have a length. For others `length`
+   * is an ordinary python attribute (usually missing: `undefined`).
+   */
+  readonly length: any;
+  /**
+   * the name of the python type, e.g. `"list"`. (Always this: a python
+   * attribute that is itself called `type` is hidden by it.)
+   */
+  readonly type: string;
+  /** `str(obj)` */
+  toString(): string;
+  /**
+   * A deep copy as JS value: list -> Array, dict -> Object, set -> Set, ...
+   * (python's `pyjs.to_js`). `options` are the keyword arguments of that
+   * python function, with their python names: `{ depth: 1 }`,
+   * `{ dict_converter: ..., default_converter: ... }`.
+   */
+  toJs(options?: Record<string, unknown>): any;
+  /**
+   * Only python awaitables (a coroutine, a task, a future): the proxy can be
+   * awaited, `await proxy` gives the result or throws the PythonError.
+   */
+  then?(onFulfilled?: (value: any) => any, onRejected?: (error: any) => any): Promise<any>;
+  catch?(onRejected?: (error: any) => any): Promise<any>;
+  finally?(onFinally?: () => void): Promise<any>;
+  /**
+   * Only python iterators and generators: the next item as `{ done, value }`
+   * (a generator: `next(value)` sends a value; `throw` / `return` as for
+   * JavaScript generators).
+   */
+  next?(value?: unknown): IteratorResult<any>;
+  throw?(error?: unknown): IteratorResult<any>;
+  return?(value?: unknown): IteratorResult<any>;
+  /** another proxy of the same python object, with its own lifetime */
+  copy(): PyProxy;
+  /** release the python object: the proxy is unusable afterwards */
+  destroy(): void;
+  /** iterate over the python object (`for (const item of proxy)`) */
+  [Symbol.iterator](): Iterator<any>;
   [key: string]: any;
+}
+
+/**
+ * The error thrown in JavaScript when python code raised an exception.
+ * (`pyjs.PythonError` is its class, for `error instanceof pyjs.PythonError`.
+ * It is made by pyjs: an error constructed by other code stands for no
+ * python exception.)
+ */
+export interface PythonError extends Error {
+  /** the name of the python exception type, e.g. `"KeyError"` */
+  type: string;
+  /** the formatted python traceback */
+  message: string;
 }
 
 export interface ILogger {
@@ -92,24 +176,45 @@ export interface IInstallOptions {
   verifySha256?: boolean;
 }
 
+/** The options of `runPython` / `runPythonAsync`. */
+export interface IRunOptions {
+  /** the global namespace to run in (a proxy of a python dict); default: `pyjs.globals` */
+  globals?: PyProxy;
+  /** the local namespace; default: the same as `globals` */
+  locals?: PyProxy;
+  /** the file name shown in tracebacks; default `"<exec>"` */
+  filename?: string;
+}
+
 /** The initialized pyjs runtime. */
 export interface PyjsModule {
-  /** execute python code (statements), throws on python errors */
-  exec(code: string, globals?: PyObject, locals?: PyObject): void;
-  /** evaluate a python expression and return its value (converted to JS) */
-  eval(code: string, globals?: PyObject, locals?: PyObject): any;
-  /** execute a script and return the value of its last expression */
-  exec_eval(script: string, globals?: PyObject, locals?: PyObject): any;
-  /** like `exec_eval`, the script may use top level `await` */
-  async_exec_eval(script: string, globals?: PyObject, locals?: PyObject): Promise<any>;
-  /** execute a python file from the emscripten file system */
-  eval_file(path: string, globals?: PyObject, locals?: PyObject): void;
-  /** convert a python object to a JS value (`pyjs.to_js`) */
-  to_js(obj: PyObject): any;
-  /** the `__main__` scope used as default globals */
-  default_scope: PyObject;
-  /** the python module `pyjs` */
-  py_pyjs: PyObject;
+  /**
+   * Run python code and return the value of its last line if that is an
+   * expression (like a notebook cell): `runPython("x = 20\nx + 1")` is 21.
+   * Throws a `PythonError` if the code raises.
+   * `options.globals` / `options.locals`: the namespaces to run in (proxies
+   * of python dicts); default: `globals`. `options.filename`: the file name
+   * shown in tracebacks (default `"<exec>"`).
+   */
+  runPython(code: string, options?: IRunOptions): any;
+  /**
+   * A JS value as Python object (python's `pyjs.to_py`): Array -> list, Map /
+   * plain Object -> dict, Set -> set, ...; the result as PyProxy.
+   */
+  toPy(value: any, options?: { depth?: number; defaultConverter?: any }): any;
+  /** like `runPython`, for code that uses `await` at the top level */
+  runPythonAsync(code: string, options?: IRunOptions): Promise<any>;
+  /** `import name`: the python module, e.g. `pyimport("math").sqrt(2)` */
+  pyimport(name: string): PyProxy;
+  /** the namespace code runs in by default: the globals of the module `__main__` */
+  globals: PyProxy;
+  /**
+   * the class of the errors thrown for python exceptions, for
+   * `error instanceof pyjs.PythonError` (pyjs creates them, see PythonError)
+   */
+  PythonError: Function & { prototype: PythonError };
+  /** set an environment variable of python (before `startPython`: python reads them at its start) */
+  setenv(name: string, value: string): void;
   /** the emscripten file system */
   FS: any;
 
@@ -205,6 +310,15 @@ export interface IInitializeOptions extends IAssetsOptions {
    * packages: they can override files), see `PyjsModule.unpackArchive`
    */
   archives?: IArchive[];
+  /**
+   * optional parts of python's stdlib to install, from the package itself (no
+   * download from a channel): their extension modules are not installed by
+   * default, e.g. `["sqlite3", "ssl"]` or "all". Available: ssl, sqlite3,
+   * lzma, cjkcodecs (CJK codecs), test-modules (`_testcapi`, ...). Later:
+   * `installPackages(["sqlite3"])`. (Only with a python whose extension
+   * modules are separate packages; otherwise they are always there.)
+   */
+  stdlib?: string[] | "all";
   /** files written into the file system before python starts (after the archives) */
   files?: IFile[];
   /**

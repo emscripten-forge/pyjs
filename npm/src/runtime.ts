@@ -198,6 +198,10 @@ interface IState {
   installed: Map<string, IInstalled>;
   /** files of the shipped environment's packages (name -> files) */
   envFiles: Map<string, string[]>;
+  /** the URL of the shipped tarballs (`assets/<arch>/`) */
+  assetsUrl: string;
+  /** optional shipped packages not installed yet (name -> env meta entry), see `optionalPackages` */
+  optional: Map<string, any>;
   /** specs of all solves so far */
   specs: string[];
   /** one install at a time (they change the same file system) */
@@ -385,6 +389,52 @@ function downloadFiles(state: IState, files: IFile[]) {
   });
 }
 
+/**
+ * The optional packages of the shipped environment: the extension modules of
+ * python's stdlib that are side modules (python-ssl, python-sqlite3, ...,
+ * marked `optional` by build_utils/npm_env_meta.py). Their tarballs are
+ * shipped, but only installed when asked for: option `stdlib` or
+ * `installPackages(["sqlite3"])`. The solver sees them as installed, so it
+ * never downloads them from a channel.
+ *
+ * `names`: "all", or names with or without the "python-" prefix ("sqlite3",
+ * "python-sqlite3") -> the env meta entries (unknown names are an error)
+ */
+function optionalPackages(available: Map<string, any>, names: string[] | "all" | undefined): any[] {
+  // (a python with these modules built in has no optional packages: nothing to do)
+  if (names === undefined || available.size === 0) {
+    return [];
+  }
+  if (names === "all") {
+    return [...available.values()];
+  }
+  return names.map((name) => {
+    const entry = available.get(name) ?? available.get(`python-${name}`);
+    if (!entry) {
+      const known = [...available.keys()].map((n) => n.replace(/^python-/, ""));
+      throw new Error(`pyjs: no optional stdlib package "${name}" (available: ${known.join(", ") || "none"})`);
+    }
+    return entry;
+  });
+}
+
+/** the package name of a spec ("sqlite3", "python-ssl >=3", "numpy=2" -> its leading name) */
+function specName(spec: string): string {
+  return spec.trim().match(/^[A-Za-z0-9_.-]+/)?.[0] ?? spec;
+}
+
+/** extract a downloaded tarball of the shipped environment (no longer optional) -> its shared libraries */
+function installEnvTarball(state: IState, item: any, url: string, bytes: Uint8Array, bytecode: Uint8Array | undefined): string[] {
+  const result = extractArchive(state.Module, bytes, "/");
+  // (env packages replaced by installed ones: their unit is replaced by name)
+  state.bytecode?.add(item.name ?? item.filename, url, result.files, bytecode);
+  if (item.name) {
+    state.envFiles.set(item.name, result.files);
+    state.optional.delete(item.name);
+  }
+  return result.sharedLibs;
+}
+
 /** load shared libraries in the main thread (worker: dlopen at import does it) */
 async function linkSharedLibs(state: IState, sharedLibs: string[], onProgress?: (p: IProgress) => void): Promise<void> {
   if (!state.preload || sharedLibs.length === 0) {
@@ -438,13 +488,17 @@ export async function initialize(arch: Arch, options: IInitializeOptions = {}): 
     onProgress,
     installed: new Map(),
     envFiles: new Map(),
+    assetsUrl,
+    optional: new Map(envMeta.packages.filter((p: any) => p.optional).map((p: any) => [p.name, p])),
     specs: [],
     queue: Promise.resolve(),
   };
 
   // the shipped environment: pre-relocated tarballs next to the runtime (not
-  // in the package cache: their names are not versioned)
-  const envItems = [...envMeta.packages, ...(envMeta.mounts ?? [])];
+  // in the package cache: their names are not versioned); of the optional
+  // packages only the ones in `stdlib`
+  const requested = new Set(optionalPackages(state.optional, options.stdlib));
+  const envItems = [...envMeta.packages.filter((p: any) => !p.optional || requested.has(p)), ...(envMeta.mounts ?? [])];
   const envUrls: string[] = envItems.map((p: any) => new URL(p.filename, assetsUrl).href);
   const envDownloads = envItems.map((p: any, i: number) =>
     deferred(fetchBytes(envUrls[i], { item: p.name ?? p.filename, onProgress }))
@@ -479,14 +533,8 @@ export async function initialize(arch: Arch, options: IInitializeOptions = {}): 
     const bytecode = await envBytecode[i];
     add("waitDownloads", t);
     t = performance.now();
-    const result = extractArchive(Module, bytes, "/");
-    // (env packages replaced by installed ones: their unit is replaced by name)
-    state.bytecode?.add(envItems[i].name ?? envItems[i].filename, envUrls[i], result.files, bytecode);
+    sharedLibs.push(...installEnvTarball(state, envItems[i], envUrls[i], bytes, bytecode));
     add("extractEnv", t);
-    if (envItems[i].name) {
-      state.envFiles.set(envItems[i].name, result.files);
-    }
-    sharedLibs.push(...result.sharedLibs);
   }
   t = performance.now();
   const packageDownloads = [...pinned, ...(await solvedDownloads)];
@@ -548,18 +596,35 @@ function enqueue<T>(state: IState, task: () => Promise<T>): Promise<T> {
 /** Module.installPackages / unpackArchive / addFiles (after python started) */
 function attachInstallers(state: IState): void {
   const Module = state.Module;
-  const invalidateCaches = () => Module.exec("import importlib\nimportlib.invalidate_caches()");
+  const invalidateCaches = () => Module.runPython("import importlib\nimportlib.invalidate_caches()");
 
   Module.installPackages = (packages: (string | IPinnedPackage)[], options: IInstallOptions = {}) =>
     enqueue(state, async () => {
       const logger = options.logger ?? (options.verbose ? console : state.logger);
       const onProgress = options.onProgress ?? state.onProgress;
-      const specs = packages.filter((p): p is string => typeof p === "string" && !/^[a-z]+:\/\//i.test(p) && !/\.(conda|tar\.bz2)$/.test(p));
-      const pins = packages.filter((p) => !specs.includes(p as string));
+      const allSpecs = packages.filter((p): p is string => typeof p === "string" && !/^[a-z]+:\/\//i.test(p) && !/\.(conda|tar\.bz2)$/.test(p));
+      const pins = packages.filter((p) => !allSpecs.includes(p as string));
+      // optional stdlib packages ("sqlite3", "python-ssl"): from the shipped
+      // tarballs, not solved (the solver sees them as installed); already
+      // installed ones are skipped
+      const optionalNames = new Set(state.envMeta.packages.filter((p: any) => p.optional).map((p: any) => p.name));
+      const shippedName = (spec: string) =>
+        [specName(spec), `python-${specName(spec)}`].find((n) => optionalNames.has(n));
+      const shipped = allSpecs
+        .map(shippedName)
+        .filter((n): n is string => n !== undefined && state.optional.has(n))
+        .map((n) => state.optional.get(n));
+      const specs = allSpecs.filter((s) => shippedName(s) === undefined);
       // phase times of this install -> Module.installTimings (as initTimings)
       const timings: Record<string, number> = {};
       state.timings = timings;
       const t0 = performance.now();
+      const shippedLibs: string[] = [];
+      for (const item of shipped) {
+        const url = new URL(item.filename, state.assetsUrl).href;
+        const bytes = await fetchBytes(url, { item: item.name, onProgress });
+        shippedLibs.push(...installEnvTarball(state, item, url, bytes, await state.bytecode?.read(url)));
+      }
       const refs = [
         ...pinnedRefs(pins),
         ...(specs.length ? await solve(state, specs, options.channels ?? state.channels, logger, onProgress) : []),
@@ -568,14 +633,14 @@ function attachInstallers(state: IState): void {
       const downloads = downloadPackages(state, refs, onProgress, options.verifySha256 ?? state.verify);
       const installed = await installDownloaded(state, downloads, onProgress);
       let t = performance.now();
-      await linkSharedLibs(state, installed.sharedLibs, onProgress);
+      await linkSharedLibs(state, [...shippedLibs, ...installed.sharedLibs], onProgress);
       addTiming(state, "link", t);
       t = performance.now();
       invalidateCaches();
       addTiming(state, "invalidateCaches", t);
       addTiming(state, "total", t0);
       Module.installTimings = finishTimings(timings);
-      return installed.names;
+      return [...shipped.map((item) => item.name), ...installed.names];
     });
 
   Module.unpackArchive = (archive: IArchive) =>

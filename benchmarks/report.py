@@ -28,9 +28,11 @@ def table(result):
             rows.append(f"| `{r['name']}` | **error:** {r['error']} | | | |")
             continue
         spread = 100 * r["stddev"] / r["mean"] if r["mean"] else 0
+        # None: below the timer resolution
+        ops_per_sec = "-" if r["ops_per_sec"] is None else f"{r['ops_per_sec']:,.0f}"
         rows.append(
             f"| `{r['name']}` | {format_time(r['median']).strip()} | "
-            f"{format_time(r['min']).strip()} | {r['ops_per_sec']:,.0f} | {spread:.1f} % |"
+            f"{format_time(r['min']).strip()} | {ops_per_sec} | {spread:.1f} % |"
         )
     return "\n".join(rows)
 

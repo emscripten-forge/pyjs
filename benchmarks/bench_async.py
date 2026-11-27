@@ -13,7 +13,7 @@ task wake-up path (i.e. call_soon).
 
 import asyncio
 
-from pyjs import js
+from compat import js
 
 _resolved_promise = js.Function("return Promise.resolve(1)")
 _settimeout0_promise = js.Function("return new Promise(r => setTimeout(r, 0))")

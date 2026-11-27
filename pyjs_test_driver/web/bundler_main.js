@@ -16,6 +16,8 @@ async function createPyjs(options) {
     files: [{ path: "/files_at_init/hello.txt", data: "hello from files" }],
     // tests/npm/test_archives.py: an archive unpacked before python starts
     archives: [{ url: "/test-data/archive_init.tar.gz", path: "/unpacked_at_init" }],
+    // (as the npm page)
+    stdlib: ["ssl", "sqlite3", "lzma", "test-modules"],
     preloadSharedLibs: options.preload,
     cdnUrl: new URL("pyjs/", globalThis.location.href).href,
   });

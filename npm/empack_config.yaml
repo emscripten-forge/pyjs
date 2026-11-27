@@ -10,6 +10,22 @@ packages:
   pip:
     exclude_patterns:
       - pattern: '**'
+  # (python-core: the files of the split python recipe, `python` is a meta
+  # package there; the same list for both)
+  python-core:
+    exclude_patterns:
+      - pattern: 'bin/**'
+      - pattern: '**/bin/**'
+      - pattern: '**/*.pyc'
+      - pattern: '**/*.exe'
+      - pattern: 'lib/python3.*/test/**'
+      - pattern: 'lib/python3.*/idlelib/**'
+      - pattern: 'lib/python3.*/ensurepip/**'
+      - pattern: 'lib/python3.*/tkinter/**'
+      - pattern: 'lib/python3.*/turtledemo/**'
+      - pattern: 'lib/python3.*/turtle.py'
+      - pattern: 'lib/python3.*/lib2to3/**'
+      - pattern: 'lib/python3.*/venv/**'
   python:
     exclude_patterns:
       - pattern: 'bin/**'

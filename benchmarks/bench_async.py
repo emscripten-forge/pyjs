@@ -57,7 +57,17 @@ async def bench_asyncio_sleep_0(benchmark):
 
 
 async def bench_asyncio_sleep_1ms(benchmark):
+    # Not the same operation in both runtimes: pyodide runs delays <= 2 ms at
+    # once (its scheduleCallback uses the MessageChannel then, without
+    # waiting), pyjs waits them (setTimeout). See asyncio_sleep_5ms for a delay
+    # both really sleep.
     await benchmark.aio(asyncio.sleep, 0.001)
+
+
+async def bench_asyncio_sleep_5ms(benchmark):
+    # above pyodide's 2 ms threshold: both really sleep (setTimeout); above
+    # 4 ms the browser's clamping of nested setTimeout hits both alike
+    await benchmark.aio(asyncio.sleep, 0.005)
 
 
 async def bench_asyncio_create_task_noop(benchmark):

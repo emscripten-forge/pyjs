@@ -64,12 +64,8 @@
   <h1>pyjs benchmarks</h1>
   <label><input type="checkbox" id="rt-pyjs" checked> pyjs</label>
   <label><input type="checkbox" id="rt-pyodide" checked> pyodide</label>
-  <select id="preset" aria-label="length">
-    <option value="quick">quick</option>
-    <option value="full">full</option>
-  </select>
   <label title="how often the whole suite runs per runtime (alternating): gives the spread">
-    repeats <input type="number" id="repeats" min="1" max="50" value="3" aria-label="repeats">
+    repeats <input type="number" id="repeats" min="1" max="50" value="5" aria-label="repeats">
   </label>
   <input type="text" id="filter" placeholder="filter, e.g. async" aria-label="filter" size="16">
   <button id="run" class="primary">Run</button>
@@ -82,10 +78,9 @@
     The benchmarks of the pyjs repository (<code>benchmarks/</code>: the Python &harr;
     JavaScript FFI and the asyncio event loop), run in a web worker of this browser,
     with pyjs and with pyodide <span id="pyodide-version"></span> (the reference), one after the other.
-    Times are the median per operation; <em>quick</em> measures fewer and shorter
-    rounds than <em>full</em> (what the CI runs). With <em>repeats</em> &gt; 1 the whole
-    suite runs that often per runtime (alternating, each in a fresh worker): a time is
-    then the median of the runs, <span class="spread">±</span> their relative standard
+    Each run measures short rounds (shorter than the CI's), and the whole suite runs
+    <em>repeats</em> times per runtime (alternating, each in a fresh worker): a time is
+    the median per operation over the runs, <span class="spread">±</span> their relative standard
     deviation, and the ratio is taken per run. It is colored only if every run agrees by
     more than 3% (green: pyjs faster each time, pink: slower each time), grey means
     within the noise. The numbers depend on the machine and the browser: compare the two
@@ -114,8 +109,9 @@ const PYODIDE_VERSION = "314.0.8";
 const PYODIDE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 // the benchmark files, copied next to this page by docs/conf.py
 const SUITE_URL = new URL("suite/", location.href).href;
-// options of benchmarks/main.py: quick = fewer and shorter rounds
-const PRESETS = { quick: { min_round_time: 0.002, rounds: 10 }, full: {} };
+// options of benchmarks/main.py: fewer and shorter rounds than its defaults
+// (the CI's); the repeats of the whole suite give the spread instead
+const BENCH_OPTIONS = { min_round_time: 0.002, rounds: 10 };
 
 const $ = (id) => document.getElementById(id);
 const status = (text) => ($("status").textContent = text);
@@ -281,7 +277,7 @@ function runOne(runtime, options, prefix = "") {
 async function run() {
   const runtimes = ["pyjs", "pyodide"].filter((r) => $(`rt-${r}`).checked);
   if (!runtimes.length) { status("choose a runtime"); return; }
-  const options = { ...PRESETS[$("preset").value] };
+  const options = { ...BENCH_OPTIONS };
   const filter = $("filter").value.trim();
   if (filter) options.filter = filter;
   const repeats = Math.max(1, Math.min(50, Number($("repeats").value) || 1));
@@ -316,10 +312,9 @@ async function run() {
 
 $("pyodide-version").textContent = PYODIDE_VERSION;
 $("run").addEventListener("click", run);
-// `?filter=async&preset=full&repeats=5&runtimes=pyjs`: preset the controls, `?autorun=1` starts
+// `?filter=async&repeats=10&runtimes=pyjs`: preset the controls, `?autorun=1` starts
 if (params.get("filter")) $("filter").value = params.get("filter");
 if (Number(params.get("repeats")) >= 1) $("repeats").value = params.get("repeats");
-if (params.get("preset") in PRESETS) $("preset").value = params.get("preset");
 if (params.get("runtimes")) {
   const wanted = params.get("runtimes").split(",");
   for (const r of ["pyjs", "pyodide"]) $(`rt-${r}`).checked = wanted.includes(r);

@@ -44,9 +44,11 @@ def test_sleep_rejects_negative_seconds():
 
 
 def test_sleep_waits_at_least_the_time():
+    # (a lower bound only, with some slack: browsers coarsen their clocks and
+    # timers, so a sleep may measure a bit short)
     start = time.monotonic()
-    time.sleep(0.02)
-    assert time.monotonic() - start >= 0.02
+    time.sleep(0.2)
+    assert time.monotonic() - start >= 0.1
 
 
 @requires_jspi

@@ -127,12 +127,17 @@ function log(text, error = false) {
   $("log").scrollTop = $("log").scrollHeight;
 }
 
-/** a time per operation, with a unit */
-function formatTime(seconds) {
-  for (const [unit, scale] of [["s", 1], ["ms", 1e-3], ["µs", 1e-6]]) {
-    if (seconds >= scale) return `${(seconds / scale).toFixed(2)} ${unit}`;
-  }
-  return `${(seconds / 1e-9).toFixed(1)} ns`;
+const UNITS = [["s", 1], ["ms", 1e-3], ["µs", 1e-6], ["ns", 1e-9]];
+
+/** the unit for `seconds`: the largest one it is at least 1 of */
+function unitFor(seconds) {
+  return UNITS.find(([, scale]) => seconds >= scale) ?? UNITS[UNITS.length - 1];
+}
+
+/** a time per operation in the given unit (a row uses one unit for all its times) */
+function formatTime(seconds, [unit, scale] = unitFor(seconds)) {
+  const value = seconds / scale;
+  return `${value.toFixed(value >= 100 ? 1 : 2)} ${unit}`;
 }
 
 const median = (xs) => {
@@ -175,6 +180,8 @@ function renderTable(runs) {
   const pyjs = mediansOf("pyjs");
   const pyodide = mediansOf("pyodide");
   const valid = (xs) => (xs ?? []).filter((x) => typeof x === "number" && x > 0);
+  // the unit of a row: the one of its smallest time, so that both cells use it
+  let unit;
   const cell = (xs, runtime) => {
     if (!runs[runtime]?.length) return `<td class="muted">–</td>`;
     if (!xs) return `<td class="muted">n/a</td>`;
@@ -183,7 +190,7 @@ function renderTable(runs) {
     const ok = valid(xs);
     // (a median of 0: every round was below the resolution of the timer)
     if (!ok.length) return `<td class="muted" title="below the timer resolution">&lt; timer</td>`;
-    return `<td class="num">${formatTime(median(ok))}${spread(relStd(ok))}</td>`;
+    return `<td class="num">${formatTime(median(ok), unit)}${spread(relStd(ok))}</td>`;
   };
   const rows = [];
   let group = null;
@@ -197,6 +204,8 @@ function renderTable(runs) {
     }
     const a = pyjs[name];
     const b = pyodide[name];
+    const times = [valid(a), valid(b)].filter((xs) => xs.length).map(median);
+    unit = times.length ? unitFor(Math.min(...times)) : undefined;
     // raw_js_*: the browser's own scheduling, no Python: the noise between runs
     const label = bench.startsWith("raw_js_") ? `${bench} <span class="muted">(pure JavaScript)</span>` : bench;
     // the ratio per repeat (both runtimes of the same round), then its median and spread

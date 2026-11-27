@@ -195,6 +195,14 @@ calls the wasm import `pyjs_js_await`, wrapped in `WebAssembly.Suspending`:
 the browser suspends the task's wasm call stack until the promise settled,
 and the event loop goes on meanwhile.
 
+Everything that enters Python later goes through one queue
+(`src/js/scheduler.ts`, the `MessageChannel` of `call_soon`), as in pyodide:
+`proxy.callPromising(...)` starts its task in a later step of the event loop,
+never inside the call, and `run_sync` waits for an asyncio future of the
+promise, so the suspended stack takes its turn like an awaiting task. Python
+code therefore continues in the order in which things became ready, also
+when the page was busy and several are due at once.
+
 Any number of tasks can be suspended at the same time and resume in any
 order. The browser only keeps the wasm call stack; two more things a running
 Python call uses are shared by all tasks, so each task's part is moved out of

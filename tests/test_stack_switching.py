@@ -169,6 +169,88 @@ async def test_seeded_random_orders():
     check_baseline(*before)
 
 
+# ---------------------------------------------------------------------------
+# one queue for everything that enters Python (as in pyodide)
+#
+# A promising call and the resumption of a stack suspended in run_sync both go
+# through the event loop's queue, like every step of an asyncio task. So Python
+# code continues in the order in which things became ready, also when the page
+# was busy meanwhile (several timers due at once, a pause between two calls).
+# ---------------------------------------------------------------------------
+_js_call_promising_and_look = js.Function(
+    "f",
+    """
+    return (async () => {
+        // at the event loop level, with no Python running
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const state = { entered: false };
+        const promise = f.callPromising(state);
+        const entered_inside_the_call = state.entered;
+        await promise;
+        return [entered_inside_the_call, state.entered];
+    })();
+    """
+)
+
+
+async def test_call_promising_yields_to_the_event_loop_first():
+    """`f.callPromising()` never runs Python inside the call itself: the task
+    starts in a later step of the event loop (as in pyodide). JavaScript
+    starting several tasks in a row has started none of them before it is
+    done, whatever each of them does first."""
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+
+    def enter(state):
+        state.entered = True
+
+    proxy = pyjs.create_proxy(enter)
+    try:
+        entered_inside_the_call, entered = pyjs.to_py(await _js_call_promising_and_look(proxy))
+    finally:
+        proxy.destroy()
+    assert entered is True
+    assert entered_inside_the_call is False
+
+
+@pytest.mark.parametrize("first", ["await", "run_sync"])
+async def test_await_and_run_sync_continue_in_the_order_they_became_ready(first):
+    """One coroutine awaits a promise, one stack is suspended on another in
+    run_sync. Both promises are settled in the same step: the two continue in
+    the order their promises were settled (a resuming stack does not overtake
+    a task that was woken before it, and the other way round)."""
+    if not pyjs.jspi_enabled():
+        pytest.skip("needs JSPI")
+    before = suspended(), tracked()
+    log = []
+    awaited, blocked = Deferred(), Deferred()
+
+    async def awaiting():
+        await awaited.promise
+        log.append("await")
+
+    def blocking(ready):
+        ready()
+        pyjs.run_sync(blocked.promise)
+        log.append("run_sync")
+
+    task = asyncio.ensure_future(awaiting())
+    # (one step of the loop: the coroutine runs up to its await)
+    await asyncio.sleep(0)
+    tasks = Tasks()
+    await tasks.start(blocking)
+    settle = [awaited.resolve, blocked.resolve]
+    if first == "run_sync":
+        settle.reverse()
+    # both settled before any of the two can continue
+    for resolve in settle:
+        resolve(None)
+    await task
+    await tasks.finish()
+    assert log == ([first] + [name for name in ["await", "run_sync"] if name != first]), log
+    check_baseline(*before)
+
+
 async def test_many_suspensions_per_task():
     """each task suspends several times; every round resumes them in another
     random order (stack data evicted and restored again and again)"""

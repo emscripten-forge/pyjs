@@ -286,12 +286,25 @@ Other names of the package: `js`, `jstypes.*`, `pyodide.ffi` / `pyodide.code`
   a private `MessageChannel` (node: `setImmediate`). `setTimeout(cb, 0)` is
   clamped to >= 4ms when nested, which made `asyncio.sleep(0)` take ~4.7ms
   (now ~5us). `call_later(delay > 0)` uses `setTimeout`.
+- The channel lives in `src/js/scheduler.ts` (`scheduleCallback`, reached
+  from Python as `Module._schedule_callback`) and is **the one queue for
+  everything that enters Python later** (as in pyodide): `call_soon`
+  callbacks, the step `proxy.callPromising()` always waits before its task
+  starts, and through asyncio futures the stacks suspended in `run_sync`.
+  So Python continues in the order things became ready, also after the page
+  was busy (several timers due at once). The loop's own callbacks (queue and
+  `call_later` timers) enter with `Module._call_promising_now` (no extra
+  step). Never add a second way in (microtask, own timer): the order under
+  load breaks (`tests/test_stack_switching.py`:
+  `..._yields_to_the_event_loop_first`,
+  `..._continue_in_the_order_they_became_ready`; pyodide's
+  `test_sync_async_mix` flaked on CI before).
 - Safari is excluded (MessageChannel issues, pyodide#4583) and keeps the
   `setTimeout` fallback; there `call_soon` vs an earlier `call_later` ordering
   is not guaranteed.
 - The mechanism must stay invisible to the outside: nothing exported, nothing
-  on `globalThis` / `Module` (there is a test for this). Consumers like
-  xeus-python must not need extra files.
+  on `globalThis`, on `Module` only the two underscore hooks above (there is
+  a test for this). Consumers like xeus-python must not need extra files.
 - `webloop.py` is adapted from pyodide (webloop.py + `src/js/scheduler.ts`):
   keep the MPL-2.0 header, `webloop_LICENSE`, `webloop_README.md`.
 - Tests: `tests/test_webloop.py`.
@@ -318,8 +331,13 @@ Other names of the package: `js`, `jstypes.*`, `pyodide.ffi` / `pyodide.code`
   `run_sync` = `pyjs_js_await` (Suspending; `jspiAwait` captures the state)
   then `pyjs_js_resume` (`jspiResume` restores it from inside the resumed wasm,
   before `out` on the task's C stack is written). Tasks are only entered at
-  the event loop level: `callPythonPromising` waits a macrotask if
-  `jspi.depth > 0` (pyodide does the same). `pyjs_call_promising` hands the
+  the event loop level: the public `callPromising` always waits one step of
+  the event loop (scheduler.ts) before its task starts, never runs Python
+  inside the call (as pyodide); internally `callPromisingNow` skips it for the
+  loop's own callbacks (it still waits if `jspi.depth > 0`). `run_sync`
+  suspends on the promise of an asyncio future of its argument (`_to_future`
+  in `module/pyjs/core.py`), so a resume takes its turn in the loop's queue
+  (pyodide: `ensure_future` in `run_sync`). `pyjs_call_promising` hands the
   result keep-alive to JS in `out[3]` (not the global `g_keep`).
   `can_run_sync()` = JSPI enabled and the innermost entry is a promising one
   (False in sync JS callbacks). `run_until_complete` blocks via `run_sync`

@@ -380,10 +380,12 @@ sphinx-build -b html docs {{ out }}
 echo "docs: {{ out }}/index.html"
 '''
 
-# Writing docs: rebuild on every change (docs/, docstrings in module/ and
-# stubs/) and serve with live reload at http://127.0.0.1:<port>. Only sphinx:
-# no npm package build. The playground and the run buttons use the package of
-# the last `pixi run docs` (build_root/docs_extra) if there is one.
+# Writing docs: rebuild on every change (docs/ incl. the playground and the
+# benchmark page in docs/_extra, docstrings in module/ and stubs/, the
+# benchmarks the benchmark page runs) and serve with live reload at
+# http://127.0.0.1:<port>. Only sphinx: no npm package build. The playground,
+# the benchmark page and the run buttons use the package of the last
+# `pixi run docs` (build_root/docs_extra) if there is one.
 [tasks.docs-serve]
 description = "Sphinx docs with rebuild on change + live reload: docs-serve [port]"
 args = [{ arg = "port", default = "8000" }]
@@ -391,7 +393,7 @@ env = { PYJS_DOCS_EXTRA_DIR = "$PIXI_PROJECT_ROOT/build_root/docs_extra" }
 # -E: every rebuild reads all pages again. Sphinx does not know that
 # python_api.md shows the docstrings of module/ (autoapi directives): without
 # it a docstring change triggers a build that rewrites nothing.
-cmd = "sphinx-autobuild -E docs build_root/docs_live --watch module --watch stubs --port {{ port }}"
+cmd = "sphinx-autobuild -E docs build_root/docs_live --watch module --watch stubs --watch benchmarks --port {{ port }}"
 
 [tasks.clean]
 description = "Delete build_root/ (the environments in .pixi/ stay)"

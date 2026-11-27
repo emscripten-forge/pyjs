@@ -13,7 +13,8 @@ task wake-up path (i.e. call_soon).
 
 import asyncio
 
-from compat import js
+from compat import can_run_sync, create_proxy, js, run_sync
+from harness import Skip
 
 _resolved_promise = js.Function("return Promise.resolve(1)")
 _settimeout0_promise = js.Function("return new Promise(r => setTimeout(r, 0))")
@@ -140,3 +141,46 @@ async def bench_raw_js_messagechannel_hop(benchmark):
         await _js_loop_messagechannel(N_JS)
 
     await benchmark.aio(f, ops=N_JS)
+
+
+# JSPI: suspending the Python stack (run_sync) and entering Python with a call
+# that may suspend (callPromising). Both take their turn in the event loop's
+# queue (as in pyodide): run_sync resumes through an asyncio future, a
+# callPromising task starts in a later step of the loop.
+
+N_CALLS = 20
+# N sequential `await f.callPromising()`, measured in JS
+_js_loop_call_promising = js.Function(
+    "f",
+    "n",
+    """
+    return (async () => {
+        for (let i = 0; i < n; i++) { await f.callPromising(); }
+    })();
+    """,
+)
+
+
+async def bench_run_sync_resolved_promise(benchmark):
+    # (this coroutine runs in a step of an asyncio task, which may suspend)
+    if not can_run_sync():
+        raise Skip("needs JSPI")
+
+    def f():
+        run_sync(_resolved_promise())
+
+    benchmark(f)
+
+
+async def bench_call_promising_noop(benchmark):
+    if not can_run_sync():
+        raise Skip("needs JSPI")
+    proxy = create_proxy(lambda: None)
+    try:
+
+        async def f():
+            await _js_loop_call_promising(proxy, N_CALLS)
+
+        await benchmark.aio(f, ops=N_CALLS)
+    finally:
+        proxy.destroy()

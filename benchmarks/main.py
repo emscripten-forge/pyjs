@@ -22,7 +22,7 @@ import traceback
 BENCH_DIR = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, BENCH_DIR)
 
-from harness import format_table, run_benchmark_function  # noqa: E402
+from harness import Skip, format_table, run_benchmark_function  # noqa: E402
 
 def discover(name_filter=None):
     """all bench_* functions of the bench_*.py modules, optionally filtered"""
@@ -82,6 +82,9 @@ async def main(options):
         print(f"BENCH: {name}", flush=True)
         try:
             results.append(await run_benchmark_function(name, fn, **harness_kwargs))
+        except Skip as e:
+            # (cannot run here, e.g. no JSPI: neither a result nor a failure)
+            results.append(dict(name=name, skipped=str(e)))
         except Exception as e:
             traceback.print_exc()
             results.append(dict(name=name, error=f"{type(e).__name__}: {e}"))
@@ -90,6 +93,10 @@ async def main(options):
 
     print()
     print(format_table(results))
-    print(f"\n{len(results) - n_failed} benchmarks ok, {n_failed} failed in {total:.1f}s")
+    n_skipped = sum("skipped" in r for r in results)
+    print(
+        f"\n{len(results) - n_failed - n_skipped} benchmarks ok, {n_skipped} skipped, "
+        f"{n_failed} failed in {total:.1f}s"
+    )
 
     return dict(ok=n_failed == 0, environment=environment_info(), config=config, results=results)

@@ -334,7 +334,11 @@ def can_run_sync() -> bool:
 def _run_sync_python_awaitable(awaitable):
     """`run_sync` for a Python awaitable. Only a JavaScript promise can
     suspend the stack, so one is made that settles when the awaitable is
-    done. Result and exception stay in Python: the promise only says "done"."""
+    done. Result and exception stay in Python: the promise only says "done".
+
+    The promise is settled by a done callback of the future, which the event
+    loop runs like every other callback (`call_soon`): this stack continues
+    in line with the asyncio tasks, in the order they became ready."""
     future = asyncio.ensure_future(awaitable)
 
     def executor(resolve, reject):
@@ -386,6 +390,11 @@ def run_sync(awaitable):
             "run_sync cannot be used here: python was not entered via a "
             "promising call (e.g. it runs in a synchronous JavaScript callback)"
         )
-    if not isinstance(awaitable, JSProxy):
-        return _run_sync_python_awaitable(awaitable)
-    return _run_sync_js(awaitable)
+    if isinstance(awaitable, JSProxy):
+        # Not suspended on the JavaScript promise itself, but on an asyncio
+        # future of it (as pyodide does): the stack would resume the moment
+        # the promise settles, ahead of asyncio tasks that were woken earlier
+        # and still wait for their step of the event loop. Via the future it
+        # takes its turn. (`Promise.resolve`: any thenable, any value.)
+        awaitable = _to_future(_js.Promise.resolve(awaitable))
+    return _run_sync_python_awaitable(awaitable)

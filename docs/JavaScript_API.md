@@ -85,7 +85,7 @@ arr.destroy();
 |---|---|
 | `proxy(...args)` | call it (an `async def` function is started as asyncio task) |
 | `proxy.callKwargs(...args, {name: value})` | call it with keyword arguments |
-| `await proxy.callPromising(...args)` | call it so that it may wait in `run_sync` (JSPI) |
+| `await proxy.callPromising(...args)` | call it so that it may wait in `run_sync` (JSPI); Python starts in a later step of the event loop, not inside the call |
 | `proxy.attr`, `proxy.attr = x` | attribute access |
 | `proxy.get(key)`, `.set(key, value)`, `.has(key)`, `.delete(key)` | `obj[key]`, `key in obj`, `del obj[key]` |
 | `for (const x of proxy)` | iterate |

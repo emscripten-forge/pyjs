@@ -6,7 +6,8 @@
 # Adapted from pyodide (https://github.com/pyodide/pyodide), modified for pyjs:
 #   - WebLoop:          src/py/pyodide/webloop.py
 #   - _MacrotaskQueue:  src/js/scheduler.ts (zero-delay scheduling via
-#                       MessageChannel / setImmediate, Safari exclusion)
+#                       MessageChannel / setImmediate, Safari exclusion); the
+#                       JavaScript half is pyjs' src/js/scheduler.ts
 # see webloop_README.md for more info
 
 import asyncio
@@ -20,7 +21,7 @@ from typing import Callable
 import js
 from typing import Any, Dict, List, Tuple, Union
 
-from .core import can_run_sync, jspi_enabled, run_sync
+from .core import _module, can_run_sync, jspi_enabled, run_sync
 from .ffi import create_proxy
 
 # (what `from pyjs.webloop import *` in pyjs/__init__.py makes available as
@@ -42,12 +43,17 @@ class _MacrotaskQueue:
     render / handle events in between) and in order, so the pushed callables
     run FIFO, one per macrotask.
 
+    The channel is the one of pyjs' JavaScript half (src/js/scheduler.ts),
+    which `proxy.callPromising(...)` waits on too before it starts its task:
+    one queue, so that everything entering Python does so in the order it
+    became ready.
+
     Safari is excluded: MessageChannel is slow there and messes up the event
     loop (see pyodide/pyodide#4583); ``is_supported()`` is False and the loop
     falls back to ``setTimeout``.
 
-    The JS side only exists inside a closure, nothing is added to any global
-    namespace and nothing is observable from the outside.
+    Nothing is added to any global namespace and nothing is observable from
+    the outside.
     """
 
     _js_is_supported = js.Function(
@@ -63,15 +69,13 @@ class _MacrotaskQueue:
         return !is_safari && typeof MessageChannel === "function";
         """
     )
+    # `schedule`: scheduleCallback of src/js/scheduler.ts
     _js_make_poster = js.Function(
+        "schedule",
         "on_message",
         """
-        if (typeof process === "object" && process.versions && process.versions.node) {
-            return () => { setImmediate(() => on_message()); };
-        }
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => on_message();
-        return () => channel.port2.postMessage(undefined);
+        const run = () => { on_message(); };
+        return () => schedule(run);
         """,
     )
 
@@ -86,11 +90,12 @@ class _MacrotaskQueue:
         # its loop, ie forever.
         self._js_on_message = create_proxy(self._run_next)
         if jspi_enabled():
-            # With JSPI the callback is entered through `callPromising`, so
-            # that the task step it runs may suspend (pyjs.run_sync). `bind`
-            # because `callPromising` is a method: it needs the proxy as `this`.
-            self._js_on_message = self._js_on_message.callPromising.bind(self._js_on_message)
-        self._post = self._js_make_poster(self._js_on_message)
+            # With JSPI the callback is entered through a promising call, so
+            # that the task step it runs may suspend (pyjs.run_sync). Not
+            # `proxy.callPromising()`: that one waits for a step of the event
+            # loop first, and this callback already is one.
+            self._js_on_message = _module._call_promising_now.bind(None, self._js_on_message)
+        self._post = self._js_make_poster(_module._schedule_callback, self._js_on_message)
 
     def push(self, fn: Callable[[], None]) -> None:
         self._queue.append(fn)
@@ -103,16 +108,18 @@ class _MacrotaskQueue:
 # Makes the JavaScript function given to `setTimeout` for `call_later`.
 # `f` is the PyProxy of a Python callable without arguments. The function calls
 # it once and destroys the proxy afterwards (so the callable can be freed).
-# `promising`: enter Python with a call that may suspend (JSPI, pyjs.run_sync);
-# such a call returns a promise, so errors arrive as rejection.
+# `call_promising`: with JSPI, the promising call that enters Python at once
+# (callPromisingNow of src/js/pyproxy.ts; the timer already is a step of the
+# event loop), so that the callback may suspend (pyjs.run_sync). Such a call
+# returns a promise, so errors arrive as rejection. Without JSPI: None.
 # Nothing is returned and nothing is thrown: a timer has nobody to report to.
 _js_once_callback = js.Function(
     "f",
-    "promising",
+    "call_promising",
     """
     return function () {
-        if (promising) {
-            f.callPromising()
+        if (call_promising) {
+            call_promising(f)
                 .catch((err) => console.error("error in python callback", err))
                 .finally(() => f.destroy());
         } else {
@@ -335,7 +342,9 @@ class WebLoop(asyncio.AbstractEventLoop):
         # a JavaScript function for the timer that calls `run_handle` once and
         # then releases it (see _js_once_callback)
         h._js_callback = create_proxy(run_handle)
-        once_callback = _js_once_callback(h._js_callback, self._promising)
+        once_callback = _js_once_callback(
+            h._js_callback, _module._call_promising_now if self._promising else None
+        )
         # The delay in milliseconds, within what setTimeout can do:
         #   - a time in the past means "as soon as possible", as in asyncio
         #   - setTimeout keeps the delay as 32 bit integer: a larger value

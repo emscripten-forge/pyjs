@@ -31,6 +31,11 @@ class BenchmarkError(RuntimeError):
     pass
 
 
+class Skip(Exception):
+    """Raised by a benchmark that cannot run here (e.g. it needs JSPI):
+    reported as skipped with the reason, not as an error."""
+
+
 class Benchmark:
     # Many short rounds rather than a few long ones: every round is one
     # sample of the time per operation, and the samples are kept (`samples`
@@ -146,6 +151,9 @@ def format_table(results):
     for r in results:
         if "error" in r:
             lines.append(f"{r['name']:<{name_w}}  ERROR: {r['error']}")
+            continue
+        if "skipped" in r:
+            lines.append(f"{r['name']:<{name_w}}  skipped: {r['skipped']}")
             continue
         ops_per_sec = "-" if r["ops_per_sec"] is None else f"{r['ops_per_sec']:.1f}"
         lines.append(

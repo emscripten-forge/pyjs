@@ -13,8 +13,16 @@
 import { PYPROXY, alloc, handleCount } from "./codec";
 import { suspendedTaskCount } from "./jsops";
 import { canRunSync, jspi, jspiEnabled } from "./jspi";
+import { scheduleCallback } from "./scheduler";
 import { stackStateCount } from "./stack_state";
-import { PythonError, ownedProxyCount, pyimport, pythonErrorFor, setPythonHelpers } from "./pyproxy";
+import {
+  PythonError,
+  callPromisingNow,
+  ownedProxyCount,
+  pyimport,
+  pythonErrorFor,
+  setPythonHelpers,
+} from "./pyproxy";
 
 // from the emscripten runtime this code is embedded in
 declare const FS: any;
@@ -279,6 +287,14 @@ export function installModuleApi(): void {
    */
   Module._jspi_suspended_count = suspendedTaskCount;
   Module._jspi_stack_state_count = stackStateCount;
+  /**
+   * For the asyncio event loop (module/pyjs/webloop.py): the queue its
+   * callbacks share with `callPromising` (scheduler.ts), and the promising
+   * call that enters Python at once (its callbacks already are a step of the
+   * event loop).
+   */
+  Module._schedule_callback = scheduleCallback;
+  Module._call_promising_now = callPromisingNow;
   /**
    * for tests (leak checks): the number of JS objects Python holds (handles
    * in use), and of owned PyProxies holding a Python reference

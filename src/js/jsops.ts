@@ -629,6 +629,12 @@ export function toJs(stream: number, out: number): number {
  * The JavaScript half of `run_sync(promise)` (JSPI): waits for the promise,
  * while the Python call stack is suspended.
  *
+ * Which promise: `run_sync` (module/pyjs/core.py) never hands in the user's
+ * promise directly, but one settled by a done callback of an asyncio future
+ * of it. That callback runs in the event loop's queue (scheduler.ts), so the
+ * stack resumes in turn with the asyncio tasks, not ahead of tasks that were
+ * woken before it (as in pyodide).
+ *
  * Why the promise is a number: like every JS object Python refers to, it is
  * passed as its handle (see "handles" in codec.ts). Python holds a JSProxy of
  * the promise; the C side passes the proxy's handle `h`, and `hGet(h)` here

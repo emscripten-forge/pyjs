@@ -44,6 +44,7 @@
 // WHO HOLDS WHAT. A PyProxy owns one reference to its Python object (its
 // `State.ptr`); destroy() releases it. See State below.
 import { jspi } from "./jspi";
+import { scheduleCallback } from "./scheduler";
 import { enterTask } from "./stack_state";
 import {
   PyFlag,
@@ -349,9 +350,9 @@ function callPython(state: State, args: ArrayLike<any>, kwargs: any): any {
   return decode(result, true);
 }
 
-/** a promise that resolves in a later macrotask (after the JS stack unwound) */
-function nextMacrotask(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+/** a promise that resolves in a later step of the event loop (scheduler.ts) */
+function nextLoopStep(): Promise<void> {
+  return new Promise((resolve) => scheduleCallback(resolve));
 }
 
 /**
@@ -359,36 +360,44 @@ function nextMacrotask(): Promise<void> {
  * Without JSPI: a plain call. Each such call is a "task" (see jspi.ts): any
  * number of them can be suspended at the same time.
  *
- * A task is only entered at the event loop level, with no wasm code running:
- * that is what lets stack_state.ts place its C stack data freely (the data of
- * running wasm frames could not be moved). If wasm code is running (JS that
- * Python called calls this), the call waits for the next macrotask first, so
- * it behaves like "start this on the event loop" (as in pyodide).
+ * `yieldFirst`: start the task in a later step of the event loop, never
+ * inside this call. That is what `proxy.callPromising(...)` does, always (as
+ * in pyodide): tasks start in the order of the calls and in line with
+ * everything else that waits for the loop (scheduler.ts), and JavaScript that
+ * starts several tasks in a row has started none of them before it is done.
+ * The event loop itself passes false (`callPromisingNow`): its callbacks
+ * already are such a step.
+ *
+ * In any case a task is only entered at the event loop level, with no wasm
+ * code running: that is what lets stack_state.ts place its C stack data
+ * freely (the data of running wasm frames could not be moved). So a call
+ * made while wasm code is running (JS that Python called) waits for a later
+ * step too.
  *
  * Internal like callPython: users call `proxy.callPromising(...args)` (a
  * method of the proxy), which passes the proxy's State; nobody passes a
  * State by hand.
  */
-async function callPythonPromising(state: State, args: ArrayLike<any>): Promise<any> {
+async function callPythonPromising(state: State, args: ArrayLike<any>, yieldFirst: boolean): Promise<any> {
   if (pyCallPromising === null || jspi.disabled) {
     return callPython(state, args, undefined);
   }
   // The object must survive until the call is over, even if the proxy is
-  // destroyed meanwhile (e.g. while waiting for the macrotask).
+  // destroyed meanwhile (e.g. while waiting for the loop).
   const ptr = alive(state);
   pyIncref(ptr);
   let slots = 0;
   // copies of argument proxies made for the wait, see below
   let copies: any[] | null = null;
   try {
-    if (jspi.depth > 0) {
+    if (yieldFirst || jspi.depth > 0) {
       // Python arguments of the JavaScript function that calls us are
       // "borrowed" proxies: gone when that function returns, which is
       // before this call starts. They are arguments of THIS call now, so
       // each gets a proxy of its own for as long as this call takes.
       copies = [];
       args = Array.from(args, (arg) => ownedCopyOfBorrowed(arg, copies!));
-      await nextMacrotask();
+      await nextLoopStep();
     }
     const npos = args.length;
     // the slots must outlive this function's synchronous part: not in the
@@ -483,6 +492,15 @@ function ownedCopyOfBorrowed(arg: any, copies: any[]): any {
   const copy = create(ptr, state.flags, true);
   copies.push(copy);
   return copy;
+}
+
+/**
+ * `proxy.callPromising(...args)` without the step of the event loop before
+ * it: for the event loop itself (module/pyjs/webloop.py), whose callbacks are
+ * called by the scheduler / a timer, i.e. already are a step of their own.
+ */
+export function callPromisingNow(proxy: any, ...args: any[]): Promise<any> {
+  return callPythonPromising(proxy[PYPROXY], args, false);
 }
 
 /**
@@ -759,9 +777,12 @@ const members: Record<string | symbol, any> = Object.assign(Object.create(null),
     }
     return callPython(this[PYPROXY], args, kwargs);
   },
-  /** obj(*args), returns a promise: the Python code may use run_sync (JSPI) */
+  /**
+   * obj(*args), returns a promise: the Python code may use run_sync (JSPI).
+   * Python starts in a later step of the event loop, not inside this call.
+   */
   callPromising(this: any, ...args: any[]): Promise<any> {
-    return callPythonPromising(this[PYPROXY], args);
+    return callPythonPromising(this[PYPROXY], args, true);
   },
   /**
    * A deep copy of the Python object as JS value (python's `pyjs.to_js`):

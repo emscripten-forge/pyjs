@@ -41,11 +41,12 @@
 #   loops sleeping 15 ms / 21 ms, which depends on the timers (it differs in a
 #   worker); here: the order within each loop (interleaving without timers:
 #   tests/test_stack_switching.py).
-# - test_sync_async_mix: in Firefox (which pyodide does not run this test in)
-#   the same order as pyodide asserts, but with 250 ms between the events
-#   (pyodide: 150 / 200 / 220 / 250 / 270 / 300 ms, gaps down to 20 ms). One
-#   stall of ~50 ms of a Firefox worker on a CI runner swapped two events;
-#   the pyjs side was ruled out: all entries are immediate.
+#   (test_sync_async_mix is pyodide's, unchanged. It used to fail now and then
+#   when the page was busy for some 10 ms at the wrong moment: pyjs started a
+#   `callPromising` task inside the call and resumed a `run_sync` stack the
+#   moment its promise settled, ahead of asyncio tasks already woken. Now both
+#   go through the event loop's queue, as in pyodide; the timer-free tests of
+#   that are in tests/test_stack_switching.py.)
 import asyncio
 import sys
 
@@ -323,16 +324,8 @@ async def test_two_way_transfer():
 
 @requires_jspi
 async def test_sync_async_mix():
-    import js
-
-    # The sleep times in the order they end: pyodide's, in Firefox 250 ms
-    # apart (see the top).
-    if "Firefox" in str(js.navigator.userAgent):
-        a1, b1, a2, b2, a3, b3 = 250, 500, 750, 1000, 1250, 1500
-    else:
-        a1, b1, a2, b2, a3, b3 = 150, 200, 220, 250, 270, 300
-    times = dict(A1=a1, B1=b1, A2=a2, B2=b2, A3=a3, B3=b3)
-    code = """
+    res = await run_js_async(
+        """
         pyjs.runPython(`
             from pyodide.ffi import run_sync
             from js import sleep
@@ -351,12 +344,12 @@ async def test_sync_async_mix():
         const l = pyjs.globals.get("l");
 
         await Promise.all([
-            b.callPromising(B3),
-            b.callPromising(B1),
-            b.callPromising(B2),
-            a(A2),
-            a(A1),
-            a(A3)
+            b.callPromising(300),
+            b.callPromising(200),
+            b.callPromising(250),
+            a(220),
+            a(150),
+            a(270)
         ]);
         const res = l.toJs();
         for(let p of [a, b, l]) {
@@ -364,10 +357,15 @@ async def test_sync_async_mix():
         }
         return res;
         """
-    for name, ms in times.items():
-        code = code.replace(name, str(ms))
-    res = await run_js_async(code)
-    assert res == [["a", a1], ["b", b1], ["a", a2], ["b", b2], ["a", a3], ["b", b3]]
+    )
+    assert res == [
+        ["a", 150],
+        ["b", 200],
+        ["a", 220],
+        ["b", 250],
+        ["a", 270],
+        ["b", 300],
+    ]
 
 
 @requires_jspi

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.0)
-project(pyjs VERSION 6.0.1 DESCRIPTION "pyjs")
+project(pyjs VERSION 6.1.0 DESCRIPTION "pyjs")
 
 # What this builds:
 #   pyjs                  libpyjs.a: the Python <-> JavaScript bridge. An

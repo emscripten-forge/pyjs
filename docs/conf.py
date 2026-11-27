@@ -3,6 +3,7 @@
 # Build with `pixi run docs`: builds the npm package of this repository
 # (deployed next to the html, used by the playground), then sphinx.
 
+import json
 import os
 import re
 from pathlib import Path
@@ -160,10 +161,33 @@ def _fill_in_npm_package(app, docname, source):
 
 
 # -- deployed next to the html ----------------------------------------------------
-# _extra/: the playground (<html root>/playground/); PYJS_DOCS_EXTRA_DIR (set by
+# _extra/: the playground (<html root>/playground/) and the benchmark page
+# (<html root>/benchmarks/, its suite: see below); PYJS_DOCS_EXTRA_DIR (set by
 # `pixi run docs`): the npm package built from this repository
 # (<html root>/pyjs/), which the playground loads
 html_extra_path = ["_extra"]
 # (`pixi run docs-serve` sets it too, but builds no package: only if there)
 if os.path.isdir(os.environ.get("PYJS_DOCS_EXTRA_DIR", "")):
     html_extra_path.append(os.environ["PYJS_DOCS_EXTRA_DIR"])
+
+
+def _benchmark_suite(out):
+    """the benchmark page (_extra/benchmarks/) runs the benchmarks of this
+    repository in the browser: their files + a file list (files.json, read by
+    its worker) at <html root>/benchmarks/suite/. Written outside docs/ (a
+    file written into docs/ would make docs-serve rebuild forever)."""
+    suite = out / "benchmarks" / "suite"
+    if suite.exists():
+        import shutil
+
+        shutil.rmtree(suite)
+    suite.mkdir(parents=True)
+    # (report.py runs on the host, not in the browser)
+    files = sorted(p.name for p in (ROOT / "benchmarks").glob("*.py") if p.name != "report.py")
+    for name in files:
+        (suite / name).write_bytes((ROOT / "benchmarks" / name).read_bytes())
+    (suite / "files.json").write_text(json.dumps(files))
+    return str(out)
+
+
+html_extra_path.append(_benchmark_suite(ROOT / "build_root" / "docs_benchmarks"))

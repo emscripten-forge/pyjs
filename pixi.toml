@@ -341,7 +341,8 @@ python -m pyjs_test_driver run build_root/pages/npm_{{ arch }} --label "bench {{
 
 # the reference: the same benchmarks on pyodide (wasm32 only). The pyodide
 # release is downloaded once into build_root/pyodide/<version>/ and served
-# from there.
+# from there. (The benchmark page of the docs, docs/_extra/benchmarks/, loads
+# the same default version from its CDN: keep both the same.)
 # results: build_root/benchmarks/pyodide/<time>_<browser>_<mode>.json
 [tasks.bench-pyodide]
 description = "The benchmarks on pyodide (the reference): bench-pyodide [browsers] [modes] [filter] [version]"

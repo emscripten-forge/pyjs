@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pyjs benchmarks</title>
+<style>
+  /* monokai (as the docs and the playground) */
+  :root {
+    --bg: #272822; --panel: #1e1f1c; --text: #f8f8f2; --muted: #75715e;
+    --border: #3e3d32; --accent: #a6e22e; --accent-text: #272822; --error: #f92672;
+    --highlight: #e6db74; --blue: #66d9ef;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+    position: sticky; top: 0; z-index: 1;
+  }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; font-weight: 600; }
+  header a { color: var(--blue); }
+  header .spacer { flex: 1; }
+  label { display: inline-flex; align-items: center; gap: 4px; }
+  select, button, input[type="text"] {
+    font: inherit; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  input[type="checkbox"] { accent-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: 0.5; }
+  #status { color: var(--muted); font-size: 13px; }
+  main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+  p { color: var(--muted); margin: 0 0 12px; }
+  #env { font-size: 13px; margin-bottom: 12px; }
+  #env b { color: var(--text); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 4px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 53px; background: var(--bg); }
+  td.num { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  tr.group td { color: var(--highlight); font-weight: 600; padding-top: 14px; }
+  .faster { color: var(--accent); }
+  .slower { color: var(--error); }
+  .muted { color: var(--muted); }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; color: var(--muted); }
+  #log {
+    margin: 8px 0 0; padding: 10px 12px; max-height: 360px; overflow: auto;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: pre-wrap;
+  }
+  #log .err { color: var(--error); }
+</style>
+</head>
+<body>
+<header>
+  <h1>pyjs benchmarks</h1>
+  <label><input type="checkbox" id="rt-pyjs" checked> pyjs</label>
+  <label><input type="checkbox" id="rt-pyodide" checked> pyodide</label>
+  <select id="preset" aria-label="length">
+    <option value="quick">quick</option>
+    <option value="full">full</option>
+  </select>
+  <input type="text" id="filter" placeholder="filter, e.g. async" aria-label="filter" size="16">
+  <button id="run" class="primary">Run</button>
+  <span class="spacer"></span>
+  <span id="status">ready</span>
+  <a href="../index.html">docs</a>
+</header>
+<main>
+  <p>
+    The benchmarks of the pyjs repository (<code>benchmarks/</code>: the Python &harr;
+    JavaScript FFI and the asyncio event loop), run in a web worker of this browser,
+    with pyjs and with pyodide <span id="pyodide-version"></span> (the reference), one after the other.
+    Times are the median per operation; <em>quick</em> measures fewer and shorter
+    rounds than <em>full</em> (what the CI runs). The numbers depend on the machine and
+    the browser: compare the two columns, not with other machines.
+  </p>
+  <div id="env"></div>
+  <table>
+    <thead><tr><th>benchmark</th><th>pyjs</th><th>pyodide</th><th>pyodide / pyjs</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+  <details>
+    <summary>log</summary>
+    <pre id="log"></pre>
+  </details>
+</main>
+
+<script type="module">
+const params = new URLSearchParams(location.search);
+// the pyjs npm package deployed next to the docs (<html root>/pyjs/);
+// `?pkg=<url of a package dir>` for another one, `?arch=wasm64` for its wasm64 build
+const PKG = params.get("pkg") ?? new URL("../pyjs", location.href).href;
+const PYJS_ENTRY = `${PKG}/dist/${params.get("arch") === "wasm64" ? "wasm64" : "index"}.js`;
+// pyodide: the version the CI compares with (default of the pixi task
+// bench-pyodide: keep both the same)
+const PYODIDE_VERSION = "314.0.8";
+const PYODIDE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
+// the benchmark files, copied next to this page by docs/conf.py
+const SUITE_URL = new URL("suite/", location.href).href;
+// options of benchmarks/main.py: quick = fewer and shorter rounds
+const PRESETS = { quick: { min_round_time: 0.002, rounds: 10 }, full: {} };
+
+const $ = (id) => document.getElementById(id);
+const status = (text) => ($("status").textContent = text);
+function log(text, error = false) {
+  const line = document.createElement("span");
+  if (error) line.className = "err";
+  line.textContent = text + "\n";
+  $("log").append(line);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+/** a time per operation, with a unit */
+function formatTime(seconds) {
+  for (const [unit, scale] of [["s", 1], ["ms", 1e-3], ["µs", 1e-6]]) {
+    if (seconds >= scale) return `${(seconds / scale).toFixed(2)} ${unit}`;
+  }
+  return `${(seconds / 1e-9).toFixed(1)} ns`;
+}
+
+/** the results table: one row per benchmark (grouped by module), a column per runtime */
+function renderTable(results) {
+  const names = [];
+  for (const runtime of ["pyjs", "pyodide"]) {
+    for (const r of results[runtime]?.results ?? []) if (!names.includes(r.name)) names.push(r.name);
+  }
+  const byName = (runtime) => Object.fromEntries((results[runtime]?.results ?? []).map((r) => [r.name, r]));
+  const pyjs = byName("pyjs");
+  const pyodide = byName("pyodide");
+  const cell = (r, runtime) => {
+    if (!results[runtime]) return `<td class="muted">–</td>`;
+    if (!r) return `<td class="muted">n/a</td>`;
+    if (r.error) return `<td class="slower" title="${r.error}">error</td>`;
+    // (a median of 0: every round was below the resolution of the timer)
+    if (!(r.median > 0)) return `<td class="muted" title="below the timer resolution">&lt; timer</td>`;
+    return `<td class="num">${formatTime(r.median)}</td>`;
+  };
+  const rows = [];
+  let group = null;
+  for (const name of names) {
+    const [module, bench] = name.split("::");
+    if (module !== group) {
+      group = module;
+      // (baseline: the interpreter + harness overhead, the same CPython in both)
+      const note = module === "baseline" ? " (pure Python, no FFI: the interpreter itself)" : "";
+      rows.push(`<tr class="group"><td colspan="4">${module}${note}</td></tr>`);
+    }
+    const a = pyjs[name];
+    const b = pyodide[name];
+    // raw_js_*: the browser's own scheduling, no Python: the noise between runs
+    const label = bench.startsWith("raw_js_") ? `${bench} <span class="muted">(pure JavaScript)</span>` : bench;
+    let ratio = `<td class="muted"></td>`;
+    if (a?.median > 0 && b?.median > 0) {
+      const x = b.median / a.median;
+      const cls = x >= 1.05 ? "faster" : x <= 0.95 ? "slower" : "muted";
+      ratio = `<td class="num ${cls}">${x.toFixed(2)}×</td>`;
+    }
+    rows.push(`<tr><td>${label}</td>${cell(a, "pyjs")}${cell(b, "pyodide")}${ratio}</tr>`);
+  }
+  $("results").innerHTML = rows.join("");
+}
+
+/** browser, JSPI and the python of each runtime that ran */
+function renderEnvironment(results) {
+  const jspi = typeof WebAssembly.Suspending === "function" ? "yes" : "no";
+  const parts = [`<b>browser</b> ${navigator.userAgent}`, `<b>JSPI</b> ${jspi}`];
+  for (const runtime of ["pyjs", "pyodide"]) {
+    const env = results[runtime]?.environment;
+    if (env) parts.push(`<b>${runtime}</b> python ${env.python.split(" ")[0]}, ${env.pointer_bits} bit`);
+  }
+  $("env").innerHTML = parts.join(" &nbsp;·&nbsp; ");
+}
+
+/** run the benchmarks with one runtime in a fresh worker; resolves with main()'s result */
+function runOne(runtime, options) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("worker.js", location.href), { type: "module" });
+    let total = 0;
+    let done = 0;
+    worker.onmessage = ({ data }) => {
+      if (data.status) status(data.status);
+      if (data.log !== undefined) {
+        log(data.log, data.error);
+        const count = data.log.match(/^RUN BENCHMARKS \((\d+)\)/);
+        if (count) total = Number(count[1]);
+        if (data.log.startsWith("BENCH: ")) {
+          done += 1;
+          status(`${runtime}: ${done} / ${total}  ${data.log.slice(7)}`);
+        }
+      }
+      if (data.result) { worker.terminate(); resolve(data.result); }
+      if (data.failed) { worker.terminate(); reject(new Error(data.failed)); }
+    };
+    worker.onerror = (e) => { worker.terminate(); reject(new Error(e.message || "worker error")); };
+    worker.postMessage({ runtime, pyjsEntry: PYJS_ENTRY, pyodideUrl: PYODIDE_URL, suiteUrl: SUITE_URL, options });
+  });
+}
+
+async function run() {
+  const runtimes = ["pyjs", "pyodide"].filter((r) => $(`rt-${r}`).checked);
+  if (!runtimes.length) { status("choose a runtime"); return; }
+  const options = { ...PRESETS[$("preset").value] };
+  const filter = $("filter").value.trim();
+  if (filter) options.filter = filter;
+  $("run").disabled = true;
+  $("log").textContent = "";
+  const results = {};
+  renderTable(results);
+  const t0 = performance.now();
+  try {
+    // one after the other: running both at once would measure each other
+    for (const runtime of runtimes) {
+      log(`==> ${runtime}`);
+      results[runtime] = await runOne(runtime, options);
+      renderTable(results);
+      renderEnvironment(results);
+    }
+    status(`done in ${((performance.now() - t0) / 1000).toFixed(0)} s`);
+  } catch (e) {
+    log(String(e.message || e), true);
+    status("error, see the log");
+    $("log").closest("details").open = true;
+  } finally {
+    $("run").disabled = false;
+  }
+}
+
+$("pyodide-version").textContent = PYODIDE_VERSION;
+$("run").addEventListener("click", run);
+// `?filter=async&preset=full&runtimes=pyjs`: preset the controls, `?autorun=1` starts
+if (params.get("filter")) $("filter").value = params.get("filter");
+if (params.get("preset") in PRESETS) $("preset").value = params.get("preset");
+if (params.get("runtimes")) {
+  const wanted = params.get("runtimes").split(",");
+  for (const r of ["pyjs", "pyodide"]) $(`rt-${r}`).checked = wanted.includes(r);
+}
+renderEnvironment({});
+if (params.get("autorun") === "1") run();
+</script>
+</body>
+</html>

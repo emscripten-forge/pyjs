@@ -142,6 +142,11 @@ on the npm page (`pyjs_test_driver run ... --entry benchmarks`).
 CI (`.github/workflows/bench.yml`) runs the benchmarks for every architecture
 and browser and shows these tables on the summary page of each job.
 
+The same benchmarks run in your own browser on the
+<a href="benchmarks/index.html">benchmark page</a> next to these docs
+(`docs/_extra/benchmarks/`): pyjs (the npm package deployed with the docs) and
+pyodide side by side, each in a web worker.
+
 ## Documentation
 
 ```bash

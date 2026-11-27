@@ -18,8 +18,10 @@ import js  # noqa: E402, F401
 
 if RUNTIME == "pyjs":
     from pyjs import buffer_to_js_typed_array, create_once_callable, create_proxy, to_js  # noqa: F401
+    from pyjs import can_run_sync, run_sync  # noqa: F401
 else:
     from pyodide.ffi import create_once_callable, create_proxy, to_js  # noqa: F401
+    from pyodide.ffi import can_run_sync, run_sync  # noqa: F401
 
     # pyodide has no counterpart with a `view` option
     buffer_to_js_typed_array = None

@@ -27,6 +27,9 @@ def table(result):
         if "error" in r:
             rows.append(f"| `{r['name']}` | **error:** {r['error']} | | | |")
             continue
+        if "skipped" in r:
+            rows.append(f"| `{r['name']}` | skipped: {r['skipped']} | | | |")
+            continue
         spread = 100 * r["stddev"] / r["mean"] if r["mean"] else 0
         # None: below the timer resolution
         ops_per_sec = "-" if r["ops_per_sec"] is None else f"{r['ops_per_sec']:,.0f}"

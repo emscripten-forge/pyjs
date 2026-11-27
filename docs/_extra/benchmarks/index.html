@@ -168,7 +168,7 @@ function renderTable(runs) {
     (runs[runtime] ?? []).forEach((run, i) => {
       for (const r of run.results) {
         out[r.name] ??= [];
-        out[r.name][i] = r.error ? { error: r.error } : r.median;
+        out[r.name][i] = r.error ? { error: r.error } : r.skipped ? { skipped: r.skipped } : r.median;
       }
     });
     return out;
@@ -183,6 +183,9 @@ function renderTable(runs) {
     if (!xs) return `<td class="muted">n/a</td>`;
     const error = xs.find((x) => x?.error);
     if (error) return `<td class="slower" title="${error.error}">error</td>`;
+    // (cannot run here, e.g. needs JSPI)
+    const skipped = xs.find((x) => x?.skipped);
+    if (skipped) return `<td class="muted" title="${skipped.skipped}">skipped</td>`;
     const ok = valid(xs);
     // (a median of 0: every round was below the resolution of the timer)
     if (!ok.length) return `<td class="muted" title="below the timer resolution">&lt; timer</td>`;

@@ -507,4 +507,9 @@ async def test_webloop_cancelled_timer_is_released_at_once():
     await asyncio.sleep(0.01)
     fired.cancel()
     assert called == [2]
-    assert pyproxy_count() == before
+    # `<=`, not `==`: the count is global. During the sleep the browser may
+    # collect garbage and its FinalizationRegistry release leftover proxies of
+    # earlier tests (seen in a Firefox worker: 77 -> 13). What matters is that
+    # this test left none behind. (The checks above have no await in between:
+    # finalizers run as tasks of their own, never in the middle of them.)
+    assert pyproxy_count() <= before

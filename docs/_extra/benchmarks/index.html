@@ -26,10 +26,12 @@
   header a { color: var(--blue); }
   header .spacer { flex: 1; }
   label { display: inline-flex; align-items: center; gap: 4px; }
-  select, button, input[type="text"] {
+  select, button, input[type="text"], input[type="number"] {
     font: inherit; padding: 6px 12px; border-radius: 6px;
     border: 1px solid var(--border); background: var(--bg); color: var(--text);
   }
+  input[type="number"] { width: 4.5em; padding: 6px 6px; }
+  .spread { color: var(--muted); font-size: 11px; margin-left: 4px; }
   input[type="checkbox"] { accent-color: var(--accent); }
   button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
   button:disabled { opacity: 0.5; }
@@ -66,6 +68,9 @@
     <option value="quick">quick</option>
     <option value="full">full</option>
   </select>
+  <label title="how often the whole suite runs per runtime (alternating): gives the spread">
+    repeats <input type="number" id="repeats" min="1" max="50" value="3" aria-label="repeats">
+  </label>
   <input type="text" id="filter" placeholder="filter, e.g. async" aria-label="filter" size="16">
   <button id="run" class="primary">Run</button>
   <span class="spacer"></span>
@@ -78,8 +83,13 @@
     JavaScript FFI and the asyncio event loop), run in a web worker of this browser,
     with pyjs and with pyodide <span id="pyodide-version"></span> (the reference), one after the other.
     Times are the median per operation; <em>quick</em> measures fewer and shorter
-    rounds than <em>full</em> (what the CI runs). The numbers depend on the machine and
-    the browser: compare the two columns, not with other machines.
+    rounds than <em>full</em> (what the CI runs). With <em>repeats</em> &gt; 1 the whole
+    suite runs that often per runtime (alternating, each in a fresh worker): a time is
+    then the median of the runs, <span class="spread">±</span> their relative standard
+    deviation, and the ratio is taken per run. It is colored only if every run agrees by
+    more than 3% (green: pyjs faster each time, pink: slower each time), grey means
+    within the noise. The numbers depend on the machine and the browser: compare the two
+    columns, not with other machines.
   </p>
   <div id="env"></div>
   <table>
@@ -125,22 +135,55 @@ function formatTime(seconds) {
   return `${(seconds / 1e-9).toFixed(1)} ns`;
 }
 
-/** the results table: one row per benchmark (grouped by module), a column per runtime */
-function renderTable(results) {
+const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+/** relative standard deviation (sample) of xs, or null for fewer than 2 values */
+const relStd = (xs) => {
+  if (xs.length < 2) return null;
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const variance = xs.reduce((a, b) => a + (b - mean) ** 2, 0) / (xs.length - 1);
+  return mean > 0 ? Math.sqrt(variance) / mean : null;
+};
+const spread = (rel) => (rel === null ? "" : `<span class="spread">±${(rel * 100).toFixed(rel < 0.1 ? 1 : 0)}%</span>`);
+
+/**
+ * The results table: one row per benchmark (grouped by module), a column per
+ * runtime. `runs[runtime]` is the list of main() results of that runtime, one
+ * per repeat (index = repeat).
+ */
+function renderTable(runs) {
   const names = [];
   for (const runtime of ["pyjs", "pyodide"]) {
-    for (const r of results[runtime]?.results ?? []) if (!names.includes(r.name)) names.push(r.name);
+    for (const run of runs[runtime] ?? []) {
+      for (const r of run.results) if (!names.includes(r.name)) names.push(r.name);
+    }
   }
-  const byName = (runtime) => Object.fromEntries((results[runtime]?.results ?? []).map((r) => [r.name, r]));
-  const pyjs = byName("pyjs");
-  const pyodide = byName("pyodide");
-  const cell = (r, runtime) => {
-    if (!results[runtime]) return `<td class="muted">–</td>`;
-    if (!r) return `<td class="muted">n/a</td>`;
-    if (r.error) return `<td class="slower" title="${r.error}">error</td>`;
+  // per runtime: name -> the medians of the runs (index = repeat; undefined: missing / error)
+  const mediansOf = (runtime) => {
+    const out = {};
+    (runs[runtime] ?? []).forEach((run, i) => {
+      for (const r of run.results) {
+        out[r.name] ??= [];
+        out[r.name][i] = r.error ? { error: r.error } : r.median;
+      }
+    });
+    return out;
+  };
+  const pyjs = mediansOf("pyjs");
+  const pyodide = mediansOf("pyodide");
+  const valid = (xs) => (xs ?? []).filter((x) => typeof x === "number" && x > 0);
+  const cell = (xs, runtime) => {
+    if (!runs[runtime]?.length) return `<td class="muted">–</td>`;
+    if (!xs) return `<td class="muted">n/a</td>`;
+    const error = xs.find((x) => x?.error);
+    if (error) return `<td class="slower" title="${error.error}">error</td>`;
+    const ok = valid(xs);
     // (a median of 0: every round was below the resolution of the timer)
-    if (!(r.median > 0)) return `<td class="muted" title="below the timer resolution">&lt; timer</td>`;
-    return `<td class="num">${formatTime(r.median)}</td>`;
+    if (!ok.length) return `<td class="muted" title="below the timer resolution">&lt; timer</td>`;
+    return `<td class="num">${formatTime(median(ok))}${spread(relStd(ok))}</td>`;
   };
   const rows = [];
   let group = null;
@@ -156,43 +199,60 @@ function renderTable(results) {
     const b = pyodide[name];
     // raw_js_*: the browser's own scheduling, no Python: the noise between runs
     const label = bench.startsWith("raw_js_") ? `${bench} <span class="muted">(pure JavaScript)</span>` : bench;
+    // the ratio per repeat (both runtimes of the same round), then its median and spread
+    const ratios = [];
+    for (let i = 0; i < Math.max(a?.length ?? 0, b?.length ?? 0); i++) {
+      if (a?.[i] > 0 && b?.[i] > 0) ratios.push(b[i] / a[i]);
+    }
     let ratio = `<td class="muted"></td>`;
-    if (a?.median > 0 && b?.median > 0) {
-      const x = b.median / a.median;
-      const cls = x >= 1.05 ? "faster" : x <= 0.95 ? "slower" : "muted";
-      ratio = `<td class="num ${cls}">${x.toFixed(2)}×</td>`;
+    if (ratios.length) {
+      const x = median(ratios);
+      // colored only if every run agrees, by more than 3% (a hair below 1 in
+      // 3 runs happens by chance); one run: a 5% margin
+      const lo = Math.min(...ratios);
+      const hi = Math.max(...ratios);
+      const cls =
+        ratios.length > 1
+          ? lo > 1.03 ? "faster" : hi < 0.97 ? "slower" : "muted"
+          : x >= 1.05 ? "faster" : x <= 0.95 ? "slower" : "muted";
+      const range = ratios.length > 1 ? ` title="per run: ${lo.toFixed(2)}× … ${hi.toFixed(2)}×"` : "";
+      ratio = `<td class="num ${cls}"${range}>${x.toFixed(2)}×${spread(relStd(ratios))}</td>`;
     }
     rows.push(`<tr><td>${label}</td>${cell(a, "pyjs")}${cell(b, "pyodide")}${ratio}</tr>`);
   }
   $("results").innerHTML = rows.join("");
 }
 
-/** browser, JSPI and the python of each runtime that ran */
-function renderEnvironment(results) {
+/** browser, JSPI, the python of each runtime that ran, the number of runs */
+function renderEnvironment(runs) {
   const jspi = typeof WebAssembly.Suspending === "function" ? "yes" : "no";
   const parts = [`<b>browser</b> ${navigator.userAgent}`, `<b>JSPI</b> ${jspi}`];
   for (const runtime of ["pyjs", "pyodide"]) {
-    const env = results[runtime]?.environment;
-    if (env) parts.push(`<b>${runtime}</b> python ${env.python.split(" ")[0]}, ${env.pointer_bits} bit`);
+    const list = runs[runtime] ?? [];
+    const env = list[0]?.environment;
+    if (env) {
+      parts.push(`<b>${runtime}</b> python ${env.python.split(" ")[0]}, ${env.pointer_bits} bit, ${list.length} run${list.length > 1 ? "s" : ""}`);
+    }
   }
   $("env").innerHTML = parts.join(" &nbsp;·&nbsp; ");
 }
 
-/** run the benchmarks with one runtime in a fresh worker; resolves with main()'s result */
-function runOne(runtime, options) {
+/** run the benchmarks with one runtime in a fresh worker; resolves with main()'s
+ * result (`prefix`: for the status line, e.g. "run 2/3, ") */
+function runOne(runtime, options, prefix = "") {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("worker.js", location.href), { type: "module" });
     let total = 0;
     let done = 0;
     worker.onmessage = ({ data }) => {
-      if (data.status) status(data.status);
+      if (data.status) status(prefix + data.status);
       if (data.log !== undefined) {
         log(data.log, data.error);
         const count = data.log.match(/^RUN BENCHMARKS \((\d+)\)/);
         if (count) total = Number(count[1]);
         if (data.log.startsWith("BENCH: ")) {
           done += 1;
-          status(`${runtime}: ${done} / ${total}  ${data.log.slice(7)}`);
+          status(`${prefix}${runtime}: ${done} / ${total}  ${data.log.slice(7)}`);
         }
       }
       if (data.result) { worker.terminate(); resolve(data.result); }
@@ -209,18 +269,25 @@ async function run() {
   const options = { ...PRESETS[$("preset").value] };
   const filter = $("filter").value.trim();
   if (filter) options.filter = filter;
+  const repeats = Math.max(1, Math.min(50, Number($("repeats").value) || 1));
   $("run").disabled = true;
   $("log").textContent = "";
-  const results = {};
-  renderTable(results);
+  // runtime -> the main() results of its runs, one per repeat
+  const runs = Object.fromEntries(runtimes.map((r) => [r, []]));
+  renderTable(runs);
   const t0 = performance.now();
   try {
-    // one after the other: running both at once would measure each other
-    for (const runtime of runtimes) {
-      log(`==> ${runtime}`);
-      results[runtime] = await runOne(runtime, options);
-      renderTable(results);
-      renderEnvironment(results);
+    // One runtime at a time (running both at once would measure each other),
+    // alternating, and who goes first swaps every repeat (A B, B A, A B, ...):
+    // a slow drift of the machine (warming up, background load) hits both alike.
+    for (let i = 0; i < repeats; i++) {
+      const order = i % 2 ? [...runtimes].reverse() : runtimes;
+      for (const runtime of order) {
+        log(`==> ${runtime}, run ${i + 1} / ${repeats}`);
+        runs[runtime].push(await runOne(runtime, options, `run ${i + 1}/${repeats}, `));
+        renderTable(runs);
+        renderEnvironment(runs);
+      }
     }
     status(`done in ${((performance.now() - t0) / 1000).toFixed(0)} s`);
   } catch (e) {
@@ -234,8 +301,9 @@ async function run() {
 
 $("pyodide-version").textContent = PYODIDE_VERSION;
 $("run").addEventListener("click", run);
-// `?filter=async&preset=full&runtimes=pyjs`: preset the controls, `?autorun=1` starts
+// `?filter=async&preset=full&repeats=5&runtimes=pyjs`: preset the controls, `?autorun=1` starts
 if (params.get("filter")) $("filter").value = params.get("filter");
+if (Number(params.get("repeats")) >= 1) $("repeats").value = params.get("repeats");
 if (params.get("preset") in PRESETS) $("preset").value = params.get("preset");
 if (params.get("runtimes")) {
   const wanted = params.get("runtimes").split(",");
